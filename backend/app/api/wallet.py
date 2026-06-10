@@ -72,7 +72,7 @@ async def update_transaction(
     return tx
 
 
-@router.delete("/transactions/{tx_id}", status_code=204)
+@router.delete("/transactions/{tx_id}", status_code=204, response_model=None)
 async def delete_transaction(
     tx_id: int,
     user: User = Depends(get_current_user),
