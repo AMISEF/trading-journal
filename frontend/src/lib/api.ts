@@ -1,0 +1,207 @@
+/**
+ * Typed API client for the FastAPI backend.
+ *
+ * - Reads the base URL from NEXT_PUBLIC_API_BASE (default http://localhost:8001/api).
+ * - Attaches the JWT Bearer token (localStorage "tj_token") to every request.
+ * - Exposes typed helper groups: auth, trades, calc, market, checklists, reasons,
+ *   dashboard, admin, uploads.
+ */
+import axios, { AxiosInstance } from "axios";
+import type {
+  AuthResponse,
+  Calc,
+  CalcPreviewRequest,
+  ChecklistTemplate,
+  DashboardData,
+  MarketPrice,
+  MarketSymbol,
+  ReasonKind,
+  ReasonTemplate,
+  Trade,
+  TradePatch,
+  User,
+} from "./types";
+
+export const TOKEN_KEY = "tj_token";
+
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8001/api";
+
+/** Read the JWT from localStorage (browser only). */
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+/** Persist the JWT. Pass null to clear it (logout). */
+export function setToken(token: string | null) {
+  if (typeof window === "undefined") return;
+  if (token) window.localStorage.setItem(TOKEN_KEY, token);
+  else window.localStorage.removeItem(TOKEN_KEY);
+}
+
+// A single axios instance shared across the app.
+const http: AxiosInstance = axios.create({
+  baseURL: API_BASE,
+  headers: { "Content-Type": "application/json" },
+});
+
+// Inject the Bearer token before every request.
+http.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// On 401 (expired/invalid token), clear it and bounce to login.
+http.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (
+      error?.response?.status === 401 &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/login")
+    ) {
+      setToken(null);
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+export interface RegisterPayload {
+  email: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+  passwordConfirm: string;
+}
+
+export const authApi = {
+  register: (payload: RegisterPayload) =>
+    http.post<AuthResponse>("/auth/register", payload).then((r) => r.data),
+  login: (username: string, password: string) =>
+    http
+      .post<AuthResponse>("/auth/login", { username, password })
+      .then((r) => r.data),
+  me: () => http.get<User>("/auth/me").then((r) => r.data),
+  setWallet: (walletMargin: number) =>
+    http.patch<User>("/auth/wallet", { walletMargin }).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Trades
+// ---------------------------------------------------------------------------
+export const tradesApi = {
+  list: () => http.get<Trade[]>("/trades").then((r) => r.data),
+  create: () => http.post<Trade>("/trades", {}).then((r) => r.data),
+  get: (id: string) => http.get<Trade>(`/trades/${id}`).then((r) => r.data),
+  update: (id: string, patch: TradePatch) =>
+    http.patch<Trade>(`/trades/${id}`, patch).then((r) => r.data),
+  remove: (id: string) => http.delete(`/trades/${id}`).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Calc preview (live numbers while editing, no save)
+// ---------------------------------------------------------------------------
+export const calcApi = {
+  preview: (req: CalcPreviewRequest) =>
+    http.post<Calc>("/calc/preview", req).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Market data (proxied through the backend)
+// ---------------------------------------------------------------------------
+export const marketApi = {
+  symbols: (q: string) =>
+    http
+      .get<MarketSymbol[]>("/market/symbols", { params: { q } })
+      .then((r) => r.data),
+  price: (symbol: string) =>
+    http
+      .get<MarketPrice>("/market/price", { params: { symbol } })
+      .then((r) => r.data),
+  tickSize: (symbol: string) =>
+    http
+      .get<{ symbol: string; tickSize: number }>("/market/ticksize", {
+        params: { symbol },
+      })
+      .then((r) => r.data),
+  usdtIrt: () =>
+    http.get<{ rate: number }>("/market/usdt-irt").then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Checklist templates
+// ---------------------------------------------------------------------------
+export const checklistsApi = {
+  list: () => http.get<ChecklistTemplate[]>("/checklists").then((r) => r.data),
+  create: (payload: Omit<ChecklistTemplate, "id">) =>
+    http.post<ChecklistTemplate>("/checklists", payload).then((r) => r.data),
+  update: (id: string, payload: Omit<ChecklistTemplate, "id">) =>
+    http
+      .put<ChecklistTemplate>(`/checklists/${id}`, payload)
+      .then((r) => r.data),
+  remove: (id: string) => http.delete(`/checklists/${id}`).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Reason templates
+// ---------------------------------------------------------------------------
+export const reasonsApi = {
+  list: (kind: ReasonKind) =>
+    http
+      .get<ReasonTemplate[]>("/reasons", { params: { kind } })
+      .then((r) => r.data),
+  create: (kind: ReasonKind, text: string) =>
+    http.post<ReasonTemplate>("/reasons", { kind, text }).then((r) => r.data),
+  remove: (id: string) => http.delete(`/reasons/${id}`).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+export const dashboardApi = {
+  get: () => http.get<DashboardData>("/dashboard").then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+export const adminApi = {
+  users: () => http.get<User[]>("/admin/users").then((r) => r.data),
+  userTrades: (id: string) =>
+    http.get<Trade[]>(`/admin/users/${id}/trades`).then((r) => r.data),
+  trade: (id: string) =>
+    http.get<Trade>(`/admin/trades/${id}`).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Uploads
+// ---------------------------------------------------------------------------
+export const uploadsApi = {
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return http
+      .post<{ url: string }>("/uploads", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
+};
+
+/** Build the Excel export URL with the JWT in the query string (link download). */
+export function exportUrl(): string {
+  const token = getToken() ?? "";
+  return `${API_BASE}/export/trades.xlsx?token=${encodeURIComponent(token)}`;
+}
+
+export default http;

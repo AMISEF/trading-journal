@@ -1,0 +1,51 @@
+name: Deploy Trading Journal to VPS
+
+# Deploys ONLY the trading-journal app. The existing cryptosmart.site site
+# is untouched — it lives in its own folder, PM2 process, and Nginx block.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            echo "▶ Moving to project directory..."
+            cd /var/www/trading-journal
+
+            echo "▶ Pulling latest..."
+            git pull origin main
+            echo "▶ Last commit:"
+            git log -1 --oneline
+
+            # ───── Backend (FastAPI / uvicorn) ─────
+            echo "▶ Backend: installing deps..."
+            cd /var/www/trading-journal/backend
+            python3 -m venv venv 2>/dev/null || true
+            ./venv/bin/pip install --upgrade pip
+            ./venv/bin/pip install -r requirements.txt
+            echo "▶ Backend: restarting PM2..."
+            pm2 restart tj-backend || pm2 start ecosystem.config.js
+
+            # ───── Frontend (Next.js) ─────
+            echo "▶ Frontend: installing deps..."
+            cd /var/www/trading-journal/frontend
+            npm install
+            echo "▶ Frontend: building..."
+            npm run build
+            echo "▶ Frontend: restarting PM2..."
+            pm2 restart tj-frontend || pm2 start ecosystem.config.js
+
+            pm2 save
+            echo "✅ Deploy complete — https://trading-journal.cryptosmart.site"
