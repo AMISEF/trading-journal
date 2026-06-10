@@ -21,6 +21,17 @@ export function toPersianDigits(value: string | number): string {
   return String(value).replace(/\d/g, (d) => p[Number(d)]);
 }
 
+/** Extract Jalali day/month/year parts from an ISO date string. */
+export function getJalaliParts(isoDate: string): { day: number; month: number; year: number; monthName: string } | null {
+  try {
+    const d = dayjs(isoDate);
+    if (!d.isValid()) return null;
+    const j = (d as any).calendar("jalali");
+    const m = j.month(); // 0-indexed
+    return { day: j.date(), month: m + 1, year: j.year(), monthName: JALALI_MONTHS[m] };
+  } catch { return null; }
+}
+
 /** Format an ISO string as Jalali date, e.g. "۱۴۰۳/۰۵/۱۲". */
 export function formatJalaliDate(iso?: string | null): string {
   if (!iso) return "—";
