@@ -12,6 +12,7 @@ from app.core.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.base import CamelModel
 from app.services import balances, tabdeal
+from app.services.balances import _txn_sum
 from app.services.sessions import session_for
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -48,7 +49,6 @@ async def dashboard(
     closed_count = len(closed)
 
     # --- Running equity curve + per-trade PnL (using the same balance logic) ---
-    from app.services.balances import _txn_sum
     balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
     equity_curve: list[dict] = []
     pnls: list[float] = []

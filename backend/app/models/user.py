@@ -38,5 +38,4 @@ class User(Base):
     # Deposit / withdrawal history.
     wallet_transactions: Mapped[list["WalletTransaction"]] = relationship(  # noqa: F821
         back_populates="user", cascade="all, delete-orphan",
-        order_by="WalletTransaction.transaction_date",
     )
