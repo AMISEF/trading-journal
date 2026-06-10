@@ -467,7 +467,7 @@ function DashboardInner() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <KpiCard label="تعداد معاملات" value={faNum(data.tradeCount)} sub={`${faNum(data.closedCount)} بسته‌شده`} />
         <KpiCard label="ضریب سود (PF)" value={formatRatio(data.profitFactor)} />
-        <KpiCard label="میانگین R:R" value={formatRatio(data.avgRR)} />
+        <KpiCard label="میانگین ریسک به ریوارد RR" value={formatRatio(data.avgRR)} />
         <KpiCard label="وین ریت" value={formatPct((data.winRate ?? 0) * 100)} />
         <BalanceCard data={data} />
       </div>
@@ -577,7 +577,7 @@ function DashboardInner() {
                 <div className="font-bold">{formatRatio(data.profitFactor)}</div>
               </div>
               <div className="tj-card p-2">
-                <div className="text-muted">میانگین R:R</div>
+                <div className="text-muted">میانگین ریسک به ریوارد RR</div>
                 <div className="font-bold">{formatRatio(data.avgRR)}</div>
               </div>
             </div>

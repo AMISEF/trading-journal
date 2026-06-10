@@ -11,7 +11,7 @@ from app.api import crud
 from app.core.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.base import CamelModel
-from app.services import balances, tabdeal
+from app.services import balances, calc as calc_engine, tabdeal
 from app.services.balances import _txn_sum
 from app.services.sessions import session_for
 
@@ -48,12 +48,33 @@ async def dashboard(
     trade_count = len(trades)
     closed_count = len(closed)
 
-    # --- Running equity curve + per-trade PnL (using the same balance logic) ---
+    # --- Running equity curve + per-trade PnL + RR (using the same balance logic) ---
     balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
     equity_curve: list[dict] = []
     pnls: list[float] = []
+    rr_values: list[float] = []
     for t in closed:
-        pnl = balances.realized_pnl_of(t, balance)
+        tp_dicts = [
+            {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
+            for tp in t.take_profits
+        ]
+        result = calc_engine.compute(
+            direction=t.direction,
+            entry=t.entry_price,
+            leverage=t.leverage,
+            margin_percent=t.margin_percent,
+            wallet_balance_now=balance,
+            stop_loss=t.stop_loss,
+            take_profits=tp_dicts,
+            exit_type=t.exit_type,
+            trail_value=t.trail_exit_value,
+            trail_is_percent=bool(t.trail_is_percent),
+            exit_price=t.exit_price,
+        )
+        pnl = result["realizedPnl"]
+        rr = result.get("rrAchieved")
+        if rr is not None:
+            rr_values.append(rr)
         balance += pnl
         pnls.append(pnl)
         equity_curve.append({"number": t.number, "balance": balance})
@@ -70,8 +91,7 @@ async def dashboard(
     else:
         profit_factor = None
 
-    # --- Average RR achieved (over trades that have an rr value) ---
-    rr_values = [t.rr_achieved for t in closed if t.rr_achieved is not None]
+    # --- Average RR achieved (computed on-the-fly via calc engine) ---
     avg_rr = (sum(rr_values) / len(rr_values)) if rr_values else None
 
     # --- Win rate ---
