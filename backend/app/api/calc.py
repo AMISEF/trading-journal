@@ -40,5 +40,6 @@ async def preview(
         exit_type=body.exit_type,
         trail_value=body.trail_exit_value,
         trail_is_percent=bool(body.trail_is_percent),
+        exit_price=body.exit_price,
     )
     return CalcOut.model_validate(result)

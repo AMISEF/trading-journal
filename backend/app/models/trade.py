@@ -51,6 +51,10 @@ class Trade(Base):
 
     # Exit handling
     exit_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Explicit price at which the remaining (un-saved) position is closed. When
+    # set it overrides the price derived from ``exit_type`` — this is what makes
+    # "exit the rest at the TP2 level" possible.
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     trail_exit_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     trail_is_percent: Mapped[bool] = mapped_column(Boolean, default=False)
     is_risk_free_mgmt: Mapped[bool] = mapped_column(Boolean, default=False)

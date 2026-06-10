@@ -36,7 +36,9 @@ const TAG_BG = [
   "bg-orange-100 text-orange-700",
 ];
 
-function tagColor(tag: string): string {
+function tagColorClass(tag: string, colorMap: Map<string, number>): string {
+  const idx = colorMap.get(tag);
+  if (idx !== undefined) return TAG_BG[idx % TAG_BG.length];
   let h = 0;
   for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) & 0xffffffff;
   return TAG_BG[Math.abs(h) % TAG_BG.length];
@@ -66,12 +68,20 @@ function JournalsInner() {
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [tagColorMap, setTagColorMap] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     tradesApi
       .list()
       .then(setTrades)
       .catch(() => setError("بارگذاری ژورنال‌ها با خطا مواجه شد."));
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("tj_global_tags") || "[]") as { name: string; colorIdx: number }[];
+      setTagColorMap(new Map(stored.map((t) => [t.name, t.colorIdx])));
+    } catch {}
   }, []);
 
   const createTrade = async () => {
@@ -265,9 +275,10 @@ function JournalsInner() {
               onToggle={toggleSelect}
               onToggleAll={() => toggleAll(g.rows)}
               onOpen={(id) => router.push(`/journals/${id}`)}
+              colorMap={tagColorMap}
             />
           ) : (
-            <TradeCards rows={g.rows} onOpen={(id) => router.push(`/journals/${id}`)} />
+            <TradeCards rows={g.rows} onOpen={(id) => router.push(`/journals/${id}`)} colorMap={tagColorMap} />
           )}
         </div>
       ))}
@@ -290,12 +301,12 @@ function DirCell({ dir }: { dir: Trade["direction"] }) {
   return dir === "LONG" ? <Badge tone="profit">Long</Badge> : <Badge tone="loss">Short</Badge>;
 }
 
-function TagChips({ tags }: { tags: string[] }) {
+function TagChips({ tags, colorMap }: { tags: string[]; colorMap: Map<string, number> }) {
   if (!tags || tags.length === 0) return <span className="text-muted">—</span>;
   return (
     <div className="flex flex-wrap gap-1">
       {tags.map((t) => (
-        <span key={t} className={`rounded-full px-2 py-0.5 text-xs font-medium ${tagColor(t)}`}>{t}</span>
+        <span key={t} className={`rounded-full px-2 py-0.5 text-xs font-medium ${tagColorClass(t, colorMap)}`}>{t}</span>
       ))}
     </div>
   );
@@ -307,12 +318,14 @@ function TradeTable({
   onToggle,
   onToggleAll,
   onOpen,
+  colorMap,
 }: {
   rows: Trade[];
   selected: Set<string>;
   onToggle: (id: string) => void;
   onToggleAll: () => void;
   onOpen: (id: string) => void;
+  colorMap: Map<string, number>;
 }) {
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
 
@@ -389,7 +402,7 @@ function TradeTable({
                 <div className={`text-xs ${pnlColorClass(pctOf(t))}`}>{formatPct(pctOf(t))}</div>
               </td>
               <td className="p-3">
-                <TagChips tags={t.tags ?? []} />
+                <TagChips tags={t.tags ?? []} colorMap={colorMap} />
               </td>
               <td className="cursor-pointer p-3 text-center" onClick={() => onOpen(t.id)}>
                 <StatusDot status={t.status} pnl={pnlOf(t)} exitType={t.exitType} />
@@ -402,7 +415,7 @@ function TradeTable({
   );
 }
 
-function TradeCards({ rows, onOpen }: { rows: Trade[]; onOpen: (id: string) => void }) {
+function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: string) => void; colorMap: Map<string, number> }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {rows.map((t) => (
@@ -429,7 +442,7 @@ function TradeCards({ rows, onOpen }: { rows: Trade[]; onOpen: (id: string) => v
           </div>
           {(t.tags ?? []).length > 0 && (
             <div className="mt-2">
-              <TagChips tags={t.tags ?? []} />
+              <TagChips tags={t.tags ?? []} colorMap={colorMap} />
             </div>
           )}
         </div>

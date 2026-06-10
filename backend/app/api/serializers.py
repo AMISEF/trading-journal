@@ -48,6 +48,7 @@ def trade_to_out(user: User, all_trades: list[Trade], trade: Trade) -> TradeOut:
         open_date=trade.open_date,
         close_date=trade.close_date,
         exit_type=trade.exit_type,
+        exit_price=trade.exit_price,
         trail_exit_value=trade.trail_exit_value,
         trail_is_percent=trade.trail_is_percent,
         is_risk_free_mgmt=trade.is_risk_free_mgmt,

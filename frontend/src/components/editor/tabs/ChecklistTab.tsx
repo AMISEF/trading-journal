@@ -45,7 +45,7 @@ export function ChecklistTab({ readOnly = false }: { readOnly?: boolean }) {
         <div className="mb-2 flex items-center justify-between text-sm">
           <span className="font-medium">پیشرفت چک‌لیست</span>
           <span className="text-muted">
-            {faNum(done)}/{faNum(total)}
+            {faNum(done)}/{faNum(total)} — {faNum(pct)}٪
           </span>
         </div>
         <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-2">

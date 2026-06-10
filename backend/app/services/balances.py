@@ -35,6 +35,7 @@ def realized_pnl_of(trade: Trade, wallet_balance_now: float) -> float:
         exit_type=trade.exit_type,
         trail_value=trade.trail_exit_value,
         trail_is_percent=bool(trade.trail_is_percent),
+        exit_price=trade.exit_price,
     )
     return result["realizedPnl"]
 
@@ -85,5 +86,6 @@ def compute_for_trade(user: User, trades: list[Trade], trade: Trade) -> dict:
         exit_type=trade.exit_type,
         trail_value=trade.trail_exit_value,
         trail_is_percent=bool(trade.trail_is_percent),
+        exit_price=trade.exit_price,
         session=session_for(trade.open_date),
     )

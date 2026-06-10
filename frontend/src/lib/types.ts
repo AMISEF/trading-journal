@@ -72,6 +72,7 @@ export interface Trade {
   openDate: string | null;
   closeDate: string | null;
   exitType: ExitType | null;
+  exitPrice: number | null;
   trailExitValue: number | null;
   trailIsPercent: boolean | null;
   isRiskFreeMgmt: boolean;
@@ -132,6 +133,7 @@ export interface CalcPreviewRequest {
   stopLoss: number | null;
   takeProfits: TakeProfit[];
   exitType?: ExitType | null;
+  exitPrice?: number | null;
   trailExitValue?: number | null;
   trailIsPercent?: boolean | null;
   walletBalance?: number | null;

@@ -165,6 +165,54 @@ def test_trailing_stop_absolute():
     assert r["rrAchieved"] == pytest.approx(3.0)
 
 
+def test_exit_price_closes_remainder_at_specific_tp():
+    """Saved across TP1..TP4 but the remainder is closed back at the TP2 price.
+
+    wallet=1000, mp=10% -> margin=100, lev=10. entry=100, sl=90 -> risk_1r=100.
+    TPs at 110/120/130/140, each saving 50% of the *remaining* position:
+      TP1 (110): full$=100, closed 0.50 -> 50.0; remaining 0.50
+      TP2 (120): full$=200, closed 0.25 -> 50.0; remaining 0.25
+      TP3 (130): full$=300, closed 0.125 -> 37.5; remaining 0.125
+      TP4 (140): full$=400, closed 0.0625 -> 25.0; remaining 0.0625
+    Saved subtotal = 162.5.
+    The leftover 0.0625 exits at the TP2 price (120): full$(120)=200 -> 12.5.
+    Total realized = 175.0.
+    """
+    r = compute(
+        direction="LONG",
+        entry=100,
+        leverage=10,
+        margin_percent=10,
+        wallet_balance_now=1000,
+        stop_loss=90,
+        take_profits=[
+            {"order": 1, "price": 110, "save_percent": 50},
+            {"order": 2, "price": 120, "save_percent": 50},
+            {"order": 3, "price": 130, "save_percent": 50},
+            {"order": 4, "price": 140, "save_percent": 50},
+        ],
+        exit_type="LAST_TP",
+        exit_price=120,  # remainder pinned to the TP2 level
+    )
+    assert r["realizedPnl"] == pytest.approx(175.0)
+
+
+def test_risk_free_remainder_is_breakeven():
+    """Save 50% at TP1, then go risk-free: the rest exits at entry for 0 PnL."""
+    r = compute(
+        direction="LONG",
+        entry=100,
+        leverage=10,
+        margin_percent=10,
+        wallet_balance_now=1000,
+        stop_loss=90,
+        take_profits=[{"order": 1, "price": 110, "save_percent": 50}],
+        exit_type="RISK_FREE",
+    )
+    # TP1: full$(110)=100, closed 0.5 -> 50; remaining 0.5 exits at entry -> 0.
+    assert r["realizedPnl"] == pytest.approx(50.0)
+
+
 def test_zero_entry_is_safe():
     """Guard: entry=0 must not raise; rr fields fall back to None / 0."""
     r = compute(

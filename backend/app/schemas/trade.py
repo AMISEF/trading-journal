@@ -36,6 +36,7 @@ class TradeIn(CamelModel):
     open_date: datetime | None = None
     close_date: datetime | None = None
     exit_type: str | None = None  # RISK_FREE | LAST_TP | STOP_LOSS | TRAILING_STOP
+    exit_price: float | None = None
     trail_exit_value: float | None = None
     trail_is_percent: bool | None = None
     is_risk_free_mgmt: bool | None = None
@@ -94,6 +95,7 @@ class TradeOut(CamelModel):
     open_date: datetime | None = None
     close_date: datetime | None = None
     exit_type: str | None = None
+    exit_price: float | None = None
     trail_exit_value: float | None = None
     trail_is_percent: bool = False
     is_risk_free_mgmt: bool = False
@@ -126,6 +128,7 @@ class CalcPreviewIn(CamelModel):
     stop_loss: float | None = None
     take_profits: list[TakeProfitIn] = Field(default_factory=list)
     exit_type: str | None = None
+    exit_price: float | None = None
     trail_exit_value: float | None = None
     trail_is_percent: bool | None = None
     wallet_balance: float | None = None

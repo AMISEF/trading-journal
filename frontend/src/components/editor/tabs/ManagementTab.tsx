@@ -53,24 +53,47 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
     marginDollar && lossPct != null ? (lossPct / 100) * marginDollar : null;
   const lossDollar = calc ? -Math.abs(calc.risk1r) : lossDollarDirect != null ? -Math.abs(lossDollarDirect) : null;
 
-  // Build exit options including individual TPs.
+  // Build exit options including individual TPs. Each TP carries its own price
+  // so that "close the remainder at the TP2 level" books the leftover at that
+  // exact price (via exitPrice) instead of the last target.
   const tpExitOptions = trade.takeProfits.map((tp) => ({
     value: `TP${tp.order}`,
     label: `تارگت TP${tp.order}${tp.price != null ? ` (${tp.price})` : ""}`,
     exitType: "LAST_TP" as ExitType,
+    exitPrice: tp.price ?? null,
   }));
-  const EXIT_OPTIONS = [...BASE_EXIT_OPTIONS, ...tpExitOptions];
+  const EXIT_OPTIONS: {
+    value: string;
+    label: string;
+    exitType: ExitType;
+    exitPrice?: number | null;
+  }[] = [...BASE_EXIT_OPTIONS, ...tpExitOptions];
 
   const onExitZone = (value: string) => {
     if (readOnly || !value) return;
     const opt = EXIT_OPTIONS.find((o) => o.value === value);
     if (!opt) return;
+    // Specific-TP exits pin the remainder to that TP price; every other exit
+    // type derives its price in the calc engine, so we clear exitPrice for them.
     patch({
       exitType: opt.exitType,
+      exitPrice: value.startsWith("TP") ? opt.exitPrice ?? null : null,
       status: "CLOSED",
       closeDate: trade.closeDate || new Date().toISOString(),
     });
   };
+
+  // The <select> value can't be derived from exitType alone, because a specific
+  // TP exit also uses exitType="LAST_TP". When exitPrice matches a TP we show
+  // that TP option; otherwise we fall back to the plain exit type.
+  const currentExitValue = (() => {
+    if (!trade.exitType) return "";
+    if (trade.exitPrice != null) {
+      const tpMatch = tpExitOptions.find((o) => o.exitPrice === trade.exitPrice);
+      if (tpMatch) return tpMatch.value;
+    }
+    return trade.exitType;
+  })();
 
   return (
     <div className="space-y-6">
@@ -137,10 +160,20 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
 
       {/* Stop loss summary */}
       <div className="tj-card p-4">
-        <div className="text-sm font-medium">حد ضرر</div>
-        <div className="mt-1 text-sm text-loss" dir="ltr">
-          {lossPct != null ? `${lossPct.toFixed(2)}%` : "—"} /{" "}
-          {formatSignedUsd(lossDollar)}
+        <div className="mb-2 text-sm font-medium">حد ضرر</div>
+        <div className="grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <div className="text-xs text-muted mb-0.5">قیمت</div>
+            <div className="font-medium" dir="ltr">{trade.stopLoss ?? "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-0.5">درصد</div>
+            <div className="text-loss" dir="ltr">{lossPct != null ? `${lossPct.toFixed(2)}%` : "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted mb-0.5">دلار</div>
+            <div className="text-loss" dir="ltr">{formatSignedUsd(lossDollar)}</div>
+          </div>
         </div>
       </div>
 
@@ -159,7 +192,7 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
           trade.exitType ? (
             <span className="text-primary">
               نوع خروج فعلی:{" "}
-              {EXIT_OPTIONS.find((o) => o.exitType === trade.exitType)?.label}
+              {EXIT_OPTIONS.find((o) => o.value === currentExitValue)?.label}
             </span>
           ) : undefined
         }
@@ -167,7 +200,7 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
         <select
           className="tj-input"
           disabled={readOnly}
-          value={trade.exitType ?? ""}
+          value={currentExitValue}
           onChange={(e) => onExitZone(e.target.value)}
         >
           <option value="">— انتخاب کنید —</option>
@@ -191,20 +224,36 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
 
       {/* Trailing stop value (only meaningful for TRAILING_STOP) */}
       {trade.exitType === "TRAILING_STOP" && (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="مقدار تریل استاپ">
+        <div className="tj-card p-4 space-y-4">
+          <div className="text-sm font-medium">نوع تریل استاپ</div>
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2 cursor-pointer text-sm">
+              <input
+                type="radio"
+                checked={!trade.trailIsPercent}
+                disabled={readOnly}
+                onChange={() => patch({ trailIsPercent: false })}
+              />
+              قیمت خروج
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm">
+              <input
+                type="radio"
+                checked={!!trade.trailIsPercent}
+                disabled={readOnly}
+                onChange={() => patch({ trailIsPercent: true })}
+              />
+              درصد از ورود
+            </label>
+          </div>
+          <Field label={trade.trailIsPercent ? "درصد تریل (از قیمت ورود)" : "قیمت خروج تریل استاپ"}>
             <NumberInput
               value={trade.trailExitValue}
               disabled={readOnly}
               onChange={(trailExitValue) => patch({ trailExitValue })}
+              placeholder={trade.trailIsPercent ? "مثلاً: 2.5" : "قیمت"}
             />
           </Field>
-          <Switch
-            label="مقدار به‌صورت درصد است"
-            checked={!!trade.trailIsPercent}
-            disabled={readOnly}
-            onChange={(trailIsPercent) => patch({ trailIsPercent })}
-          />
         </div>
       )}
 

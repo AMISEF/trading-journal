@@ -40,6 +40,7 @@ def compute(
     exit_type: str | None = None,
     trail_value: float | None = None,
     trail_is_percent: bool = False,
+    exit_price: float | None = None,
     session: str | None = None,
 ) -> dict:
     """Compute the full ``calc`` object for a trade or a preview.
@@ -61,6 +62,7 @@ def compute(
     wallet_balance_now = _to_float(wallet_balance_now) or 0.0
     stop_loss = _to_float(stop_loss)
     trail_value = _to_float(trail_value)
+    exit_price = _to_float(exit_price)
 
     # Sort take-profits by their order and normalise the dict keys.
     tps_raw = take_profits or []
@@ -144,24 +146,36 @@ def compute(
     last_tp_price = norm_tps[-1]["price"] if norm_tps else None
 
     # --- Apply the chosen exit to whatever fraction is still open ---------
+    # ``exit_price`` (when provided) is the single source of truth for where the
+    # remaining position is closed. This is what lets a trader exit the leftover
+    # at ANY specific level — e.g. "I saved at TP1..TP4 but the rest got closed
+    # back at the TP2 price". When it is not given we fall back to deriving the
+    # exit level from ``exit_type`` (the original, simpler behaviour).
     exit_type = (exit_type or "").upper() or None
-    if exit_type == "LAST_TP":
-        realized_total += full_dollar_at(last_tp_price) * remaining
+
+    resolved_exit_price: float | None = None
+    if exit_price is not None:
+        resolved_exit_price = exit_price
+    elif exit_type == "LAST_TP":
+        resolved_exit_price = last_tp_price
     elif exit_type == "STOP_LOSS":
-        realized_total += full_dollar_at(stop_loss) * remaining
+        resolved_exit_price = stop_loss
     elif exit_type == "RISK_FREE":
-        realized_total += 0.0
+        # Risk-free => the remaining position is closed back at the entry, so it
+        # contributes exactly zero PnL (full_dollar_at(entry) == 0).
+        resolved_exit_price = entry
     elif exit_type == "TRAILING_STOP":
         if trail_is_percent:
             # trail_value is a percentage move from entry, in the trade's favour.
             if entry is not None and trail_value is not None:
-                trail_price = entry * (1 + sign * trail_value / 100.0)
-            else:
-                trail_price = None
+                resolved_exit_price = entry * (1 + sign * trail_value / 100.0)
         else:
             # trail_value is an absolute exit price.
-            trail_price = trail_value
-        realized_total += full_dollar_at(trail_price) * remaining
+            resolved_exit_price = trail_value
+
+    # Only book the remaining fraction once we actually know where it exits.
+    if (exit_type is not None or exit_price is not None) and resolved_exit_price is not None:
+        realized_total += full_dollar_at(resolved_exit_price) * remaining
 
     realized_pnl = realized_total
 

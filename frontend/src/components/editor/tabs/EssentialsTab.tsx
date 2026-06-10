@@ -6,6 +6,7 @@
  * volume), stop loss (with computed loss %/$), TPs (with per-TP growth numbers
  * from the calc preview), analysis/trigger TF, risk-free plan switch.
  */
+import { useState, useEffect } from "react";
 import { useTrade } from "@/store/trade";
 import { useAuth } from "@/store/auth";
 import { SymbolInput } from "../SymbolInput";
@@ -16,6 +17,7 @@ import {
 } from "../fields";
 
 const TIMEFRAMES = ["1Y","1M","1W","1D","4H","1H","15m","5m","1m"];
+const TF_STORAGE_KEY = "tj_custom_tfs";
 
 function TimeframeSelect({
   value,
@@ -26,33 +28,85 @@ function TimeframeSelect({
   disabled?: boolean;
   onChange: (v: string) => void;
 }) {
-  const isCustom = value !== "" && !TIMEFRAMES.includes(value);
+  const [customTfs, setCustomTfs] = useState<string[]>([]);
+  const [showInput, setShowInput] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(TF_STORAGE_KEY);
+      if (stored) setCustomTfs(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  const allTfs = [...TIMEFRAMES, ...customTfs];
+
+  const addAndSelect = () => {
+    const tf = draft.trim();
+    if (!tf) return;
+    let updatedCustom = customTfs;
+    if (!allTfs.includes(tf)) {
+      updatedCustom = [...customTfs, tf];
+      setCustomTfs(updatedCustom);
+      localStorage.setItem(TF_STORAGE_KEY, JSON.stringify(updatedCustom));
+    }
+    onChange(tf);
+    setDraft("");
+    setShowInput(false);
+  };
+
   return (
     <div className="space-y-2">
       <select
         className="tj-input"
         dir="ltr"
         disabled={disabled}
-        value={isCustom ? "__custom__" : value}
+        value={allTfs.includes(value) ? value : ""}
         onChange={(e) => {
-          if (e.target.value !== "__custom__") onChange(e.target.value);
+          if (e.target.value === "__add__") {
+            setShowInput(true);
+          } else {
+            setShowInput(false);
+            onChange(e.target.value);
+          }
         }}
       >
         <option value="">— انتخاب تایم‌فریم —</option>
         {TIMEFRAMES.map((tf) => (
           <option key={tf} value={tf}>{tf}</option>
         ))}
-        <option value="__custom__">سفارشی…</option>
+        {customTfs.length > 0 && (
+          <>
+            <option disabled>──────────</option>
+            {customTfs.map((tf) => (
+              <option key={tf} value={tf}>{tf}</option>
+            ))}
+          </>
+        )}
+        <option value="__add__">+ افزودن سفارشی…</option>
       </select>
-      {(isCustom || value === "__custom__") && (
-        <input
-          className="tj-input"
-          dir="ltr"
-          disabled={disabled}
-          placeholder="تایم‌فریم سفارشی"
-          value={isCustom ? value : ""}
-          onChange={(e) => onChange(e.target.value)}
-        />
+      {showInput && (
+        <div className="flex gap-2">
+          <input
+            className="tj-input flex-1"
+            dir="ltr"
+            placeholder="مثلاً: 3D یا 2H"
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); addAndSelect(); }
+              if (e.key === "Escape") setShowInput(false);
+            }}
+          />
+          <button
+            type="button"
+            onClick={addAndSelect}
+            className="shrink-0 rounded-lg bg-primary px-3 text-sm text-white"
+          >
+            افزودن
+          </button>
+        </div>
       )}
     </div>
   );
@@ -93,6 +147,7 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
 
   // Computed helpers.
   const totalVolume = calc?.positionSize ?? null;
+  const marginNoLeverage = trade.marginPercent && balance ? (trade.marginPercent / 100) * balance : null;
   const lossPct =
     trade.entryPrice && trade.stopLoss && trade.leverage
       ? ((trade.direction === "LONG" ? -1 : 1) *
@@ -100,7 +155,10 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
           trade.leverage *
           100)
       : null;
-  const lossDollar = calc ? -Math.abs(calc.risk1r) : null;
+  const lossDollarDirect = lossPct != null && marginNoLeverage != null
+    ? (lossPct / 100) * marginNoLeverage
+    : null;
+  const lossDollar = calc ? -Math.abs(calc.risk1r) : lossDollarDirect != null ? -Math.abs(lossDollarDirect) : null;
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -145,13 +203,10 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
       <Field
         label="درصد مارجین"
         hint={
-          <span className="text-muted">
-            حجم کل ={" "}
-            <span className="font-bold text-text" dir="ltr">
-              {formatUsd(totalVolume, 0)}
-            </span>{" "}
-            (٪مارجین × موجودی × اهرم)
-          </span>
+          <div className="space-y-0.5 text-xs text-muted">
+            <div>حجم با اهرم: <b className="text-text" dir="ltr">{formatUsd(totalVolume, 0)}</b></div>
+            <div>حجم بدون اهرم: <b className="text-text" dir="ltr">{formatUsd(marginNoLeverage, 0)}</b></div>
+          </div>
         }
       >
         <NumberInput
