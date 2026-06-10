@@ -4,11 +4,11 @@
  * Authenticated app shell: a sidebar (nav + balance + logout) and a content area.
  * Wraps every page behind the auth guard.
  */
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/store/auth";
-import { authApi } from "@/lib/api";
 import { AuthGuard } from "./AuthGuard";
 import { ThemeToggle } from "./ThemeToggle";
 import { WalletModal } from "./WalletModal";
@@ -67,38 +67,10 @@ export function AppShell({
   );
 }
 
-function TopupModal({ onClose }: { onClose: () => void }) {
-  const { user, setUser } = useAuth();
-  const [value, setValue] = useState(String(user?.walletMargin ?? 1000));
-  const [saving, setSaving] = useState(false);
-  const save = async () => {
-    const amount = Number(value) || 1000;
-    setSaving(true);
-    try { const u = await authApi.setWallet(amount); setUser(u); } catch {}
-    setSaving(false);
-    onClose();
-  };
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
-      <div className="tj-card w-full max-w-sm p-6">
-        <h2 className="mb-3 text-lg font-bold">شارژ/تغییر موجودی</h2>
-        <input type="number" className="tj-input" dir="ltr" value={value} onChange={(e) => setValue(e.target.value)} min={0} />
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm">انصراف</button>
-          <button onClick={save} disabled={saving} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-            {saving ? "ذخیره…" : "ذخیره"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const [open, setOpen] = useState(false); // mobile drawer
-  const [topup, setTopup] = useState(false);
 
   const items = NAV.filter((n) => !n.adminOnly || user?.role === "ADMIN");
 
@@ -106,9 +78,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="flex h-full flex-col">
       {/* Brand */}
       <div className="flex items-center gap-2 px-5 py-5">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-white font-bold">
-          CS
-        </div>
+        <Image src="/logo-icon.png" alt="CryptoSmart" width={36} height={36} className="rounded-xl" />
         <div>
           <div className="text-sm font-bold leading-tight">کریپتو اسمارت</div>
           <div className="text-xs text-muted">ژورنال تریدینگ</div>
@@ -119,15 +89,17 @@ function Shell({ children }: { children: React.ReactNode }) {
       <div className="mx-4 mb-4 tj-card p-4">
         <div className="flex items-center justify-between">
           <div className="text-xs text-muted">موجودی فعلی</div>
-          <button
-            onClick={() => setTopup(true)}
+          <Link
+            href="/wallet"
             className="grid h-6 w-6 place-items-center rounded-md bg-primary-soft text-primary hover:opacity-80"
-            title="شارژ / تغییر موجودی"
+            title="مدیریت کیف پول"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
+              <circle cx="12" cy="5" r="1" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" />
             </svg>
-          </button>
+          </Link>
         </div>
         <div className="mt-1 text-xl font-bold text-profit" dir="ltr">
           {formatUsd(user?.currentBalance)}
@@ -174,13 +146,26 @@ function Shell({ children }: { children: React.ReactNode }) {
           خروج
         </button>
       </div>
+
+      {/* Telegram footer */}
+      <div className="border-t border-border px-4 py-3 text-center">
+        <a
+          href="https://t.me/cryptosmart_org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex flex-col items-center gap-1.5 hover:opacity-80"
+        >
+          <Image src="/logo-icon.png" alt="CryptoSmart" width={28} height={28} className="rounded-lg" />
+          <span className="text-[10px] font-medium text-muted leading-tight">Start Smart, Trade Smarter</span>
+          <span className="text-[10px] text-primary">@Cryptosmart_org</span>
+        </a>
+      </div>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-bg text-text">
       <WalletModal />
-      {topup && <TopupModal onClose={() => setTopup(false)} />}
 
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 right-0 z-30 hidden w-64 border-l border-border bg-surface md:block">

@@ -17,23 +17,21 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 async def _token_response(db: AsyncSession, user: User) -> TokenOut:
-    """Create a login token + serialized user for register/login responses."""
     trades = await crud.load_user_trades(db, user.id)
+    transactions = await crud.load_user_transactions(db, user.id)
     token = create_access_token(user.id)
     return TokenOut(
         access_token=token,
         token_type="bearer",
-        user=user_to_out(user, trades),
+        user=user_to_out(user, trades, transactions),
     )
 
 
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> TokenOut:
-    # Passwords must match.
     if body.password != body.password_confirm:
         raise HTTPException(status_code=400, detail="Passwords do not match")
 
-    # Email and username must be unique.
     existing = await db.execute(
         select(User).where(
             or_(User.email == body.email, User.username == body.username)
@@ -42,7 +40,6 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> Toke
     if existing.scalars().first() is not None:
         raise HTTPException(status_code=400, detail="Email or username already in use")
 
-    # First user ever registered becomes ADMIN; everyone else is a TRADER.
     count_result = await db.execute(select(func.count()).select_from(User))
     is_first = (count_result.scalar() or 0) == 0
 
@@ -63,7 +60,6 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> Toke
 
 @router.post("/login", response_model=TokenOut)
 async def login(body: LoginIn, db: AsyncSession = Depends(get_db)) -> TokenOut:
-    # The "username" field may hold either a username or an email.
     result = await db.execute(
         select(User).where(
             or_(User.username == body.username, User.email == body.username)
@@ -82,7 +78,8 @@ async def me(
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
     trades = await crud.load_user_trades(db, user.id)
-    return user_to_out(user, trades)
+    transactions = await crud.load_user_transactions(db, user.id)
+    return user_to_out(user, trades, transactions)
 
 
 @router.patch("/wallet", response_model=UserOut)
@@ -95,4 +92,5 @@ async def update_wallet(
     await db.commit()
     await db.refresh(user)
     trades = await crud.load_user_trades(db, user.id)
-    return user_to_out(user, trades)
+    transactions = await crud.load_user_transactions(db, user.id)
+    return user_to_out(user, trades, transactions)

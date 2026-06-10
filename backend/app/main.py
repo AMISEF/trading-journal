@@ -26,6 +26,7 @@ from app.api import (
     templates,
     trades,
     uploads,
+    wallet,
 )
 from app.core.config import settings
 from app.db.session import init_db
@@ -73,3 +74,4 @@ app.include_router(export.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(uploads.router)
+app.include_router(wallet.router)

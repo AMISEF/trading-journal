@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Button, Spinner, StatusDot } from "@/components/ui";
 import { exportUrl, tradesApi } from "@/lib/api";
+import { useAuth } from "@/store/auth";
 import type { Trade, TradeStatus } from "@/lib/types";
 import {
   faNum,
@@ -54,6 +55,7 @@ export default function JournalsPage() {
 
 function JournalsInner() {
   const router = useRouter();
+  const user = useAuth((s) => s.user);
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -78,11 +80,13 @@ function JournalsInner() {
   }, []);
 
   useEffect(() => {
+    if (!user) return;
     try {
-      const stored = JSON.parse(localStorage.getItem("tj_global_tags") || "[]") as { name: string; colorIdx: number }[];
+      const key = `tj_global_tags_${user.id}`;
+      const stored = JSON.parse(localStorage.getItem(key) || "[]") as { name: string; colorIdx: number }[];
       setTagColorMap(new Map(stored.map((t) => [t.name, t.colorIdx])));
     } catch {}
-  }, []);
+  }, [user?.id]);
 
   const createTrade = async () => {
     setCreating(true);

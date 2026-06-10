@@ -51,7 +51,7 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
       : null;
   const lossDollarDirect =
     marginDollar && lossPct != null ? (lossPct / 100) * marginDollar : null;
-  const lossDollar = calc ? -Math.abs(calc.risk1r) : lossDollarDirect != null ? -Math.abs(lossDollarDirect) : null;
+  const lossDollar = (calc && calc.risk1r !== 0) ? -Math.abs(calc.risk1r) : lossDollarDirect != null ? -Math.abs(lossDollarDirect) : null;
 
   // Build exit options including individual TPs. Each TP carries its own price
   // so that "close the remainder at the TP2 level" books the leftover at that
@@ -161,7 +161,7 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
       {/* Stop loss summary */}
       <div className="tj-card p-4">
         <div className="mb-2 text-sm font-medium">حد ضرر</div>
-        <div className="grid grid-cols-3 gap-3 text-sm">
+        <div className="grid grid-cols-3 gap-3 text-sm text-right">
           <div>
             <div className="text-xs text-muted mb-0.5">قیمت</div>
             <div className="font-medium" dir="ltr">{trade.stopLoss ?? "—"}</div>

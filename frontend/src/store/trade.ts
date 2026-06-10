@@ -68,7 +68,7 @@ export const useTrade = create<TradeState>((set, get) => ({
     }
   },
 
-  setTrade: (trade) => set({ trade }),
+  setTrade: (trade) => set({ trade: normalizeTrade(trade) }),
 
   patch: (fields) => {
     const { trade, _timer } = get();

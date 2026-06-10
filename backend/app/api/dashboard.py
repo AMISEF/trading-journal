@@ -40,6 +40,7 @@ async def dashboard(
     db: AsyncSession = Depends(get_db),
 ) -> DashboardOut:
     trades = await crud.load_user_trades(db, user.id)
+    transactions = await crud.load_user_transactions(db, user.id)
     closed = [t for t in trades if t.status == "CLOSED"]
     closed.sort(key=lambda t: t.number)
 
@@ -47,7 +48,8 @@ async def dashboard(
     closed_count = len(closed)
 
     # --- Running equity curve + per-trade PnL (using the same balance logic) ---
-    balance = user.wallet_margin or 0.0
+    from app.services.balances import _txn_sum
+    balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
     equity_curve: list[dict] = []
     pnls: list[float] = []
     for t in closed:

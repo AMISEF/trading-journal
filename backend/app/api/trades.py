@@ -52,7 +52,8 @@ async def _persist_computed(
 ) -> None:
     """Recompute and store realizedPnl / rrExpected / rrAchieved on the trade."""
     all_trades = await crud.load_user_trades(db, user.id)
-    calc = balances.compute_for_trade(user, all_trades, trade)
+    transactions = await crud.load_user_transactions(db, user.id)
+    calc = balances.compute_for_trade(user, all_trades, trade, transactions)
     trade.realized_pnl = calc["realizedPnl"]
     trade.rr_expected = calc["rrExpected"]
     trade.rr_achieved = calc["rrAchieved"]
@@ -74,7 +75,8 @@ async def list_trades(
     db: AsyncSession = Depends(get_db),
 ) -> list[TradeOut]:
     trades = await crud.load_user_trades(db, user.id)
-    return [trade_to_out(user, trades, t) for t in trades]
+    transactions = await crud.load_user_transactions(db, user.id)
+    return [trade_to_out(user, trades, t, transactions) for t in trades]
 
 
 @router.post("/", response_model=TradeOut, status_code=status.HTTP_201_CREATED)
@@ -110,7 +112,8 @@ async def create_trade(
     await db.refresh(trade, attribute_names=["take_profits"])
 
     all_trades = await crud.load_user_trades(db, user.id)
-    return trade_to_out(user, all_trades, trade)
+    transactions = await crud.load_user_transactions(db, user.id)
+    return trade_to_out(user, all_trades, trade, transactions)
 
 
 @router.get("/{trade_id}", response_model=TradeOut)
@@ -121,7 +124,8 @@ async def get_trade(
 ) -> TradeOut:
     trade = await _get_owned_trade(db, user, trade_id)
     all_trades = await crud.load_user_trades(db, user.id)
-    return trade_to_out(user, all_trades, trade)
+    transactions = await crud.load_user_transactions(db, user.id)
+    return trade_to_out(user, all_trades, trade, transactions)
 
 
 @router.patch("/{trade_id}", response_model=TradeOut)
@@ -147,7 +151,8 @@ async def update_trade(
     await db.refresh(trade, attribute_names=["take_profits"])
 
     all_trades = await crud.load_user_trades(db, user.id)
-    return trade_to_out(user, all_trades, trade)
+    transactions = await crud.load_user_transactions(db, user.id)
+    return trade_to_out(user, all_trades, trade, transactions)
 
 
 @router.delete("/{trade_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 /** Shared centered card layout for auth pages. */
@@ -17,8 +18,14 @@ export function AuthLayout({
       </div>
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-primary text-xl font-bold text-white">
-            CS
+          <div className="mx-auto mb-4">
+            <Image
+              src="/logo-icon.png"
+              alt="CryptoSmart"
+              width={72}
+              height={72}
+              className="mx-auto rounded-2xl"
+            />
           </div>
           <h1 className="text-2xl font-bold">{title}</h1>
           <p className="text-sm text-muted">پنل ژورنال تریدینگ کریپتو اسمارت</p>

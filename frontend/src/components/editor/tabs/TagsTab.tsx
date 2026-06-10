@@ -3,6 +3,7 @@
 /** "برچسب‌ها" tab: persistent colored tags stored in localStorage + per-trade selection. */
 import { useEffect, useState } from "react";
 import { useTrade } from "@/store/trade";
+import { useAuth } from "@/store/auth";
 import { Field } from "../fields";
 
 const TAG_COLORS = [
@@ -21,34 +22,35 @@ interface GlobalTag {
   colorIdx: number;
 }
 
-const STORAGE_KEY = "tj_global_tags";
+function storageKey(userId: string) { return `tj_global_tags_${userId}`; }
 
-function loadGlobalTags(): GlobalTag[] {
+function loadGlobalTags(userId: string): GlobalTag[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(storageKey(userId)) || "[]");
   } catch {
     return [];
   }
 }
 
-function saveGlobalTags(tags: GlobalTag[]) {
+function saveGlobalTags(userId: string, tags: GlobalTag[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tags));
+  localStorage.setItem(storageKey(userId), JSON.stringify(tags));
 }
 
 export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
   const trade = useTrade((s) => s.trade);
   const patch = useTrade((s) => s.patch);
+  const user = useAuth((s) => s.user);
   const [globalTags, setGlobalTags] = useState<GlobalTag[]>([]);
   const [draft, setDraft] = useState("");
   const [colorIdx, setColorIdx] = useState(0);
 
   useEffect(() => {
-    setGlobalTags(loadGlobalTags());
-  }, []);
+    if (user) setGlobalTags(loadGlobalTags(user.id));
+  }, [user?.id]);
 
-  if (!trade) return null;
+  if (!trade || !user) return null;
 
   const toggleTag = (name: string) => {
     if (readOnly) return;
@@ -64,7 +66,7 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
     }
     const updated = [...globalTags, { name: t, colorIdx }];
     setGlobalTags(updated);
-    saveGlobalTags(updated);
+    saveGlobalTags(user.id, updated);
     patch({ tags: [...trade.tags, t] });
     setDraft("");
     setColorIdx((colorIdx + 1) % TAG_COLORS.length);
@@ -73,7 +75,7 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
   const removeGlobal = (name: string) => {
     const updated = globalTags.filter((g) => g.name !== name);
     setGlobalTags(updated);
-    saveGlobalTags(updated);
+    saveGlobalTags(user.id, updated);
     patch({ tags: trade.tags.filter((t) => t !== name) });
   };
 

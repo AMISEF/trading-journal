@@ -30,7 +30,7 @@ async def init_db() -> None:
     registered on Base.metadata before create_all runs.
     """
     # Import models so they register with Base.metadata.
-    from app.models import user, trade, template  # noqa: F401
+    from app.models import user, trade, template, wallet_transaction  # noqa: F401
     from app.db.base import Base
 
     async with engine.begin() as conn:

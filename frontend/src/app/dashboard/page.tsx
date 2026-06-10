@@ -118,7 +118,7 @@ function DashboardInner() {
         <KpiCard label="تعداد معاملات" value={faNum(data.tradeCount)} sub={`${faNum(data.closedCount)} بسته‌شده`} />
         <KpiCard label="ضریب سود (PF)" value={formatRatio(data.profitFactor)} />
         <KpiCard label="میانگین R:R" value={formatRatio(data.avgRR)} />
-        <KpiCard label="نرخ برد" value={formatPct(data.winRate)} />
+        <KpiCard label="وین ریت" value={formatPct((data.winRate ?? 0) * 100)} />
         <BalanceCard data={data} />
       </div>
 
@@ -243,8 +243,8 @@ function DashboardInner() {
                 <PieChart>
                   <Pie
                     data={[
-                      { name: "done", value: data.checklistDiscipline },
-                      { name: "rest", value: Math.max(0, 100 - data.checklistDiscipline) },
+                      { name: "done", value: (data.checklistDiscipline ?? 0) * 100 },
+                      { name: "rest", value: Math.max(0, 100 - (data.checklistDiscipline ?? 0) * 100) },
                     ]}
                     dataKey="value"
                     innerRadius={58}
@@ -258,14 +258,14 @@ function DashboardInner() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute text-2xl font-bold">
-                {formatPct(data.checklistDiscipline, 0)}
+                {formatPct((data.checklistDiscipline ?? 0) * 100, 0)}
               </div>
             </div>
             <p className="text-sm text-muted">میانگین رعایت چک‌لیست در معاملات</p>
             <div className="grid w-full grid-cols-3 gap-2 text-center text-xs">
               <div className="tj-card p-2">
-                <div className="text-muted">برد</div>
-                <div className="font-bold text-profit">{formatPct(data.winRate)}</div>
+                <div className="text-muted">وین ریت</div>
+                <div className="font-bold text-profit">{formatPct((data.winRate ?? 0) * 100)}</div>
               </div>
               <div className="tj-card p-2">
                 <div className="text-muted">PF</div>

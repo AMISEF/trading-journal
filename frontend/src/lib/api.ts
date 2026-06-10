@@ -20,6 +20,7 @@ import type {
   Trade,
   TradePatch,
   User,
+  WalletTransaction,
 } from "./types";
 
 export const TOKEN_KEY = "tj_token";
@@ -196,6 +197,24 @@ export const uploadsApi = {
       })
       .then((r) => r.data);
   },
+};
+
+// ---------------------------------------------------------------------------
+// Wallet transactions
+// ---------------------------------------------------------------------------
+export interface WalletTransactionPayload {
+  amount: number;
+  note?: string | null;
+  transactionDate?: string | null;
+}
+
+export const walletApi = {
+  list: () => http.get<WalletTransaction[]>("/wallet/transactions").then((r) => r.data),
+  create: (payload: WalletTransactionPayload) =>
+    http.post<WalletTransaction>("/wallet/transactions", payload).then((r) => r.data),
+  update: (id: string, payload: WalletTransactionPayload) =>
+    http.patch<WalletTransaction>(`/wallet/transactions/${id}`, payload).then((r) => r.data),
+  remove: (id: string) => http.delete(`/wallet/transactions/${id}`).then((r) => r.data),
 };
 
 /** Build the Excel export URL with the JWT in the query string (link download). */

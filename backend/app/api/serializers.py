@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from app.models.trade import Trade
 from app.models.user import User
+from app.models.wallet_transaction import WalletTransaction
 from app.schemas.trade import TradeOut
 from app.schemas.user import UserOut
 from app.services import balances
 
 
-def user_to_out(user: User, trades: list[Trade]) -> UserOut:
-    """Build the UserOut object, including the computed current balance."""
+def user_to_out(
+    user: User,
+    trades: list[Trade],
+    transactions: list[WalletTransaction] | None = None,
+) -> UserOut:
     return UserOut(
         id=user.id,
         email=user.email,
@@ -19,18 +23,18 @@ def user_to_out(user: User, trades: list[Trade]) -> UserOut:
         last_name=user.last_name,
         role=user.role,
         wallet_margin=user.wallet_margin,
-        current_balance=balances.current_balance(user, trades),
+        current_balance=balances.current_balance(user, trades, transactions),
         created_at=user.created_at,
     )
 
 
-def trade_to_out(user: User, all_trades: list[Trade], trade: Trade) -> TradeOut:
-    """Build a TradeOut, attaching the computed ``calc`` object.
-
-    ``all_trades`` must be every trade of the user so the wallet base for this
-    trade can be computed correctly.
-    """
-    calc = balances.compute_for_trade(user, all_trades, trade)
+def trade_to_out(
+    user: User,
+    all_trades: list[Trade],
+    trade: Trade,
+    transactions: list[WalletTransaction] | None = None,
+) -> TradeOut:
+    calc = balances.compute_for_trade(user, all_trades, trade, transactions)
     return TradeOut(
         id=trade.id,
         user_id=trade.user_id,

@@ -199,9 +199,9 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
         />
       </Field>
 
-      {/* Margin % with computed total volume */}
+      {/* Margin % + $ with computed total volume */}
       <Field
-        label="درصد مارجین"
+        label="مارجین"
         hint={
           <div className="space-y-0.5 text-xs text-muted">
             <div>حجم با اهرم: <b className="text-text" dir="ltr">{formatUsd(totalVolume, 0)}</b></div>
@@ -209,11 +209,30 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
           </div>
         }
       >
-        <NumberInput
-          value={trade.marginPercent}
-          disabled={readOnly}
-          onChange={(marginPercent) => patch({ marginPercent })}
-        />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <NumberInput
+              value={trade.marginPercent}
+              disabled={readOnly}
+              placeholder="درصد"
+              onChange={(marginPercent) => patch({ marginPercent })}
+            />
+            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted">%</span>
+          </div>
+          <div className="relative flex-1">
+            <NumberInput
+              value={marginNoLeverage != null ? Math.round(marginNoLeverage * 100) / 100 : null}
+              disabled={readOnly}
+              placeholder="دلار"
+              onChange={(dollar) => {
+                if (dollar != null && balance > 0) {
+                  patch({ marginPercent: Math.round((dollar / balance) * 10000) / 100 });
+                }
+              }}
+            />
+            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted">$</span>
+          </div>
+        </div>
       </Field>
 
       {/* Stop loss with computed loss */}

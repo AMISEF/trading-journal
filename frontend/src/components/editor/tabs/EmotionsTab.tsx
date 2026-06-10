@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTrade } from "@/store/trade";
+import { useAuth } from "@/store/auth";
 import { SingleSelect } from "../MultiSelect";
 import { FilledCheck, Field, Slider, TextArea } from "../fields";
 
@@ -11,8 +12,8 @@ const FEELINGS_AFTER = ["راضی", "پشیمان", "خنثی", "عصبانی", 
 const DEFAULT_MOTIVATIONS = ["ستاپ معتبر", "ترس از دست‌دادن", "انتقام", "خستگی", "اعتماد به تحلیل"];
 const DEFAULT_MISTAKES = ["ورود زودهنگام", "جابه‌جایی استاپ", "حجم زیاد", "بدون پلن", "خروج هیجانی"];
 
-const MOTIVATION_KEY = "tj_motivations";
-const MISTAKES_KEY = "tj_mistakes";
+function motivationKey(userId: string) { return `tj_motivations_${userId}`; }
+function mistakesKey(userId: string) { return `tj_mistakes_${userId}`; }
 
 function loadList(key: string, defaults: string[]): string[] {
   if (typeof window === "undefined") return defaults;
@@ -150,9 +151,13 @@ function ManageableMultiSelect({
 export function EmotionsTab({ readOnly = false }: { readOnly?: boolean }) {
   const trade = useTrade((s) => s.trade);
   const patch = useTrade((s) => s.patch);
+  const user = useAuth((s) => s.user);
   const [sub, setSub] = useState<"before" | "after">("before");
 
-  if (!trade) return null;
+  if (!trade || !user) return null;
+
+  const mKey = motivationKey(user.id);
+  const msKey = mistakesKey(user.id);
 
   const e = (trade.emotions || {}) as Record<string, any>;
   const setE = (key: string, val: unknown) => {
@@ -176,7 +181,7 @@ export function EmotionsTab({ readOnly = false }: { readOnly?: boolean }) {
           <Slider label="اطمینان به ستاپ (۱ تا ۱۰)" value={e.setupConfidence ?? 5} onChange={(v) => setE("setupConfidence", v)} />
           <Field label={<>انگیزه‌ی ورود <FilledCheck filled={(e.entryMotivation ?? []).length > 0} /></>}>
             <ManageableMultiSelect
-              storageKey={MOTIVATION_KEY}
+              storageKey={mKey}
               defaults={DEFAULT_MOTIVATIONS}
               selected={e.entryMotivation ?? []}
               onChange={(v) => setE("entryMotivation", v)}
@@ -192,7 +197,7 @@ export function EmotionsTab({ readOnly = false }: { readOnly?: boolean }) {
           <Slider label="کیفیت اجرا (۱ تا ۱۰)" value={e.executionQuality ?? 5} onChange={(v) => setE("executionQuality", v)} />
           <Field label={<>خطاهای رفتاری <FilledCheck filled={(e.mistakes ?? []).length > 0} /></>}>
             <ManageableMultiSelect
-              storageKey={MISTAKES_KEY}
+              storageKey={msKey}
               defaults={DEFAULT_MISTAKES}
               selected={e.mistakes ?? []}
               onChange={(v) => setE("mistakes", v)}

@@ -160,3 +160,12 @@ export interface AuthResponse {
   tokenType?: string;
   user: User;
 }
+
+export interface WalletTransaction {
+  id: string;
+  userId: string;
+  amount: number;
+  note: string | null;
+  transactionDate: string;
+  createdAt: string;
+}

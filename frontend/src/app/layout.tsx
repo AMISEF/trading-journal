@@ -30,6 +30,7 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"
           rel="stylesheet"
         />
+        <link rel="icon" href="/logo-icon.png" />
         {/* Apply theme before first paint (no flash of wrong theme). */}
         <script
           dangerouslySetInnerHTML={{

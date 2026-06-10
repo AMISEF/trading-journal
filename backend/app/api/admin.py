@@ -27,7 +27,8 @@ async def list_users(
     out: list[UserOut] = []
     for u in users:
         trades = await crud.load_user_trades(db, u.id)
-        out.append(user_to_out(u, trades))
+        transactions = await crud.load_user_transactions(db, u.id)
+        out.append(user_to_out(u, trades, transactions))
     return out
 
 
@@ -41,7 +42,8 @@ async def user_trades(
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
     trades = await crud.load_user_trades(db, target.id)
-    return [trade_to_out(target, trades, t) for t in trades]
+    transactions = await crud.load_user_transactions(db, target.id)
+    return [trade_to_out(target, trades, t, transactions) for t in trades]
 
 
 @router.get("/trades/{trade_id}", response_model=TradeOut)
@@ -55,6 +57,7 @@ async def admin_get_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
     owner = await db.get(User, trade.user_id)
     trades = await crud.load_user_trades(db, owner.id)
+    transactions = await crud.load_user_transactions(db, owner.id)
     # Find the freshly loaded version (with take_profits) to serialize.
     loaded = next((t for t in trades if t.id == trade.id), trade)
-    return trade_to_out(owner, trades, loaded)
+    return trade_to_out(owner, trades, loaded, transactions)

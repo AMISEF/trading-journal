@@ -58,6 +58,7 @@ function Inner() {
               <th className="p-3">#</th>
               <th className="p-3">نماد</th>
               <th className="p-3">جهت</th>
+              <th className="p-3">تایم‌فریم</th>
               <th className="p-3">تاریخ</th>
               <th className="p-3">R:R انتظار</th>
               <th className="p-3">نتیجه</th>
@@ -79,6 +80,11 @@ function Inner() {
                   ) : (
                     <Badge tone="loss">Short</Badge>
                   )}
+                </td>
+                <td className="p-3 text-xs" dir="ltr">
+                  {t.analysisTf || "—"}
+                  {t.triggerTf && t.analysisTf ? <span className="text-muted"> / </span> : null}
+                  {t.triggerTf && <span className="text-muted">{t.triggerTf}</span>}
                 </td>
                 <td className="p-3">{formatJalaliDate(t.openDate)}</td>
                 <td className="p-3" dir="ltr">{formatRatio(t.calc?.rrExpected ?? t.rrExpected)}</td>
