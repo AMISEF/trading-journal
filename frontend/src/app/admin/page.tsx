@@ -443,7 +443,7 @@ function UserDashboardModal({ user, onClose }: { user: User; onClose: () => void
             <KpiBox label="موجودی فعلی" value={formatUsd(data.currentBalance)} color="94,234,212" />
             <KpiBox label="کل معاملات" value={faNum(data.tradeCount)} color="167,139,250" />
             <KpiBox label="نرخ موفقیت" value={data.winRate != null ? `${faNum(Math.round(data.winRate * 100))}٪` : "—"} color="52,211,153" />
-            <KpiBox label="میانگین RR" value={data.avgRR != null ? faNum(Number(data.avgRR.toFixed(2))) : "—"} color="251,191,36" />
+            <KpiBox label="میانگین RR" value={data.avgRr != null ? faNum(Number(data.avgRr.toFixed(2))) : "—"} color="251,191,36" />
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <KpiBox label="معاملات بسته" value={faNum(data.closedCount)} color="125,211,252" />

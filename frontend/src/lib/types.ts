@@ -143,7 +143,7 @@ export interface DashboardData {
   tradeCount: number;
   closedCount: number;
   profitFactor: number;
-  avgRR: number;
+  avgRr: number;
   winRate: number;
   currentBalance: number;
   equityCurve: { number: number; balance: number }[];
