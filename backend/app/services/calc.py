@@ -180,8 +180,34 @@ def compute(
     realized_pnl = realized_total
 
     # --- Risk/reward and result percent ----------------------------------
-    rr_expected = (full_dollar_at(last_tp_price) / risk_1r) if risk_1r else None
-    rr_achieved = (realized_total / risk_1r) if risk_1r else None
+    # RR is a pure price ratio: (weighted_exit_move) / (stop_loss_move).
+    # Compute it from price levels so it is independent of margin / leverage /
+    # wallet_balance. This means RR works even if the user hasn't filled in
+    # leverage or margin_percent, or if wallet_margin is still 0.
+    if entry and stop_loss is not None and abs(entry - stop_loss) > 1e-12:
+        price_risk = abs(entry - stop_loss)
+
+        # Walk the TPs again using unit fractions (no dollars needed).
+        _rem = 1.0
+        _price_reward = 0.0
+        for tp in norm_tps:
+            tp_price = tp["price"]
+            _closed = _rem * (tp["save_percent"] / 100.0)
+            if tp_price is not None:
+                _price_reward += _closed * sign * (tp_price - entry)
+            _rem *= 1 - tp["save_percent"] / 100.0
+
+        # Add the remaining position closed at the resolved exit.
+        if resolved_exit_price is not None:
+            _price_reward += _rem * sign * (resolved_exit_price - entry)
+
+        rr_achieved = _price_reward / price_risk if price_risk else None
+        rr_expected = (sign * (last_tp_price - entry) / price_risk) if last_tp_price is not None else None
+    else:
+        # Fall back to dollar-based when we have margin info but no stop loss.
+        rr_expected = (full_dollar_at(last_tp_price) / risk_1r) if risk_1r else None
+        rr_achieved = (realized_total / risk_1r) if risk_1r else None
+
     result_pct = (realized_pnl / margin * 100.0) if margin else 0.0
 
     return {
