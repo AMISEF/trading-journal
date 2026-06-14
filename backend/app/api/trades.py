@@ -107,6 +107,17 @@ async def create_trade(
     db.add(trade)
     await db.flush()  # assign trade.id before computing
     await db.refresh(trade, attribute_names=["take_profits"])
+
+    # Capture the wallet balance NOW so this trade's margin is fixed forever.
+    # The new trade is PLANNED, so it contributes nothing to current_balance.
+    existing = await crud.load_user_trades(db, user.id)
+    existing_transactions = await crud.load_user_transactions(db, user.id)
+    trade.balance_snapshot = balances.current_balance(
+        user,
+        [t for t in existing if t.id != trade.id],
+        existing_transactions,
+    )
+
     await _persist_computed(db, user, trade)
     await db.commit()
     await db.refresh(trade, attribute_names=["take_profits"])

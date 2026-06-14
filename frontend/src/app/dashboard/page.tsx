@@ -8,9 +8,11 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Line,
   Pie,
   PieChart,
+  PolarAngleAxis,
   RadialBar,
   RadialBarChart,
   ReferenceLine,
@@ -605,15 +607,19 @@ function DashboardInner() {
   const border = "rgba(148,163,184,0.18)";
   const muted = cssVar("--muted") || "#888";
 
-  // Moving average (window 3) over the equity curve.
+  // Moving average (window 5) over the equity curve + a date label per point.
   const equity = data.equityCurve.map((p, i, arr) => {
-    const start = Math.max(0, i - 2);
+    const start = Math.max(0, i - 4);
     const slice = arr.slice(start, i + 1);
     const ma = slice.reduce((s, x) => s + x.balance, 0) / slice.length;
-    return { ...p, ma };
+    return { ...p, ma, dateLabel: shortDate(p.date) };
   });
 
-  const symbolBars = [...data.topSymbols].sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl)).slice(0, 8);
+  // Equity summary stats (shown above the chart, like a trading terminal).
+  const cumulativeProfit = data.equityCurve.reduce((s, p) => s + p.pnl, 0);
+  const lastMa = equity.length ? equity[equity.length - 1].ma : 0;
+  const lastBalance = equity.length ? equity[equity.length - 1].balance : 0;
+  const distanceFromMa = lastBalance - lastMa;
 
   return (
     <div className="relative space-y-7">
@@ -686,103 +692,111 @@ function DashboardInner() {
         <BalanceCard data={data} />
       </div>
 
-      {/* ── Equity curve + MA ── */}
-      <ChartCard title="منحنی موجودی (Equity Curve)" dot={TINTS.sky}>
-        <ResponsiveContainer width="100%" height={310}>
-          <AreaChart data={equity} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="equity-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.45} />
-                <stop offset="60%" stopColor={`rgb(${TINTS.mint})`} stopOpacity={0.12} />
-                <stop offset="100%" stopColor={`rgb(${TINTS.violet})`} stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="ma-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={`rgb(${TINTS.amber})`} stopOpacity={0.18} />
-                <stop offset="100%" stopColor={`rgb(${TINTS.amber})`} stopOpacity={0} />
-              </linearGradient>
-              <filter id="glow-sky">
-                <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
-              </filter>
-            </defs>
-            <CartesianGrid stroke={border} strokeDasharray="4 4" vertical={false} />
-            <XAxis dataKey="number" stroke={muted} fontSize={11} tickLine={false} axisLine={false} label={{ value: "معامله #", position: "insideBottomRight", offset: -5, fontSize: 11, fill: muted }} />
-            <YAxis stroke={muted} fontSize={11} width={68} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toLocaleString()}`} />
-            <Tooltip
-              {...tooltipStyle(border)}
-              formatter={(v: number, name: string) => [`$${v.toFixed(2)}`, name === "balance" ? "موجودی" : "MA(3)"]}
-              labelFormatter={(l) => `معامله #${l}`}
-            />
-            <Area
-              type="monotoneX"
-              dataKey="balance"
-              name="موجودی"
-              stroke={`rgb(${TINTS.sky})`}
-              strokeWidth={2.5}
-              fill="url(#equity-fill)"
-              dot={false}
-              activeDot={{ r: 6, fill: `rgb(${TINTS.sky})`, stroke: `rgba(${TINTS.sky},0.4)`, strokeWidth: 4 }}
-              animationDuration={1200}
-            />
-            <Line
-              type="monotoneX"
-              dataKey="ma"
-              name="MA(3)"
-              stroke={`rgb(${TINTS.amber})`}
-              strokeWidth={1.5}
-              strokeDasharray="6 4"
-              dot={false}
-              activeDot={{ r: 4, fill: `rgb(${TINTS.amber})`, strokeWidth: 0 }}
-              animationDuration={1400}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-        <div className="mt-3 flex justify-center gap-8 text-xs">
-          <Legend color={`rgb(${TINTS.sky})`} label="منحنی موجودی" filled />
-          <Legend color={`rgb(${TINTS.amber})`} label="میانگین متحرک MA(3)" dashed />
+      {/* ── Equity curve (date-based) + MA(5) ── */}
+      <div
+        className="relative overflow-hidden rounded-3xl p-6"
+        style={{
+          background: "var(--glass-bg)",
+          backdropFilter: "blur(24px) saturate(160%)",
+          WebkitBackdropFilter: "blur(24px) saturate(160%)",
+          border: "1px solid var(--glass-border)",
+          boxShadow: `0 20px 56px -24px rgba(${TINTS.sky},0.28), inset 0 1px 0 rgba(255,255,255,0.08)`,
+        }}
+      >
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-40 blur-3xl"
+          style={{ background: `rgba(${TINTS.sky},0.5)` }}
+        />
+        {/* Header */}
+        <div className="relative mb-1 flex items-center gap-2.5">
+          <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.sky})`, boxShadow: `0 0 10px 2px rgba(${TINTS.sky},0.6)` }} />
+          <h3 className="text-sm font-bold tracking-wide">منحنی سرمایه و میانگین متحرک</h3>
         </div>
-      </ChartCard>
+        <p className="relative mb-4 text-xs text-muted">MA پنج معامله اخیر روی رشد حساب</p>
+
+        {/* Stat row */}
+        <div className="relative mb-5 grid grid-cols-3 gap-3">
+          <EquityStat label="سود تجمعی" value={cumulativeProfit} prefix="$" signed tint={cumulativeProfit >= 0 ? TINTS.green : TINTS.red} />
+          <EquityStat label="MA پنج معامله" value={lastMa} prefix="$" tint={TINTS.amber} />
+          <EquityStat label="فاصله از MA" value={distanceFromMa} prefix="$" signed tint={distanceFromMa >= 0 ? TINTS.green : TINTS.red} />
+        </div>
+
+        <div className="relative">
+          <ResponsiveContainer width="100%" height={320}>
+            <ComposedChart data={equity} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="equity-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.4} />
+                  <stop offset="55%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.12} />
+                  <stop offset="100%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke={border} strokeDasharray="4 4" vertical={false} />
+              <XAxis
+                dataKey="dateLabel"
+                stroke={muted}
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                minTickGap={28}
+                tickMargin={8}
+              />
+              <YAxis
+                stroke={muted}
+                fontSize={11}
+                width={70}
+                tickLine={false}
+                axisLine={false}
+                domain={["auto", "auto"]}
+                tickFormatter={(v) => `$${Number(v).toLocaleString()}`}
+              />
+              <Tooltip
+                {...tooltipStyle(border)}
+                formatter={(v: number, name: string) => [
+                  `$${v.toFixed(2)}`,
+                  name === "balance" ? "سرمایه" : "میانگین متحرک",
+                ]}
+                labelFormatter={(l, payload) => {
+                  const num = payload?.[0]?.payload?.number;
+                  return num ? `${l} · معامله #${faNum(num)}` : String(l);
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="balance"
+                name="balance"
+                stroke={`rgb(${TINTS.sky})`}
+                strokeWidth={2.5}
+                fill="url(#equity-fill)"
+                dot={false}
+                activeDot={{ r: 6, fill: `rgb(${TINTS.sky})`, stroke: `rgba(${TINTS.sky},0.35)`, strokeWidth: 5 }}
+                animationDuration={1200}
+              />
+              <Line
+                type="monotone"
+                dataKey="ma"
+                name="ma"
+                stroke={`rgb(${TINTS.rose})`}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, fill: `rgb(${TINTS.rose})`, strokeWidth: 0 }}
+                animationDuration={1400}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="relative mt-3 flex justify-center gap-8 text-xs">
+          <Legend color={`rgb(${TINTS.sky})`} label="سرمایه" filled />
+          <Legend color={`rgb(${TINTS.rose})`} label="میانگین متحرک بالانس" filled />
+        </div>
+      </div>
 
       {/* ── Daily P&L Calendar ── */}
       <DailyPnLSection pnlByDay={data.pnlByDay} walletMargin={data.currentBalance} />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Symbol analysis bar chart */}
-        {symbolBars.length > 0 && (
-          <ChartCard title="تحلیل نمادها — سود/زیان" dot={TINTS.violet}>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={symbolBars} layout="vertical" margin={{ top: 4, right: 55, left: 0, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="sym-up" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor={`rgb(${TINTS.green})`} stopOpacity={0.4} />
-                    <stop offset="100%" stopColor={`rgb(${TINTS.mint})`} stopOpacity={1} />
-                  </linearGradient>
-                  <linearGradient id="sym-down" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.4} />
-                    <stop offset="100%" stopColor={`rgb(${TINTS.rose})`} stopOpacity={1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={border} strokeDasharray="4 4" horizontal={false} />
-                <XAxis type="number" stroke={muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} />
-                <YAxis type="category" dataKey="symbol" stroke={muted} fontSize={11} width={58} tickLine={false} axisLine={false} />
-                <ReferenceLine x={0} stroke={`rgba(148,163,184,0.35)`} strokeWidth={1} />
-                <Tooltip
-                  {...tooltipStyle(border)}
-                  cursor={{ fill: "rgba(148,163,184,0.07)" }}
-                  formatter={(v: number, _: string, props: { payload?: { count?: number } }) => [
-                    `$${v.toFixed(4)}`,
-                    `P&L · ${props.payload?.count ?? ""} معامله`,
-                  ]}
-                />
-                <Bar dataKey="pnl" name="P&L" radius={[0, 7, 7, 0]} animationDuration={1000}>
-                  {symbolBars.map((s, i) => (
-                    <Cell key={i} fill={s.pnl >= 0 ? "url(#sym-up)" : "url(#sym-down)"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        )}
+        {/* Win / loss distribution */}
+        <WinLossCard data={data} />
 
         {/* Direction split donut with center info */}
         <ChartCard title="تفکیک جهت معاملات" dot={TINTS.mint}>
@@ -857,50 +871,9 @@ function DashboardInner() {
           })()}
         </ChartCard>
 
-        {/* Session stats */}
-        {data.sessionStats.length > 0 && (
-          <ChartCard title="عملکرد در سشن‌های مارکت" dot={TINTS.sky}>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart
-                data={[...data.sessionStats].sort((a, b) => b.pnl - a.pnl)}
-                layout="vertical"
-                margin={{ top: 4, right: 55, left: 0, bottom: 4 }}
-              >
-                <defs>
-                  <linearGradient id="sess-up" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.4} />
-                    <stop offset="100%" stopColor={`rgb(${TINTS.violet})`} stopOpacity={0.9} />
-                  </linearGradient>
-                  <linearGradient id="sess-down" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.4} />
-                    <stop offset="100%" stopColor={`rgb(${TINTS.rose})`} stopOpacity={0.9} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={border} strokeDasharray="4 4" horizontal={false} />
-                <XAxis type="number" stroke={muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} />
-                <YAxis type="category" dataKey="session" stroke={muted} fontSize={11} width={60} tickLine={false} axisLine={false} />
-                <ReferenceLine x={0} stroke={`rgba(148,163,184,0.35)`} strokeWidth={1} />
-                <Tooltip
-                  {...tooltipStyle(border)}
-                  cursor={{ fill: "rgba(148,163,184,0.07)" }}
-                  formatter={(v: number, _: string, props: { payload?: { count?: number } }) => [
-                    `$${(v as number).toFixed(4)}`,
-                    `P&L · ${props.payload?.count ?? ""} معامله`,
-                  ]}
-                />
-                <Bar dataKey="pnl" name="سود/زیان" radius={[0, 7, 7, 0]} animationDuration={1000}>
-                  {data.sessionStats.map((s, i) => (
-                    <Cell key={i} fill={s.pnl >= 0 ? "url(#sess-up)" : "url(#sess-down)"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        )}
-
         {/* Checklist discipline — radial gauge */}
         <ChartCard title="انضباط چک‌لیست" dot={TINTS.amber}>
-          <div className="flex h-[280px] flex-col items-center justify-center gap-4">
+          <div className="flex h-[280px] flex-col items-center justify-center gap-5">
             {(() => {
               const disciplinePct = (data.checklistDiscipline ?? 0) * 100;
               const disciplineVal = [
@@ -908,14 +881,14 @@ function DashboardInner() {
               ];
               return (
                 <>
-                  <div className="relative" style={{ width: 180, height: 180 }}>
+                  <div className="relative" style={{ width: 200, height: 200 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <RadialBarChart
-                        innerRadius="55%"
-                        outerRadius="85%"
+                        innerRadius="68%"
+                        outerRadius="100%"
                         data={disciplineVal}
-                        startAngle={220}
-                        endAngle={-40}
+                        startAngle={90}
+                        endAngle={-270}
                       >
                         <defs>
                           <linearGradient id="disc-grad" x1="0" y1="0" x2="1" y2="1">
@@ -923,23 +896,26 @@ function DashboardInner() {
                             <stop offset="100%" stopColor={`rgb(${TINTS.sky})`} />
                           </linearGradient>
                         </defs>
+                        <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
                         <RadialBar
                           dataKey="value"
-                          background={{ fill: "rgba(148,163,184,0.1)" }}
+                          angleAxisId={0}
+                          background={{ fill: "rgba(148,163,184,0.12)" }}
                           fill="url(#disc-grad)"
+                          cornerRadius={20}
                           animationDuration={1200}
                         />
                       </RadialBarChart>
                     </ResponsiveContainer>
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                      <div className="text-3xl font-black" style={{ color: `rgb(${TINTS.mint})` }}>
-                        {formatPct(disciplinePct, 0)}
+                      <div className="text-2xl font-extrabold leading-none" style={{ color: `rgb(${TINTS.mint})` }} dir="ltr">
+                        {faNum(Math.round(disciplinePct))}٪
                       </div>
-                      <div className="text-[11px] text-muted">رعایت چک‌لیست</div>
+                      <div className="mt-1.5 text-[11px] text-muted">رعایت چک‌لیست</div>
                     </div>
                   </div>
                   <div className="grid w-full grid-cols-3 gap-2 text-center text-xs">
-                    <MiniStat label="وین ریت" value={formatPct((data.winRate ?? 0) * 100)} tint={TINTS.green} />
+                    <MiniStat label="وین ریت" value={`${faNum(Math.round((data.winRate ?? 0) * 100))}٪`} tint={TINTS.green} />
                     <MiniStat label="ضریب سود" value={formatRatio(data.profitFactor)} tint={TINTS.violet} />
                     <MiniStat label="میانگین RR" value={formatRatio(data.avgRr)} tint={TINTS.mint} />
                   </div>
@@ -1001,16 +977,173 @@ function DashboardInner() {
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
+/** Format an ISO date "2026-06-03" into a compact "3 Jun" axis label. */
+function shortDate(iso: string | null): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return `${d} ${GREGORIAN_MONTHS[m - 1]?.slice(0, 3) ?? m}`;
+}
+
+/** One stat cell in the equity card header. */
+function EquityStat({
+  label,
+  value,
+  prefix,
+  signed,
+  tint,
+}: {
+  label: string;
+  value: number;
+  prefix?: string;
+  signed?: boolean;
+  tint: string;
+}) {
+  const sign = signed && value >= 0 ? "+" : signed && value < 0 ? "-" : "";
+  const mag = Math.abs(value);
+  return (
+    <div
+      className="rounded-2xl px-3 py-2.5 text-center"
+      style={{ background: `rgba(${tint},0.1)`, border: `1px solid rgba(${tint},0.2)` }}
+    >
+      <div className="text-[10px] font-medium text-muted">{label}</div>
+      <div className="mt-1 text-base font-extrabold tracking-tight" style={{ color: `rgb(${tint})` }} dir="ltr">
+        {sign}{prefix}{mag.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </div>
+    </div>
+  );
+}
+
+/** Win / loss / breakeven distribution donut + breakdown bars (image #1). */
+function WinLossCard({ data }: { data: DashboardData }) {
+  const wl = data.winLoss;
+  const total = wl.win + wl.loss + wl.breakeven;
+  const winRatePct = (data.winRate ?? 0) * 100;
+  const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+
+  const rows = [
+    { label: "معاملات سودآور", count: wl.win, rgb: TINTS.green, pct: pct(wl.win) },
+    { label: "معاملات زیان‌ده", count: wl.loss, rgb: TINTS.red, pct: pct(wl.loss) },
+    { label: "سربه‌سر / بدون نتیجه", count: wl.breakeven, rgb: TINTS.sky, pct: pct(wl.breakeven) },
+  ];
+
+  const pieData = [
+    { name: "win", value: wl.win, rgb: TINTS.green },
+    { name: "loss", value: wl.loss, rgb: TINTS.red },
+    { name: "be", value: wl.breakeven, rgb: TINTS.sky },
+  ].filter((d) => d.value > 0);
+
+  return (
+    <ChartCard title="توزیع سود و زیان" dot={TINTS.green}>
+      <p className="-mt-3 mb-3 text-xs text-muted">{faNum(data.closedCount)} ژورنال ثبت‌شده</p>
+
+      {/* Donut with win-rate in the center */}
+      <div className="relative mx-auto" style={{ width: 220, height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <defs>
+              <linearGradient id="wl-win" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={`rgb(${TINTS.green})`} />
+                <stop offset="100%" stopColor={`rgb(${TINTS.mint})`} />
+              </linearGradient>
+              <linearGradient id="wl-loss" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={`rgb(${TINTS.rose})`} />
+                <stop offset="100%" stopColor={`rgb(${TINTS.red})`} />
+              </linearGradient>
+            </defs>
+            <Pie
+              data={pieData}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={72}
+              outerRadius={104}
+              paddingAngle={pieData.length > 1 ? 3 : 0}
+              cornerRadius={10}
+              startAngle={90}
+              endAngle={-270}
+              animationDuration={1000}
+            >
+              {pieData.map((d, i) => (
+                <Cell
+                  key={i}
+                  fill={d.name === "win" ? "url(#wl-win)" : d.name === "loss" ? "url(#wl-loss)" : `rgb(${TINTS.sky})`}
+                  stroke={`rgba(${d.rgb},0.3)`}
+                  strokeWidth={1}
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              {...tooltipStyle("rgba(148,163,184,0.18)")}
+              formatter={(v: number, n: string) => [
+                faNum(v),
+                n === "win" ? "سودآور" : n === "loss" ? "زیان‌ده" : "سربه‌سر",
+              ]}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <div className="text-3xl font-black leading-none" style={{ color: `rgb(${TINTS.green})` }} dir="ltr">
+            {faNum(winRatePct.toFixed(2))}٪
+          </div>
+          <div className="mt-1.5 text-[10px] font-semibold tracking-widest text-muted">WIN RATE</div>
+        </div>
+      </div>
+
+      {/* Breakdown bars */}
+      <div className="mt-5 space-y-3">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center gap-3">
+            <span className="w-7 shrink-0 text-right text-sm font-extrabold" style={{ color: `rgb(${r.rgb})` }} dir="ltr">
+              {faNum(r.count)}
+            </span>
+            <div className="flex-1">
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-muted">
+                  {r.label} <span style={{ color: `rgb(${r.rgb})` }} dir="ltr">({r.pct.toFixed(2)}٪)</span>
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(148,163,184,0.12)" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${r.pct}%`, background: `linear-gradient(90deg, rgba(${r.rgb},0.6), rgb(${r.rgb}))` }}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Average win / loss per trade */}
+      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/5 pt-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-xs text-muted">میانگین سود هر معامله</span>
+          <span className="font-extrabold" style={{ color: `rgb(${TINTS.green})` }} dir="ltr">
+            {wl.avgWin != null ? formatUsd(wl.avgWin) : "—"}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-xs text-muted">میانگین زیان هر معامله</span>
+          <span className="font-extrabold" style={{ color: `rgb(${TINTS.red})` }} dir="ltr">
+            {wl.avgLoss != null ? formatUsd(Math.abs(wl.avgLoss)) : "—"}
+          </span>
+        </div>
+      </div>
+    </ChartCard>
+  );
+}
+
 function tooltipStyle(border: string) {
+  // Use theme tokens so the tooltip is white-on-dark in light mode and
+  // dark-on-light in dark mode (never a black box with black text).
   return {
     contentStyle: {
-      background: "rgba(10,22,34,0.88)",
+      background: "var(--surface)",
       backdropFilter: "blur(20px)",
       border: `1px solid ${border}`,
       borderRadius: 14,
       color: "var(--text)",
       fontSize: 12,
-      boxShadow: "0 16px 40px -12px rgba(0,0,0,0.5)",
+      boxShadow: "0 16px 40px -12px rgba(0,0,0,0.28)",
       padding: "10px 14px",
     },
     itemStyle: { color: "var(--text)", fontWeight: 600 },

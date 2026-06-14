@@ -69,6 +69,8 @@ export interface Trade {
   analysisTf: string | null;
   triggerTf: string | null;
   isRiskFreePlan: boolean;
+  /** Wallet balance snapshot captured when the trade was recorded (fixed). */
+  balanceSnapshot: number | null;
   openDate: string | null;
   closeDate: string | null;
   exitType: ExitType | null;
@@ -146,10 +148,17 @@ export interface DashboardData {
   avgRr: number;
   winRate: number;
   currentBalance: number;
-  equityCurve: { number: number; balance: number }[];
+  equityCurve: { number: number; balance: number; pnl: number; date: string | null }[];
   pnlByDay: { date: string; pnl: number }[];
   directionStats: { long: number; short: number };
   sessionStats: { session: string; count: number; pnl: number }[];
+  winLoss: {
+    win: number;
+    loss: number;
+    breakeven: number;
+    avgWin: number | null;
+    avgLoss: number | null;
+  };
   topSymbols: { symbol: string; pnl: number; count: number }[];
   checklistDiscipline: number;
   usdtIrt: number;

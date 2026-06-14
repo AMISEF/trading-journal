@@ -92,6 +92,7 @@ class TradeOut(CamelModel):
     analysis_tf: str | None = None
     trigger_tf: str | None = None
     is_risk_free_plan: bool = False
+    balance_snapshot: float | None = None
     open_date: datetime | None = None
     close_date: datetime | None = None
     exit_type: str | None = None

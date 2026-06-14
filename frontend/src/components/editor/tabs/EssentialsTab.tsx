@@ -119,7 +119,10 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
   const trade = useTrade((s) => s.trade);
   const patch = useTrade((s) => s.patch);
   const user = useAuth((s) => s.user);
-  const balance = user?.currentBalance ?? 1000;
+  // Margin is derived from the trade's fixed balance snapshot (captured at
+  // recording time) so it never changes as the wallet balance moves. New trades
+  // without a snapshot fall back to the current wallet balance.
+  const balance = trade?.balanceSnapshot ?? user?.currentBalance ?? 1000;
   const calc = useCalcPreview(trade, balance);
 
   if (!trade) return null;

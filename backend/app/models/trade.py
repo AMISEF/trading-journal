@@ -46,6 +46,12 @@ class Trade(Base):
 
     is_risk_free_plan: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Wallet balance captured at the moment the trade was first recorded. Margin
+    # is always derived from this fixed snapshot so it never changes when the
+    # wallet balance later grows or shrinks. NULL for legacy rows (backfilled by
+    # migrate_add_balance_snapshot.py).
+    balance_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     open_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     close_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

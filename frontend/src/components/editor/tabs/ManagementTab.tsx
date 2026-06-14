@@ -29,9 +29,13 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
   const patch = useTrade((s) => s.patch);
   const user = useAuth((s) => s.user);
 
-  // In readOnly mode (admin viewer), use trade.calc (pre-computed with the
-  // owner's balance) instead of fetching a live preview with the admin's balance.
-  const liveCalc = useCalcPreview(trade, readOnly ? 0 : (user?.currentBalance ?? 1000));
+  // Margin is always derived from the trade's fixed balance snapshot (captured
+  // when it was recorded). For a brand-new trade with no snapshot yet, fall back
+  // to the current wallet balance. In readOnly (admin viewer) we never want the
+  // admin's balance to leak in, so we use trade.calc which the backend already
+  // computed from the owner's snapshot.
+  const previewBalance = trade?.balanceSnapshot ?? user?.currentBalance ?? 1000;
+  const liveCalc = useCalcPreview(trade, readOnly ? 0 : previewBalance);
   const calc = readOnly ? (trade?.calc ?? null) : liveCalc;
 
   if (!trade) return null;
@@ -51,11 +55,13 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
         100
       : null;
 
-  // In readOnly, use stored trade.calc.margin (computed with owner's balance).
+  // Margin in dollars = balance snapshot × margin%. In readOnly we use the
+  // backend-computed calc.margin (owner's snapshot); otherwise derive from the
+  // trade's own snapshot so it stays fixed regardless of the live balance.
   const marginDollar = readOnly
     ? (trade.calc?.margin ?? null)
-    : trade.marginPercent && (user?.currentBalance ?? 1000)
-    ? (trade.marginPercent / 100) * (user?.currentBalance ?? 1000)
+    : trade.marginPercent && previewBalance
+    ? (trade.marginPercent / 100) * previewBalance
     : null;
 
   const lossDollarDirect =

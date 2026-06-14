@@ -49,6 +49,7 @@ def trade_to_out(
         analysis_tf=trade.analysis_tf,
         trigger_tf=trade.trigger_tf,
         is_risk_free_plan=trade.is_risk_free_plan,
+        balance_snapshot=trade.balance_snapshot,
         open_date=trade.open_date,
         close_date=trade.close_date,
         exit_type=trade.exit_type,

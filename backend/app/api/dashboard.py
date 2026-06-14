@@ -35,12 +35,13 @@ async def rr_debug(
             {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
             for tp in t.take_profits
         ]
+        base = t.balance_snapshot if t.balance_snapshot is not None else balance
         result = calc_engine.compute(
             direction=t.direction,
             entry=t.entry_price,
             leverage=t.leverage,
             margin_percent=t.margin_percent,
-            wallet_balance_now=balance,
+            wallet_balance_now=base,
             stop_loss=t.stop_loss,
             take_profits=tp_dicts,
             exit_type=t.exit_type,
@@ -82,6 +83,7 @@ class DashboardOut(CamelModel):
     pnl_by_day: list[dict]
     direction_stats: dict
     session_stats: list[dict]
+    win_loss: dict
     top_symbols: list[dict]
     checklist_discipline: float | None
     usdt_irt: float | None
@@ -111,12 +113,14 @@ async def dashboard(
             {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
             for tp in t.take_profits
         ]
+        # Margin is derived from the trade's fixed balance snapshot when present.
+        base = t.balance_snapshot if t.balance_snapshot is not None else balance
         result = calc_engine.compute(
             direction=t.direction,
             entry=t.entry_price,
             leverage=t.leverage,
             margin_percent=t.margin_percent,
-            wallet_balance_now=balance,
+            wallet_balance_now=base,
             stop_loss=t.stop_loss,
             take_profits=tp_dicts,
             exit_type=t.exit_type,
@@ -130,7 +134,13 @@ async def dashboard(
             rr_values.append(rr)
         balance += pnl
         pnls.append(pnl)
-        equity_curve.append({"number": t.number, "balance": balance})
+        _d = t.close_date or t.open_date
+        equity_curve.append({
+            "number": t.number,
+            "balance": balance,
+            "pnl": pnl,
+            "date": _d.date().isoformat() if _d else None,
+        })
 
     current_balance = balance
 
@@ -147,9 +157,21 @@ async def dashboard(
     # --- Average RR achieved (computed on-the-fly via calc engine) ---
     avg_rr = (sum(rr_values) / len(rr_values)) if rr_values else None
 
-    # --- Win rate ---
-    wins = sum(1 for p in pnls if p > 0)
+    # --- Win / loss distribution ---
+    win_pnls = [p for p in pnls if p > 0]
+    loss_pnls = [p for p in pnls if p < 0]
+    breakeven_count = sum(1 for p in pnls if p == 0)
+    wins = len(win_pnls)
     win_rate = (wins / closed_count) if closed_count else None
+    avg_win = (sum(win_pnls) / len(win_pnls)) if win_pnls else None
+    avg_loss = (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None
+    win_loss = {
+        "win": wins,
+        "loss": len(loss_pnls),
+        "breakeven": breakeven_count,
+        "avgWin": avg_win,
+        "avgLoss": avg_loss,
+    }
 
     # --- PnL by day (close date) ---
     by_day: dict[str, float] = defaultdict(float)
@@ -215,6 +237,7 @@ async def dashboard(
         pnl_by_day=pnl_by_day,
         direction_stats=direction_stats,
         session_stats=session_stats,
+        win_loss=win_loss,
         top_symbols=top_symbols,
         checklist_discipline=checklist_discipline,
         usdt_irt=irt.get("rate"),

@@ -32,13 +32,25 @@ def _txn_sum(
     return sum(t.amount for t in transactions if t.transaction_date < before_date)
 
 
+def margin_base_for(trade: Trade, running_balance: float) -> float:
+    """The wallet balance a trade's margin is derived from.
+
+    Prefers the fixed ``balance_snapshot`` captured when the trade was recorded
+    so margin never changes as the wallet grows/shrinks. Falls back to the
+    running balance for legacy rows that have no snapshot yet.
+    """
+    if trade.balance_snapshot is not None:
+        return trade.balance_snapshot
+    return running_balance
+
+
 def realized_pnl_of(trade: Trade, wallet_balance_now: float) -> float:
     result = calc_engine.compute(
         direction=trade.direction,
         entry=trade.entry_price,
         leverage=trade.leverage,
         margin_percent=trade.margin_percent,
-        wallet_balance_now=wallet_balance_now,
+        wallet_balance_now=margin_base_for(trade, wallet_balance_now),
         stop_loss=trade.stop_loss,
         take_profits=_tp_dicts(trade),
         exit_type=trade.exit_type,
@@ -92,7 +104,12 @@ def compute_for_trade(
     trade: Trade,
     transactions: list[WalletTransaction] | None = None,
 ) -> dict:
-    base = balance_before_trade(user, trades, trade, transactions)
+    # A recorded trade carries a fixed balance snapshot → margin stays constant.
+    # Legacy rows without a snapshot fall back to the historical balance chain.
+    if trade.balance_snapshot is not None:
+        base = trade.balance_snapshot
+    else:
+        base = balance_before_trade(user, trades, trade, transactions)
     return calc_engine.compute(
         direction=trade.direction,
         entry=trade.entry_price,
