@@ -37,6 +37,7 @@ function Inner() {
   if (!trades) return <Spinner label="در حال بارگذاری ژورنال‌ها…" />;
 
   const pnl = (t: Trade) => t.calc?.realizedPnl ?? t.realizedPnl ?? null;
+  const rr  = (t: Trade) => t.calc?.rrAchieved  ?? t.rrAchieved  ?? null;
 
   return (
     <div className="space-y-5">
@@ -54,14 +55,16 @@ function Inner() {
       <div className="tj-card overflow-x-auto">
         <table className="w-full text-sm text-right">
           <thead className="text-muted">
-            <tr className="border-b border-border text-right">
+            <tr className="border-b border-border">
               <th className="p-3">#</th>
               <th className="p-3">نماد</th>
               <th className="p-3">جهت</th>
               <th className="p-3">تایم‌فریم</th>
               <th className="p-3">تاریخ</th>
               <th className="p-3">R:R انتظار</th>
+              <th className="p-3">R:R کسب‌شده</th>
               <th className="p-3">نتیجه</th>
+              <th className="p-3">برچسب‌ها</th>
               <th className="p-3">وضعیت</th>
             </tr>
           </thead>
@@ -89,12 +92,35 @@ function Inner() {
                 <td className="p-3">{formatJalaliDate(t.openDate)}</td>
                 <td className="p-3" dir="ltr">{formatRatio(t.calc?.rrExpected ?? t.rrExpected)}</td>
                 <td className="p-3" dir="ltr">
+                  <span className={rr(t) !== null && rr(t)! >= 1 ? "text-profit font-semibold" : rr(t) !== null ? "text-loss font-semibold" : "text-muted"}>
+                    {formatRatio(rr(t))}
+                  </span>
+                </td>
+                <td className="p-3" dir="ltr">
                   <span className={pnlColorClass(pnl(t))}>{formatSignedUsd(pnl(t))}</span>
                   <span className={`block text-xs ${pnlColorClass(t.calc?.resultPct)}`}>
                     {formatPct(t.calc?.resultPct)}
                   </span>
                 </td>
-                <td className="p-3"><StatusDot status={t.status} pnl={pnl(t)} exitType={t.exitType} /></td>
+                <td className="p-3">
+                  {t.tags && t.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {t.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted text-xs">—</span>
+                  )}
+                </td>
+                <td className="p-3">
+                  <StatusDot status={t.status} pnl={pnl(t)} exitType={t.exitType} />
+                </td>
               </tr>
             ))}
           </tbody>

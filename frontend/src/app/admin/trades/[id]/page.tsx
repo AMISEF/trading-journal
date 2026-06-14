@@ -4,6 +4,8 @@
  * Admin: read-only view of a single trade's tabs/fields.
  * Loads via GET /admin/trades/{id}, seeds the trade store, and renders the
  * shared TradeTabs in readOnly mode (no editing / no auto-save).
+ * Also loads the trade owner's checklist templates so the Checklist tab
+ * shows that user's templates, not the admin's.
  */
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -13,7 +15,7 @@ import { TradeTabs } from "@/components/editor/TradeTabs";
 import { adminApi } from "@/lib/api";
 import { useTrade } from "@/store/trade";
 import { faNum } from "@/lib/format";
-import type { TradeStatus } from "@/lib/types";
+import type { ChecklistTemplate, TradeStatus } from "@/lib/types";
 
 export default function AdminTradeViewPage() {
   return (
@@ -29,6 +31,7 @@ function Inner() {
   const id = String(params.id);
   const { trade, setTrade, reset } = useTrade();
   const [ready, setReady] = useState(false);
+  const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplate[]>([]);
 
   useEffect(() => {
     adminApi
@@ -36,6 +39,8 @@ function Inner() {
       .then((t) => {
         setTrade(t);
         setReady(true);
+        // Load the trade owner's checklist templates.
+        adminApi.userChecklists(String(t.userId)).then(setChecklistTemplates).catch(() => {});
       })
       .catch(() => setReady(true));
     return () => reset();
@@ -61,7 +66,7 @@ function Inner() {
         <Badge tone="muted">حالت فقط‌خواندنی</Badge>
       </div>
 
-      <TradeTabs readOnly />
+      <TradeTabs readOnly checklistTemplates={checklistTemplates} />
     </div>
   );
 }

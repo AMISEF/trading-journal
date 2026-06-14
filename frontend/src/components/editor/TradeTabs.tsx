@@ -11,6 +11,7 @@ import { ChecklistTab } from "./tabs/ChecklistTab";
 import { EmotionsTab } from "./tabs/EmotionsTab";
 import { ManagementTab } from "./tabs/ManagementTab";
 import { TagsTab } from "./tabs/TagsTab";
+import type { ChecklistTemplate } from "@/lib/types";
 
 const TABS = [
   { key: "essentials", label: "اطلاعات ضروری" },
@@ -21,7 +22,15 @@ const TABS = [
   { key: "tags", label: "برچسب‌ها" },
 ] as const;
 
-export function TradeTabs({ readOnly = false }: { readOnly?: boolean }) {
+export function TradeTabs({
+  readOnly = false,
+  checklistTemplates,
+}: {
+  readOnly?: boolean;
+  /** Admin: pass the target user's checklist templates so ChecklistTab
+   *  doesn't fall back to loading the admin's own templates. */
+  checklistTemplates?: ChecklistTemplate[];
+}) {
   const [active, setActive] = useState<(typeof TABS)[number]["key"]>("essentials");
 
   return (
@@ -47,7 +56,9 @@ export function TradeTabs({ readOnly = false }: { readOnly?: boolean }) {
       <div className="tj-card p-5">
         {active === "essentials" && <EssentialsTab readOnly={readOnly} />}
         {active === "reasons" && <ReasonsTab readOnly={readOnly} />}
-        {active === "checklist" && <ChecklistTab readOnly={readOnly} />}
+        {active === "checklist" && (
+          <ChecklistTab readOnly={readOnly} externalTemplates={checklistTemplates} />
+        )}
         {active === "emotions" && <EmotionsTab readOnly={readOnly} />}
         {active === "management" && <ManagementTab readOnly={readOnly} />}
         {active === "tags" && <TagsTab readOnly={readOnly} />}

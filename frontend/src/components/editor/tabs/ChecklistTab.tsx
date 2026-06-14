@@ -45,16 +45,29 @@ function tintBorder(rgb: string): React.CSSProperties {
   return { border: `1px solid rgba(${rgb},0.35)` };
 }
 
-export function ChecklistTab({ readOnly = false }: { readOnly?: boolean }) {
+export function ChecklistTab({
+  readOnly = false,
+  externalTemplates,
+}: {
+  readOnly?: boolean;
+  /** When provided (admin view), skip the API call and use these instead. */
+  externalTemplates?: ChecklistTemplate[];
+}) {
   const trade = useTrade((s) => s.trade);
   const patch = useTrade((s) => s.patch);
-  const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
+  const [templates, setTemplates] = useState<ChecklistTemplate[]>(externalTemplates ?? []);
   const [editMode, setEditMode] = useState(false);
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = () => checklistsApi.list().then(setTemplates).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (externalTemplates) {
+      setTemplates(externalTemplates);
+    } else {
+      load();
+    }
+  }, [externalTemplates]);
 
   if (!trade) return null;
 

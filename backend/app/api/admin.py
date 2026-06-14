@@ -17,6 +17,7 @@ from app.core.security import hash_password
 from app.models.template import ChecklistTemplate, ReasonTemplate
 from app.models.trade import Trade
 from app.models.user import User
+from app.schemas.template import ChecklistOut
 from app.schemas.base import CamelModel
 from app.schemas.trade import TradeOut
 from app.schemas.user import UserOut
@@ -237,6 +238,26 @@ async def reset_user_password(
     target.password_hash = hash_password(body.new_password)
     await db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Per-user checklist templates (admin read-only)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/users/{user_id}/checklists", response_model=list[ChecklistOut])
+async def user_checklists(
+    user_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[ChecklistOut]:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    result = await db.execute(
+        select(ChecklistTemplate).where(ChecklistTemplate.user_id == user_id)
+    )
+    return [ChecklistOut.model_validate(c) for c in result.scalars().all()]
 
 
 # ---------------------------------------------------------------------------

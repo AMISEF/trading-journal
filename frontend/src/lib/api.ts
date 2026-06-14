@@ -209,6 +209,8 @@ export const adminApi = {
     http.get<Trade[]>(`/admin/users/${id}/trades`).then((r) => r.data),
   userDashboard: (id: string) =>
     http.get<DashboardData>(`/admin/users/${id}/dashboard`).then((r) => r.data),
+  userChecklists: (id: string) =>
+    http.get<ChecklistTemplate[]>(`/admin/users/${id}/checklists`).then((r) => r.data),
   trade: (id: string) =>
     http.get<Trade>(`/admin/trades/${id}`).then((r) => r.data),
 };
