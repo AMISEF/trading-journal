@@ -30,6 +30,7 @@ import {
   pnlColorClass,
 } from "@/lib/format";
 import { getJalaliParts, toPersianDigits } from "@/lib/jalali";
+import { GREGORIAN_MONTHS, buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
 
 export default function DashboardPage() {
   return (
@@ -69,8 +70,6 @@ function glassTint(rgb: string): React.CSSProperties {
 
 // ─── Daily P&L Calendar ──────────────────────────────────────────────────────
 
-const GREGORIAN_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
 interface CalCell {
   day: number | null;
   date: string | null;
@@ -98,26 +97,6 @@ function buildMonthGrid(year: number, month: number, pnlMap: Map<string, number>
   return cells;
 }
 
-function buildMonthlyData(pnlByDay: { date: string; pnl: number }[]) {
-  const byMonth = new Map<string, number>();
-  pnlByDay.forEach(({ date, pnl }) => {
-    const key = date.slice(0, 7);
-    byMonth.set(key, (byMonth.get(key) ?? 0) + pnl);
-  });
-  return [...byMonth.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, pnl]) => {
-      const [y, m] = key.split("-").map(Number);
-      const jp = getJalaliParts(`${y}-${String(m).padStart(2, "0")}-15`);
-      return {
-        key,
-        label: `${GREGORIAN_MONTHS[m - 1]} ${y}`,
-        jalaliLabel: jp ? `${jp.monthName} ${jp.year}` : "",
-        pnl,
-      };
-    });
-}
-
 function fmtUsdt(v: number): string {
   if (v === 0) return "0";
   return `${v.toFixed(6)} USDT`;
@@ -131,7 +110,7 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth() + 1);
   const [chartType, setChartType] = useState<"calendar" | "bar">("calendar");
-  const [profitView, setProfitView] = useState<"daily" | "monthly">("daily");
+  const [profitView, setProfitView] = useState<"daily" | "weekly" | "monthly">("daily");
 
   const pnlMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -174,6 +153,7 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
   );
 
   const monthlyData = useMemo(() => buildMonthlyData(pnlByDay), [pnlByDay]);
+  const weeklyData = useMemo(() => buildWeeklyData(pnlByDay), [pnlByDay]);
 
   // Month navigation
   const prevMonth = () => {
@@ -367,6 +347,13 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
               روزانه
             </button>
             <button
+              onClick={() => setProfitView("weekly")}
+              className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition"
+              style={pill(profitView === "weekly", TINTS.sky)}
+            >
+              هفتگی
+            </button>
+            <button
               onClick={() => setProfitView("monthly")}
               className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition"
               style={pill(profitView === "monthly", TINTS.sky)}
@@ -452,6 +439,72 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ── Weekly list view ── */}
+        {chartType === "calendar" && profitView === "weekly" && (
+          <div className="space-y-2 p-5">
+            {weeklyData.length === 0 && (
+              <div className="py-10 text-center text-sm text-muted">داده‌ای موجود نیست</div>
+            )}
+            {[...weeklyData].reverse().map((row) => {
+              const rgb = row.pnl >= 0 ? TINTS.green : TINTS.red;
+              return (
+                <div
+                  key={row.key}
+                  className="flex items-center justify-between rounded-2xl px-4 py-3 backdrop-blur transition hover:-translate-y-0.5"
+                  style={{
+                    background: `linear-gradient(135deg, rgba(${rgb},0.14), rgba(${rgb},0.03))`,
+                    border: `1px solid rgba(${rgb},0.22)`,
+                  }}
+                >
+                  <div>
+                    <div className="text-sm font-bold">{row.jalaliLabel}</div>
+                    <div className="text-xs text-muted" dir="ltr">{row.label}</div>
+                  </div>
+                  <div className="text-base font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">
+                    {row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(4)} USDT
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Weekly bar chart ── */}
+        {chartType === "bar" && profitView === "weekly" && (
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={weeklyData} barSize={24}>
+                <defs>
+                  <linearGradient id="wbar-up" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={`rgb(${TINTS.mint})`} stopOpacity={0.95} />
+                    <stop offset="100%" stopColor={`rgb(${TINTS.green})`} stopOpacity={0.5} />
+                  </linearGradient>
+                  <linearGradient id="wbar-down" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={`rgb(${TINTS.rose})`} stopOpacity={0.9} />
+                    <stop offset="100%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
+                <XAxis dataKey="key" stroke={cssVar("--muted")} fontSize={10} />
+                <YAxis stroke={cssVar("--muted")} fontSize={11} tickFormatter={(v) => `${v.toFixed(0)}`} />
+                <Tooltip
+                  contentStyle={{ background: "var(--surface)", border: `1px solid ${border}`, borderRadius: 12, fontSize: 12 }}
+                  cursor={{ fill: "rgba(148,163,184,0.08)" }}
+                  formatter={(v: number, _: string, props: any) => [
+                    `${v.toFixed(4)} USDT`,
+                    props.payload?.jalaliLabel,
+                  ]}
+                />
+                <Bar dataKey="pnl" radius={[6, 6, 0, 0]}>
+                  {weeklyData.map((row, i) => (
+                    <Cell key={i} fill={row.pnl >= 0 ? "url(#wbar-up)" : "url(#wbar-down)"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
 
@@ -857,6 +910,12 @@ function KpiCard({
 
 function BalanceCard({ data }: { data: DashboardData }) {
   const tint = TINTS.rose;
+  // Today's PnL — naturally resets every 24h as the calendar day rolls over.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayPnl = data.pnlByDay
+    .filter((d) => d.date.slice(0, 10) === todayStr)
+    .reduce((s, d) => s + d.pnl, 0);
+  const todayRgb = todayPnl >= 0 ? TINTS.green : TINTS.red;
   return (
     <div
       className="group relative col-span-2 overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5 lg:col-span-1"
@@ -885,6 +944,18 @@ function BalanceCard({ data }: { data: DashboardData }) {
         {formatUsd(data.currentBalance)}
       </div>
       <div className="relative text-xs text-muted">{formatToman(data.currentBalance, data.usdtIrt)}</div>
+
+      {/* Today's PnL — resets every 24h */}
+      <div
+        className="relative mt-2 flex items-center justify-between rounded-2xl px-3 py-1.5"
+        style={{ background: `rgba(${todayRgb},0.12)`, border: `1px solid rgba(${todayRgb},0.22)` }}
+      >
+        <span className="text-[10px] font-medium text-muted">سود امروز (هر ۲۴ ساعت ریست)</span>
+        <span className="text-sm font-extrabold" style={{ color: `rgb(${todayRgb})` }} dir="ltr">
+          {todayPnl >= 0 ? "+" : ""}{todayPnl.toFixed(2)}
+        </span>
+      </div>
+
       <div className="relative mt-1 h-9">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data.equityCurve}>

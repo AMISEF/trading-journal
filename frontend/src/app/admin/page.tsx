@@ -5,8 +5,10 @@
  * and per-user dashboard view.
  */
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Spinner } from "@/components/ui";
+import { PnlBreakdown } from "@/components/PnlBreakdown";
 import { adminApi, type AdminUserCreatePayload, type AdminUserUpdatePayload } from "@/lib/api";
 import { formatUsd, faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
@@ -28,6 +30,7 @@ type Modal =
   | { kind: "dashboard"; user: User };
 
 function AdminUsers() {
+  const router = useRouter();
   const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState("");
   const [modal, setModal] = useState<Modal | null>(null);
@@ -85,6 +88,9 @@ function AdminUsers() {
                 <td className="p-3">{formatJalaliDate(u.createdAt)}</td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">
+                    <ActionBtn color="green" onClick={() => router.push(`/admin/users/${u.id}`)}>
+                      ژورنال
+                    </ActionBtn>
                     <ActionBtn color="blue" onClick={() => setModal({ kind: "dashboard", user: u })}>
                       داشبورد
                     </ActionBtn>
@@ -123,9 +129,10 @@ function ActionBtn({
 }: {
   children: React.ReactNode;
   onClick: () => void;
-  color: "blue" | "indigo" | "amber" | "red";
+  color: "green" | "blue" | "indigo" | "amber" | "red";
 }) {
   const cls = {
+    green:  "border-emerald-400/40 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20",
     blue:   "border-blue-400/40 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20",
     indigo: "border-indigo-400/40 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20",
     amber:  "border-amber-400/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20",
@@ -458,6 +465,9 @@ function UserDashboardModal({ user, onClose }: { user: User; onClose: () => void
               </div>
             </div>
           </div>
+
+          {/* Daily / weekly / monthly PnL breakdown */}
+          <PnlBreakdown pnlByDay={data.pnlByDay} />
 
           {/* Top symbols */}
           {data.topSymbols.length > 0 && (
