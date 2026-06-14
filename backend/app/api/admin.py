@@ -2,19 +2,68 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
 from app.api.serializers import trade_to_out, user_to_out
 from app.core.deps import get_current_admin, get_db
+from app.core.security import hash_password
 from app.models.trade import Trade
 from app.models.user import User
+from app.schemas.base import CamelModel
 from app.schemas.trade import TradeOut
 from app.schemas.user import UserOut
+from app.services import balances, calc as calc_engine, tabdeal
+from app.services.balances import _txn_sum
+from app.services.sessions import session_for
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+# ---------------------------------------------------------------------------
+# Inline request schemas
+# ---------------------------------------------------------------------------
+
+
+class AdminUserCreate(CamelModel):
+    email: EmailStr
+    username: str
+    first_name: str
+    last_name: str
+    password: str
+    role: str = "TRADER"
+    wallet_margin: float = 0.0
+
+
+class AdminUserUpdate(CamelModel):
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: Optional[str] = None
+    wallet_margin: Optional[float] = None
+
+
+class AdminResetPassword(CamelModel):
+    new_password: str
+
+
+# ---------------------------------------------------------------------------
+# Re-export DashboardOut so callers can import from one place if needed
+# ---------------------------------------------------------------------------
+
+from app.api.dashboard import DashboardOut  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Existing endpoints
+# ---------------------------------------------------------------------------
 
 
 @router.get("/users", response_model=list[UserOut])
@@ -61,3 +110,260 @@ async def admin_get_trade(
     # Find the freshly loaded version (with take_profits) to serialize.
     loaded = next((t for t in trades if t.id == trade.id), trade)
     return trade_to_out(owner, trades, loaded, transactions)
+
+
+# ---------------------------------------------------------------------------
+# New user-management endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/users", response_model=UserOut, status_code=201)
+async def create_user(
+    body: AdminUserCreate,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    # Duplicate email check
+    existing_email = await db.execute(select(User).where(User.email == body.email))
+    if existing_email.scalars().first() is not None:
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    # Duplicate username check
+    existing_username = await db.execute(
+        select(User).where(User.username == body.username)
+    )
+    if existing_username.scalars().first() is not None:
+        raise HTTPException(status_code=409, detail="Username already in use")
+
+    new_user = User(
+        email=body.email,
+        username=body.username,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        password_hash=hash_password(body.password),
+        role=body.role,
+        wallet_margin=body.wallet_margin,
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+
+    trades = await crud.load_user_trades(db, new_user.id)
+    transactions = await crud.load_user_transactions(db, new_user.id)
+    return user_to_out(new_user, trades, transactions)
+
+
+@router.put("/users/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: int,
+    body: AdminUserUpdate,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if body.email is not None:
+        conflict = await db.execute(
+            select(User).where(User.email == body.email, User.id != user_id)
+        )
+        if conflict.scalars().first() is not None:
+            raise HTTPException(status_code=409, detail="Email already in use")
+        target.email = body.email
+
+    if body.username is not None:
+        conflict = await db.execute(
+            select(User).where(User.username == body.username, User.id != user_id)
+        )
+        if conflict.scalars().first() is not None:
+            raise HTTPException(status_code=409, detail="Username already in use")
+        target.username = body.username
+
+    if body.first_name is not None:
+        target.first_name = body.first_name
+    if body.last_name is not None:
+        target.last_name = body.last_name
+    if body.role is not None:
+        target.role = body.role
+    if body.wallet_margin is not None:
+        target.wallet_margin = body.wallet_margin
+
+    await db.commit()
+    await db.refresh(target)
+
+    trades = await crud.load_user_trades(db, target.id)
+    transactions = await crud.load_user_transactions(db, target.id)
+    return user_to_out(target, trades, transactions)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.delete(target)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: int,
+    body: AdminResetPassword,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.password_hash = hash_password(body.new_password)
+    await db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Per-user dashboard (admin view)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/users/{user_id}/dashboard", response_model=DashboardOut)
+async def user_dashboard(
+    user_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> DashboardOut:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    trades = await crud.load_user_trades(db, target.id)
+    transactions = await crud.load_user_transactions(db, target.id)
+    closed = [t for t in trades if t.status == "CLOSED"]
+    closed.sort(key=lambda t: t.number)
+
+    trade_count = len(trades)
+    closed_count = len(closed)
+
+    # --- Running equity curve + per-trade PnL + RR ---
+    balance = (target.wallet_margin or 0.0) + _txn_sum(transactions)
+    equity_curve: list[dict] = []
+    pnls: list[float] = []
+    rr_values: list[float] = []
+    for t in closed:
+        tp_dicts = [
+            {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
+            for tp in t.take_profits
+        ]
+        result = calc_engine.compute(
+            direction=t.direction,
+            entry=t.entry_price,
+            leverage=t.leverage,
+            margin_percent=t.margin_percent,
+            wallet_balance_now=balance,
+            stop_loss=t.stop_loss,
+            take_profits=tp_dicts,
+            exit_type=t.exit_type,
+            trail_value=t.trail_exit_value,
+            trail_is_percent=bool(t.trail_is_percent),
+            exit_price=t.exit_price,
+        )
+        pnl = result["realizedPnl"]
+        rr = result.get("rrAchieved")
+        if rr is not None:
+            rr_values.append(rr)
+        balance += pnl
+        pnls.append(pnl)
+        equity_curve.append({"number": t.number, "balance": balance})
+
+    current_balance = balance
+
+    # --- Profit factor ---
+    gross_profit = sum(p for p in pnls if p > 0)
+    gross_loss = sum(-p for p in pnls if p < 0)
+    if gross_loss > 0:
+        profit_factor = gross_profit / gross_loss
+    elif gross_profit > 0:
+        profit_factor = None  # no losses at all -> "infinite"; report None
+    else:
+        profit_factor = None
+
+    # --- Average RR achieved ---
+    avg_rr = (sum(rr_values) / len(rr_values)) if rr_values else None
+
+    # --- Win rate ---
+    wins = sum(1 for p in pnls if p > 0)
+    win_rate = (wins / closed_count) if closed_count else None
+
+    # --- PnL by day (close date) ---
+    by_day: dict[str, float] = defaultdict(float)
+    for t, pnl in zip(closed, pnls):
+        day = t.close_date or t.open_date
+        key = day.date().isoformat() if day else "unknown"
+        by_day[key] += pnl
+    pnl_by_day = [{"date": d, "pnl": v} for d, v in sorted(by_day.items())]
+
+    # --- Direction stats ---
+    direction_stats = {
+        "long": sum(1 for t in closed if t.direction == "LONG"),
+        "short": sum(1 for t in closed if t.direction == "SHORT"),
+    }
+
+    # --- Session stats ---
+    sess_count: dict[str, int] = defaultdict(int)
+    sess_pnl: dict[str, float] = defaultdict(float)
+    for t, pnl in zip(closed, pnls):
+        s = session_for(t.open_date) or "Unknown"
+        sess_count[s] += 1
+        sess_pnl[s] += pnl
+    session_stats = [
+        {"session": s, "count": sess_count[s], "pnl": sess_pnl[s]}
+        for s in sess_count
+    ]
+
+    # --- Top symbols by PnL ---
+    sym_pnl: dict[str, float] = defaultdict(float)
+    sym_count: dict[str, int] = defaultdict(int)
+    for t, pnl in zip(closed, pnls):
+        sym = t.symbol or "?"
+        sym_pnl[sym] += pnl
+        sym_count[sym] += 1
+    top_symbols = sorted(
+        ({"symbol": s, "pnl": sym_pnl[s], "count": sym_count[s]} for s in sym_pnl),
+        key=lambda x: x["pnl"],
+        reverse=True,
+    )[:5]
+
+    # --- Checklist discipline ---
+    fractions: list[float] = []
+    for t in closed:
+        ticks = t.checklist_ticks or {}
+        if isinstance(ticks, dict) and ticks:
+            total = len(ticks)
+            done = sum(1 for v in ticks.values() if v)
+            if total:
+                fractions.append(done / total)
+    checklist_discipline = (sum(fractions) / len(fractions)) if fractions else None
+
+    # --- USDT/IRT rate (best effort) ---
+    irt = await tabdeal.get_usdt_irt()
+
+    return DashboardOut(
+        trade_count=trade_count,
+        closed_count=closed_count,
+        profit_factor=profit_factor,
+        avg_rr=avg_rr,
+        win_rate=win_rate,
+        current_balance=current_balance,
+        equity_curve=equity_curve,
+        pnl_by_day=pnl_by_day,
+        direction_stats=direction_stats,
+        session_stats=session_stats,
+        top_symbols=top_symbols,
+        checklist_discipline=checklist_discipline,
+        usdt_irt=irt.get("rate"),
+    )

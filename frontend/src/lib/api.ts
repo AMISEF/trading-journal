@@ -176,10 +176,39 @@ export const dashboardApi = {
 // ---------------------------------------------------------------------------
 // Admin
 // ---------------------------------------------------------------------------
+export interface AdminUserCreatePayload {
+  email: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+  role?: string;
+  walletMargin?: number;
+}
+
+export interface AdminUserUpdatePayload {
+  email?: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+  walletMargin?: number;
+}
+
 export const adminApi = {
   users: () => http.get<User[]>("/admin/users").then((r) => r.data),
+  createUser: (payload: AdminUserCreatePayload) =>
+    http.post<User>("/admin/users", payload).then((r) => r.data),
+  updateUser: (id: string, payload: AdminUserUpdatePayload) =>
+    http.put<User>(`/admin/users/${id}`, payload).then((r) => r.data),
+  deleteUser: (id: string) =>
+    http.delete(`/admin/users/${id}`).then((r) => r.data),
+  resetPassword: (id: string, newPassword: string) =>
+    http.post(`/admin/users/${id}/reset-password`, { newPassword }).then((r) => r.data),
   userTrades: (id: string) =>
     http.get<Trade[]>(`/admin/users/${id}/trades`).then((r) => r.data),
+  userDashboard: (id: string) =>
+    http.get<DashboardData>(`/admin/users/${id}/dashboard`).then((r) => r.data),
   trade: (id: string) =>
     http.get<Trade>(`/admin/trades/${id}`).then((r) => r.data),
 };
