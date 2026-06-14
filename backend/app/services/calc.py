@@ -177,6 +177,11 @@ def compute(
     if (exit_type is not None or exit_price is not None) and resolved_exit_price is not None:
         realized_total += full_dollar_at(resolved_exit_price) * remaining
 
+    # NOT_ACTIVATED: trade was planned but entry price never triggered.
+    # No position was ever taken → override everything to zero.
+    if exit_type == "NOT_ACTIVATED":
+        realized_total = 0.0
+
     realized_pnl = realized_total
 
     # --- Risk/reward and result percent ----------------------------------
@@ -207,6 +212,9 @@ def compute(
         # Fall back to dollar-based when we have margin info but no stop loss.
         rr_expected = (full_dollar_at(last_tp_price) / risk_1r) if risk_1r else None
         rr_achieved = (realized_total / risk_1r) if risk_1r else None
+
+    if exit_type == "NOT_ACTIVATED":
+        rr_achieved = 0.0
 
     result_pct = (realized_pnl / margin * 100.0) if margin else 0.0
 

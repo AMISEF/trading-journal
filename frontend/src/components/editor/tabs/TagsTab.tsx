@@ -17,6 +17,18 @@ const TAG_COLORS = [
   { bg: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
 ];
 
+const DOT_COLORS = [
+  "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-red-500",
+  "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-orange-500",
+];
+
+/** Stable color index for a tag name (so same tag always gets same color). */
+function colorIdxFor(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h % TAG_COLORS.length;
+}
+
 interface GlobalTag {
   name: string;
   colorIdx: number;
@@ -47,13 +59,44 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
   const [colorIdx, setColorIdx] = useState(0);
 
   useEffect(() => {
-    if (user) setGlobalTags(loadGlobalTags(user.id));
-  }, [user?.id]);
+    if (user && !readOnly) setGlobalTags(loadGlobalTags(user.id));
+  }, [user?.id, readOnly]);
 
-  if (!trade || !user) return null;
+  if (!trade) return null;
+
+  // ── Read-only: show the trade's stored tags directly ──────────────────────
+  if (readOnly) {
+    const tradeTags = trade.tags ?? [];
+    return (
+      <div className="space-y-4">
+        <Field label="برچسب‌های این معامله">
+          {tradeTags.length === 0 ? (
+            <span className="text-sm text-muted">هیچ برچسبی برای این معامله ثبت نشده است.</span>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {tradeTags.map((name) => {
+                const col = TAG_COLORS[colorIdxFor(name)];
+                return (
+                  <span
+                    key={name}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ${col.bg}`}
+                  >
+                    <span className={`h-2 w-2 rounded-full ${col.dot}`} />
+                    {name}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </Field>
+      </div>
+    );
+  }
+
+  // ── Editable mode ─────────────────────────────────────────────────────────
+  if (!user) return null;
 
   const toggleTag = (name: string) => {
-    if (readOnly) return;
     const has = trade.tags.includes(name);
     patch({ tags: has ? trade.tags.filter((x) => x !== name) : [...trade.tags, name] });
   };
@@ -106,42 +149,40 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
         </div>
       </Field>
 
-      {!readOnly && (
-        <div className="tj-card space-y-3 p-4">
-          <div className="tj-label">افزودن برچسب جدید (ذخیره‌شدنی)</div>
-          <div className="flex gap-2">
-            <input
-              className="tj-input flex-1"
-              value={draft}
-              placeholder="نام برچسب… (Enter)"
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); addGlobal(); }
-              }}
-            />
-            <button
-              type="button"
-              onClick={addGlobal}
-              className="shrink-0 rounded-lg bg-primary px-4 text-sm font-medium text-white"
-            >
-              افزودن
-            </button>
-          </div>
-          {/* Color picker */}
-          <div className="flex flex-wrap gap-2">
-            {TAG_COLORS.map((c, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setColorIdx(i)}
-                className={`h-6 w-6 rounded-full ${c.dot} ${i === colorIdx ? "ring-2 ring-offset-2 ring-primary" : ""}`}
-              />
-            ))}
-          </div>
+      <div className="tj-card space-y-3 p-4">
+        <div className="tj-label">افزودن برچسب جدید (ذخیره‌شدنی)</div>
+        <div className="flex gap-2">
+          <input
+            className="tj-input flex-1"
+            value={draft}
+            placeholder="نام برچسب… (Enter)"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); addGlobal(); }
+            }}
+          />
+          <button
+            type="button"
+            onClick={addGlobal}
+            className="shrink-0 rounded-lg bg-primary px-4 text-sm font-medium text-white"
+          >
+            افزودن
+          </button>
         </div>
-      )}
+        {/* Color picker */}
+        <div className="flex flex-wrap gap-2">
+          {DOT_COLORS.map((c, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setColorIdx(i)}
+              className={`h-6 w-6 rounded-full ${c} ${i === colorIdx ? "ring-2 ring-offset-2 ring-primary" : ""}`}
+            />
+          ))}
+        </div>
+      </div>
 
-      {!readOnly && globalTags.length > 0 && (
+      {globalTags.length > 0 && (
         <div className="space-y-1">
           <div className="tj-label text-xs text-muted">مدیریت برچسب‌های جهانی</div>
           <div className="flex flex-wrap gap-2">

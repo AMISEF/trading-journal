@@ -17,17 +17,22 @@ import type { ExitType, TakeProfit } from "@/lib/types";
 
 // Maps an exit-zone selection to an exitType + closes the trade.
 const BASE_EXIT_OPTIONS: { value: string; label: string; exitType: ExitType }[] = [
-  { value: "RISK_FREE", label: "شد ریسک‌فری", exitType: "RISK_FREE" },
+  { value: "RISK_FREE", label: "ریسک‌فری شد", exitType: "RISK_FREE" },
   { value: "LAST_TP", label: "آخرین تارگت (TP)", exitType: "LAST_TP" },
   { value: "STOP_LOSS", label: "استاپ لاس", exitType: "STOP_LOSS" },
   { value: "TRAILING_STOP", label: "تریل استاپ", exitType: "TRAILING_STOP" },
+  { value: "NOT_ACTIVATED", label: "معامله فعال نشد", exitType: "NOT_ACTIVATED" },
 ];
 
 export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
   const trade = useTrade((s) => s.trade);
   const patch = useTrade((s) => s.patch);
   const user = useAuth((s) => s.user);
-  const calc = useCalcPreview(trade, user?.currentBalance ?? 1000);
+
+  // In readOnly mode (admin viewer), use trade.calc (pre-computed with the
+  // owner's balance) instead of fetching a live preview with the admin's balance.
+  const liveCalc = useCalcPreview(trade, readOnly ? 0 : (user?.currentBalance ?? 1000));
+  const calc = readOnly ? (trade?.calc ?? null) : liveCalc;
 
   if (!trade) return null;
 
@@ -45,10 +50,14 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
         trade.leverage *
         100
       : null;
-  const marginDollar =
-    trade.marginPercent && (user?.currentBalance ?? 1000)
-      ? (trade.marginPercent / 100) * (user?.currentBalance ?? 1000)
-      : null;
+
+  // In readOnly, use stored trade.calc.margin (computed with owner's balance).
+  const marginDollar = readOnly
+    ? (trade.calc?.margin ?? null)
+    : trade.marginPercent && (user?.currentBalance ?? 1000)
+    ? (trade.marginPercent / 100) * (user?.currentBalance ?? 1000)
+    : null;
+
   const lossDollarDirect =
     marginDollar && lossPct != null ? (lossPct / 100) * marginDollar : null;
   const lossDollar = (calc && calc.risk1r !== 0) ? -Math.abs(calc.risk1r) : lossDollarDirect != null ? -Math.abs(lossDollarDirect) : null;

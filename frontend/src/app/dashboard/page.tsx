@@ -9,9 +9,11 @@ import {
   CartesianGrid,
   Cell,
   Line,
-  LineChart,
   Pie,
   PieChart,
+  RadialBar,
+  RadialBarChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -685,27 +687,59 @@ function DashboardInner() {
       </div>
 
       {/* ── Equity curve + MA ── */}
-      <ChartCard title="منحنی موجودی (Equity) + میانگین متحرک" dot={TINTS.sky}>
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={equity}>
+      <ChartCard title="منحنی موجودی (Equity Curve)" dot={TINTS.sky}>
+        <ResponsiveContainer width="100%" height={310}>
+          <AreaChart data={equity} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
-              <linearGradient id="equity-line" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} />
-                <stop offset="50%" stopColor={`rgb(${TINTS.mint})`} />
-                <stop offset="100%" stopColor={`rgb(${TINTS.violet})`} />
+              <linearGradient id="equity-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.45} />
+                <stop offset="60%" stopColor={`rgb(${TINTS.mint})`} stopOpacity={0.12} />
+                <stop offset="100%" stopColor={`rgb(${TINTS.violet})`} stopOpacity={0} />
               </linearGradient>
+              <linearGradient id="ma-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={`rgb(${TINTS.amber})`} stopOpacity={0.18} />
+                <stop offset="100%" stopColor={`rgb(${TINTS.amber})`} stopOpacity={0} />
+              </linearGradient>
+              <filter id="glow-sky">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+              </filter>
             </defs>
-            <CartesianGrid stroke={border} strokeDasharray="3 3" />
-            <XAxis dataKey="number" stroke={muted} fontSize={12} />
-            <YAxis stroke={muted} fontSize={12} width={60} tickFormatter={(v) => `$${v}`} />
-            <Tooltip {...tooltipStyle(border)} formatter={(v: number) => [`$${v.toFixed(0)}`, ""]} />
-            <Line type="monotone" dataKey="balance" name="موجودی" stroke="url(#equity-line)" strokeWidth={3} dot={false} />
-            <Line type="monotone" dataKey="ma" name="MA(3)" stroke={`rgb(${TINTS.amber})`} strokeWidth={2} strokeDasharray="5 4" dot={false} />
-          </LineChart>
+            <CartesianGrid stroke={border} strokeDasharray="4 4" vertical={false} />
+            <XAxis dataKey="number" stroke={muted} fontSize={11} tickLine={false} axisLine={false} label={{ value: "معامله #", position: "insideBottomRight", offset: -5, fontSize: 11, fill: muted }} />
+            <YAxis stroke={muted} fontSize={11} width={68} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toLocaleString()}`} />
+            <Tooltip
+              {...tooltipStyle(border)}
+              formatter={(v: number, name: string) => [`$${v.toFixed(2)}`, name === "balance" ? "موجودی" : "MA(3)"]}
+              labelFormatter={(l) => `معامله #${l}`}
+            />
+            <Area
+              type="monotoneX"
+              dataKey="balance"
+              name="موجودی"
+              stroke={`rgb(${TINTS.sky})`}
+              strokeWidth={2.5}
+              fill="url(#equity-fill)"
+              dot={false}
+              activeDot={{ r: 6, fill: `rgb(${TINTS.sky})`, stroke: `rgba(${TINTS.sky},0.4)`, strokeWidth: 4 }}
+              animationDuration={1200}
+            />
+            <Line
+              type="monotoneX"
+              dataKey="ma"
+              name="MA(3)"
+              stroke={`rgb(${TINTS.amber})`}
+              strokeWidth={1.5}
+              strokeDasharray="6 4"
+              dot={false}
+              activeDot={{ r: 4, fill: `rgb(${TINTS.amber})`, strokeWidth: 0 }}
+              animationDuration={1400}
+            />
+          </AreaChart>
         </ResponsiveContainer>
-        <div className="mt-3 flex justify-center gap-6 text-xs">
-          <Legend color={`rgb(${TINTS.mint})`} label="موجودی" />
-          <Legend color={`rgb(${TINTS.amber})`} label="MA(3)" dashed />
+        <div className="mt-3 flex justify-center gap-8 text-xs">
+          <Legend color={`rgb(${TINTS.sky})`} label="منحنی موجودی" filled />
+          <Legend color={`rgb(${TINTS.amber})`} label="میانگین متحرک MA(3)" dashed />
         </div>
       </ChartCard>
 
@@ -715,24 +749,32 @@ function DashboardInner() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Symbol analysis bar chart */}
         {symbolBars.length > 0 && (
-          <ChartCard title="تحلیل نمادها (سود/زیان)" dot={TINTS.violet}>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={symbolBars} layout="vertical">
+          <ChartCard title="تحلیل نمادها — سود/زیان" dot={TINTS.violet}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={symbolBars} layout="vertical" margin={{ top: 4, right: 55, left: 0, bottom: 4 }}>
                 <defs>
                   <linearGradient id="sym-up" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor={`rgb(${TINTS.green})`} stopOpacity={0.5} />
-                    <stop offset="100%" stopColor={`rgb(${TINTS.mint})`} stopOpacity={0.95} />
+                    <stop offset="0%" stopColor={`rgb(${TINTS.green})`} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={`rgb(${TINTS.mint})`} stopOpacity={1} />
                   </linearGradient>
                   <linearGradient id="sym-down" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.5} />
-                    <stop offset="100%" stopColor={`rgb(${TINTS.rose})`} stopOpacity={0.95} />
+                    <stop offset="0%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={`rgb(${TINTS.rose})`} stopOpacity={1} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke={border} strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" stroke={muted} fontSize={11} tickFormatter={(v) => `$${v}`} />
-                <YAxis type="category" dataKey="symbol" stroke={muted} fontSize={11} width={55} />
-                <Tooltip {...tooltipStyle(border)} cursor={{ fill: "rgba(148,163,184,0.08)" }} formatter={(v: number) => [`$${v.toFixed(2)}`, "P&L"]} />
-                <Bar dataKey="pnl" name="P&L" radius={[0, 6, 6, 0]}>
+                <CartesianGrid stroke={border} strokeDasharray="4 4" horizontal={false} />
+                <XAxis type="number" stroke={muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} />
+                <YAxis type="category" dataKey="symbol" stroke={muted} fontSize={11} width={58} tickLine={false} axisLine={false} />
+                <ReferenceLine x={0} stroke={`rgba(148,163,184,0.35)`} strokeWidth={1} />
+                <Tooltip
+                  {...tooltipStyle(border)}
+                  cursor={{ fill: "rgba(148,163,184,0.07)" }}
+                  formatter={(v: number, _: string, props: { payload?: { count?: number } }) => [
+                    `$${v.toFixed(4)}`,
+                    `P&L · ${props.payload?.count ?? ""} معامله`,
+                  ]}
+                />
+                <Bar dataKey="pnl" name="P&L" radius={[0, 7, 7, 0]} animationDuration={1000}>
                   {symbolBars.map((s, i) => (
                     <Cell key={i} fill={s.pnl >= 0 ? "url(#sym-up)" : "url(#sym-down)"} />
                   ))}
@@ -742,100 +784,210 @@ function DashboardInner() {
           </ChartCard>
         )}
 
-        {/* Direction split donut */}
+        {/* Direction split donut with center info */}
         <ChartCard title="تفکیک جهت معاملات" dot={TINTS.mint}>
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie
-                data={[
-                  { name: "Long", value: data.directionStats.long },
-                  { name: "Short", value: data.directionStats.short },
-                ]}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={58}
-                outerRadius={95}
-                paddingAngle={4}
-                cornerRadius={8}
-              >
-                <Cell fill={`rgb(${TINTS.mint})`} />
-                <Cell fill={`rgb(${TINTS.rose})`} />
-              </Pie>
-              <Tooltip {...tooltipStyle(border)} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex justify-center gap-6 text-sm">
-            <Legend color={`rgb(${TINTS.mint})`} label={`Long: ${faNum(data.directionStats.long)}`} />
-            <Legend color={`rgb(${TINTS.rose})`} label={`Short: ${faNum(data.directionStats.short)}`} />
-          </div>
+          {(() => {
+            const total = data.directionStats.long + data.directionStats.short;
+            const longPct = total > 0 ? Math.round((data.directionStats.long / total) * 100) : 0;
+            const shortPct = total > 0 ? Math.round((data.directionStats.short / total) * 100) : 0;
+            return (
+              <>
+                <div className="relative mx-auto" style={{ width: 240, height: 240 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <defs>
+                        <radialGradient id="long-grad" cx="50%" cy="50%">
+                          <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} />
+                          <stop offset="100%" stopColor={`rgb(${TINTS.mint})`} />
+                        </radialGradient>
+                        <radialGradient id="short-grad" cx="50%" cy="50%">
+                          <stop offset="0%" stopColor={`rgb(${TINTS.rose})`} />
+                          <stop offset="100%" stopColor={`rgb(${TINTS.red})`} />
+                        </radialGradient>
+                      </defs>
+                      <Pie
+                        data={[
+                          { name: "Long", value: data.directionStats.long },
+                          { name: "Short", value: data.directionStats.short },
+                        ]}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={70}
+                        outerRadius={105}
+                        paddingAngle={3}
+                        cornerRadius={10}
+                        startAngle={90}
+                        endAngle={-270}
+                        animationDuration={1000}
+                      >
+                        <Cell fill="url(#long-grad)" stroke={`rgba(${TINTS.mint},0.3)`} strokeWidth={1} />
+                        <Cell fill="url(#short-grad)" stroke={`rgba(${TINTS.rose},0.3)`} strokeWidth={1} />
+                      </Pie>
+                      <Tooltip {...tooltipStyle(border)} formatter={(v: number) => [faNum(v), "معامله"]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Center label */}
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+                    <div className="text-xs text-muted">کل</div>
+                    <div className="text-2xl font-extrabold" style={{ color: `rgb(${TINTS.sky})` }}>{faNum(total)}</div>
+                    <div className="text-xs text-muted">معامله</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-center gap-8 text-sm">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full" style={{ background: `rgb(${TINTS.mint})` }} />
+                      <span className="font-semibold" style={{ color: `rgb(${TINTS.mint})` }}>Long</span>
+                    </div>
+                    <div className="text-lg font-extrabold" style={{ color: `rgb(${TINTS.mint})` }}>{faNum(longPct)}٪</div>
+                    <div className="text-xs text-muted">{faNum(data.directionStats.long)} معامله</div>
+                  </div>
+                  <div className="w-px bg-white/10" />
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full" style={{ background: `rgb(${TINTS.rose})` }} />
+                      <span className="font-semibold" style={{ color: `rgb(${TINTS.rose})` }}>Short</span>
+                    </div>
+                    <div className="text-lg font-extrabold" style={{ color: `rgb(${TINTS.rose})` }}>{faNum(shortPct)}٪</div>
+                    <div className="text-xs text-muted">{faNum(data.directionStats.short)} معامله</div>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </ChartCard>
 
-        {/* Checklist discipline gauge */}
-        <ChartCard title="انضباط و ریسک — چک‌لیست" dot={TINTS.amber}>
-          <div className="flex h-[260px] flex-col items-center justify-center gap-4">
-            <div className="relative grid h-40 w-40 place-items-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <defs>
-                    <linearGradient id="gauge-grad" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor={`rgb(${TINTS.mint})`} />
-                      <stop offset="100%" stopColor={`rgb(${TINTS.sky})`} />
-                    </linearGradient>
-                  </defs>
-                  <Pie
-                    data={[
-                      { name: "done", value: (data.checklistDiscipline ?? 0) * 100 },
-                      { name: "rest", value: Math.max(0, 100 - (data.checklistDiscipline ?? 0) * 100) },
-                    ]}
-                    dataKey="value"
-                    innerRadius={60}
-                    outerRadius={76}
-                    startAngle={90}
-                    endAngle={-270}
-                    cornerRadius={8}
-                  >
-                    <Cell fill="url(#gauge-grad)" />
-                    <Cell fill="rgba(148,163,184,0.14)" />
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute text-2xl font-extrabold" style={{ color: `rgb(${TINTS.mint})` }}>
-                {formatPct((data.checklistDiscipline ?? 0) * 100, 0)}
-              </div>
-            </div>
-            <p className="text-sm text-muted">میانگین رعایت چک‌لیست در معاملات</p>
-            <div className="grid w-full grid-cols-3 gap-2 text-center text-xs">
-              <MiniStat label="وین ریت" value={formatPct((data.winRate ?? 0) * 100)} tint={TINTS.green} />
-              <MiniStat label="PF" value={formatRatio(data.profitFactor)} tint={TINTS.violet} />
-              <MiniStat label="میانگین RR" value={formatRatio(data.avgRr)} tint={TINTS.mint} />
-            </div>
+        {/* Session stats */}
+        {data.sessionStats.length > 0 && (
+          <ChartCard title="عملکرد در سشن‌های مارکت" dot={TINTS.sky}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart
+                data={[...data.sessionStats].sort((a, b) => b.pnl - a.pnl)}
+                layout="vertical"
+                margin={{ top: 4, right: 55, left: 0, bottom: 4 }}
+              >
+                <defs>
+                  <linearGradient id="sess-up" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={`rgb(${TINTS.violet})`} stopOpacity={0.9} />
+                  </linearGradient>
+                  <linearGradient id="sess-down" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={`rgb(${TINTS.rose})`} stopOpacity={0.9} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={border} strokeDasharray="4 4" horizontal={false} />
+                <XAxis type="number" stroke={muted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} />
+                <YAxis type="category" dataKey="session" stroke={muted} fontSize={11} width={60} tickLine={false} axisLine={false} />
+                <ReferenceLine x={0} stroke={`rgba(148,163,184,0.35)`} strokeWidth={1} />
+                <Tooltip
+                  {...tooltipStyle(border)}
+                  cursor={{ fill: "rgba(148,163,184,0.07)" }}
+                  formatter={(v: number, _: string, props: { payload?: { count?: number } }) => [
+                    `$${(v as number).toFixed(4)}`,
+                    `P&L · ${props.payload?.count ?? ""} معامله`,
+                  ]}
+                />
+                <Bar dataKey="pnl" name="سود/زیان" radius={[0, 7, 7, 0]} animationDuration={1000}>
+                  {data.sessionStats.map((s, i) => (
+                    <Cell key={i} fill={s.pnl >= 0 ? "url(#sess-up)" : "url(#sess-down)"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
+
+        {/* Checklist discipline — radial gauge */}
+        <ChartCard title="انضباط چک‌لیست" dot={TINTS.amber}>
+          <div className="flex h-[280px] flex-col items-center justify-center gap-4">
+            {(() => {
+              const disciplinePct = (data.checklistDiscipline ?? 0) * 100;
+              const disciplineVal = [
+                { name: "done", value: disciplinePct, fill: `rgb(${TINTS.mint})` },
+              ];
+              return (
+                <>
+                  <div className="relative" style={{ width: 180, height: 180 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadialBarChart
+                        innerRadius="55%"
+                        outerRadius="85%"
+                        data={disciplineVal}
+                        startAngle={220}
+                        endAngle={-40}
+                      >
+                        <defs>
+                          <linearGradient id="disc-grad" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stopColor={`rgb(${TINTS.mint})`} />
+                            <stop offset="100%" stopColor={`rgb(${TINTS.sky})`} />
+                          </linearGradient>
+                        </defs>
+                        <RadialBar
+                          dataKey="value"
+                          background={{ fill: "rgba(148,163,184,0.1)" }}
+                          fill="url(#disc-grad)"
+                          animationDuration={1200}
+                        />
+                      </RadialBarChart>
+                    </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <div className="text-3xl font-black" style={{ color: `rgb(${TINTS.mint})` }}>
+                        {formatPct(disciplinePct, 0)}
+                      </div>
+                      <div className="text-[11px] text-muted">رعایت چک‌لیست</div>
+                    </div>
+                  </div>
+                  <div className="grid w-full grid-cols-3 gap-2 text-center text-xs">
+                    <MiniStat label="وین ریت" value={formatPct((data.winRate ?? 0) * 100)} tint={TINTS.green} />
+                    <MiniStat label="ضریب سود" value={formatRatio(data.profitFactor)} tint={TINTS.violet} />
+                    <MiniStat label="میانگین RR" value={formatRatio(data.avgRr)} tint={TINTS.mint} />
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </ChartCard>
 
         {/* Top symbols table */}
-        <ChartCard title="برترین نمادها" dot={TINTS.rose}>
+        <ChartCard title="برترین نمادها بر اساس سود/زیان" dot={TINTS.rose}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-muted">
+              <thead>
                 <tr className="border-b border-white/5 text-center">
-                  <th className="py-2 pr-2 text-right">نماد</th>
-                  <th className="py-2">تعداد</th>
-                  <th className="py-2">P&amp;L</th>
-                  <th className="py-2">معادل تومانی</th>
+                  <th className="py-2.5 pr-2 text-right text-xs font-semibold text-muted">نماد</th>
+                  <th className="py-2.5 text-xs font-semibold text-muted">تعداد</th>
+                  <th className="py-2.5 text-xs font-semibold text-muted">P&amp;L (USDT)</th>
+                  <th className="py-2.5 text-xs font-semibold text-muted">معادل تومان</th>
                 </tr>
               </thead>
               <tbody>
                 {data.topSymbols.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-muted">داده‌ای موجود نیست</td>
+                    <td colSpan={4} className="py-8 text-center text-sm text-muted">داده‌ای موجود نیست</td>
                   </tr>
                 )}
-                {data.topSymbols.map((s) => (
-                  <tr key={s.symbol} className="border-b border-white/5 transition hover:bg-white/5">
-                    <td className="py-2.5 pr-2 font-bold" dir="ltr">{s.symbol}</td>
-                    <td className="py-2.5 text-center">{faNum(s.count)}</td>
-                    <td className={`py-2.5 text-center font-semibold ${pnlColorClass(s.pnl)}`} dir="ltr">{formatUsd(s.pnl)}</td>
-                    <td className="py-2.5 text-center text-muted">{formatToman(s.pnl, data.usdtIrt)}</td>
+                {data.topSymbols.map((s, i) => (
+                  <tr key={s.symbol} className="group border-b border-white/5 transition-all hover:bg-white/5">
+                    <td className="py-3 pr-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[10px] font-black"
+                          style={{
+                            background: `rgba(${s.pnl >= 0 ? TINTS.mint : TINTS.rose},0.15)`,
+                            color: `rgb(${s.pnl >= 0 ? TINTS.mint : TINTS.rose})`,
+                          }}
+                        >
+                          {i + 1}
+                        </span>
+                        <span className="font-bold" dir="ltr">{s.symbol}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 text-center text-muted">{faNum(s.count)}</td>
+                    <td className={`py-3 text-center font-semibold ${pnlColorClass(s.pnl)}`} dir="ltr">
+                      {s.pnl >= 0 ? "+" : ""}{s.pnl.toFixed(4)}
+                    </td>
+                    <td className="py-3 text-center text-xs text-muted">{formatToman(s.pnl, data.usdtIrt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -852,12 +1004,18 @@ function DashboardInner() {
 function tooltipStyle(border: string) {
   return {
     contentStyle: {
-      background: "var(--surface)",
+      background: "rgba(10,22,34,0.88)",
+      backdropFilter: "blur(20px)",
       border: `1px solid ${border}`,
-      borderRadius: 12,
+      borderRadius: 14,
       color: "var(--text)",
       fontSize: 12,
+      boxShadow: "0 16px 40px -12px rgba(0,0,0,0.5)",
+      padding: "10px 14px",
     },
+    itemStyle: { color: "var(--text)", fontWeight: 600 },
+    labelStyle: { color: "var(--muted)", marginBottom: 4, fontSize: 11 },
+    cursor: { stroke: "rgba(148,163,184,0.25)", strokeWidth: 1 },
   };
 }
 
@@ -987,27 +1145,54 @@ function MiniStat({ label, value, tint }: { label: string; value: string; tint: 
 
 function ChartCard({ title, children, dot }: { title: string; children: React.ReactNode; dot?: string }) {
   return (
-    <div className="glass relative overflow-hidden p-6">
-      <div className="mb-4 flex items-center gap-2">
-        {dot && <span className="h-2 w-2 rounded-full" style={{ background: `rgb(${dot})`, boxShadow: `0 0 8px rgb(${dot})` }} />}
-        <h3 className="text-sm font-bold">{title}</h3>
+    <div
+      className="relative overflow-hidden rounded-3xl p-6"
+      style={{
+        background: "var(--glass-bg)",
+        backdropFilter: "blur(24px) saturate(160%)",
+        WebkitBackdropFilter: "blur(24px) saturate(160%)",
+        border: "1px solid var(--glass-border)",
+        boxShadow: dot
+          ? `0 20px 56px -24px rgba(${dot},0.28), inset 0 1px 0 rgba(255,255,255,0.08)`
+          : "0 8px 32px -12px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.08)",
+      }}
+    >
+      {dot && (
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-40 blur-3xl"
+          style={{ background: `rgba(${dot},0.5)` }}
+        />
+      )}
+      <div className="relative mb-5 flex items-center gap-2.5">
+        {dot && (
+          <span
+            className="h-2.5 w-2.5 rounded-full animate-pulse-dot"
+            style={{ background: `rgb(${dot})`, boxShadow: `0 0 10px 2px rgba(${dot},0.6)` }}
+          />
+        )}
+        <h3 className="text-sm font-bold tracking-wide">{title}</h3>
       </div>
-      {children}
+      <div className="relative">{children}</div>
     </div>
   );
 }
 
-function Legend({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+function Legend({ color, label, dashed, filled }: { color: string; label: string; dashed?: boolean; filled?: boolean }) {
   return (
-    <span className="flex items-center gap-2">
-      <span
-        className="inline-block h-0.5 w-6 rounded"
-        style={{
-          background: color,
-          borderTop: dashed ? `2px dashed ${color}` : undefined,
-        }}
-      />
-      {label}
+    <span className="flex items-center gap-2 text-muted">
+      {filled ? (
+        <span className="inline-block h-2.5 w-5 rounded-full opacity-80" style={{ background: color }} />
+      ) : (
+        <span
+          className="inline-block w-6 rounded"
+          style={{
+            height: 2,
+            background: dashed ? "transparent" : color,
+            borderTop: dashed ? `2px dashed ${color}` : undefined,
+          }}
+        />
+      )}
+      <span className="text-xs">{label}</span>
     </span>
   );
 }

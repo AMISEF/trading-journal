@@ -36,14 +36,19 @@ export function StatusDot({
     color = "bg-primary";
     pulse = "animate-pulse-dot";
   } else if (status === "CLOSED") {
-    if (exitType === "RISK_FREE") {
+    if (exitType === "NOT_ACTIVATED") {
+      color = "bg-gray-400";
+    } else if (exitType === "RISK_FREE") {
       color = "bg-sky-400";
     } else {
       color = (pnl ?? 0) >= 0 ? "bg-profit" : "bg-loss";
     }
   }
   const title =
-    status === "PLANNED" ? "برنامه‌ریزی‌شده" : status === "OPEN" ? "باز" : "بسته‌شده";
+    status === "PLANNED" ? "برنامه‌ریزی‌شده"
+    : status === "OPEN" ? "باز"
+    : exitType === "NOT_ACTIVATED" ? "فعال نشد"
+    : "بسته‌شده";
   return (
     <span
       title={title}

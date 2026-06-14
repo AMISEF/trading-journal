@@ -6,7 +6,7 @@
 export type Role = "TRADER" | "ADMIN";
 export type Direction = "LONG" | "SHORT";
 export type TradeStatus = "PLANNED" | "OPEN" | "CLOSED";
-export type ExitType = "RISK_FREE" | "LAST_TP" | "STOP_LOSS" | "TRAILING_STOP";
+export type ExitType = "RISK_FREE" | "LAST_TP" | "STOP_LOSS" | "TRAILING_STOP" | "NOT_ACTIVATED";
 export type ReasonKind = "entry" | "exit";
 
 /** Authenticated user. */
