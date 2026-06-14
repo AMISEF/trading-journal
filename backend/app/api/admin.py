@@ -14,6 +14,7 @@ from app.api import crud
 from app.api.serializers import trade_to_out, user_to_out
 from app.core.deps import get_current_admin, get_db
 from app.core.security import hash_password
+from app.models.template import ChecklistTemplate, ReasonTemplate
 from app.models.trade import Trade
 from app.models.user import User
 from app.schemas.base import CamelModel
@@ -206,6 +207,18 @@ async def delete_user(
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
+    # Delete templates first (no cascade on User model for these).
+    checklists = await db.execute(
+        select(ChecklistTemplate).where(ChecklistTemplate.user_id == user_id)
+    )
+    for row in checklists.scalars().all():
+        await db.delete(row)
+    reasons = await db.execute(
+        select(ReasonTemplate).where(ReasonTemplate.user_id == user_id)
+    )
+    for row in reasons.scalars().all():
+        await db.delete(row)
+    await db.flush()
     await db.delete(target)
     await db.commit()
     return {"ok": True}

@@ -52,7 +52,7 @@ function Inner() {
       )}
 
       <div className="tj-card overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm text-right">
           <thead className="text-muted">
             <tr className="border-b border-border text-right">
               <th className="p-3">#</th>
@@ -70,7 +70,7 @@ function Inner() {
               <tr
                 key={t.id}
                 onClick={() => router.push(`/admin/trades/${t.id}`)}
-                className="cursor-pointer border-b border-border/60 hover:bg-surface-2"
+                className="cursor-pointer border-b border-border/60 hover:bg-surface-2 text-right"
               >
                 <td className="p-3 font-medium text-primary">{faNum(t.number)}</td>
                 <td className="p-3" dir="ltr">{t.symbol || "—"}</td>
