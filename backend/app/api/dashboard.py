@@ -18,6 +18,59 @@ from app.services.sessions import session_for
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+@router.get("/rr-debug")
+async def rr_debug(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Debug: shows why rrAchieved is None for each closed trade."""
+    trades = await crud.load_user_trades(db, user.id)
+    transactions = await crud.load_user_transactions(db, user.id)
+    closed = [t for t in trades if t.status == "CLOSED"]
+    closed.sort(key=lambda t: t.number)
+    balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
+    rows = []
+    for t in closed:
+        tp_dicts = [
+            {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
+            for tp in t.take_profits
+        ]
+        result = calc_engine.compute(
+            direction=t.direction,
+            entry=t.entry_price,
+            leverage=t.leverage,
+            margin_percent=t.margin_percent,
+            wallet_balance_now=balance,
+            stop_loss=t.stop_loss,
+            take_profits=tp_dicts,
+            exit_type=t.exit_type,
+            trail_value=t.trail_exit_value,
+            trail_is_percent=bool(t.trail_is_percent),
+            exit_price=t.exit_price,
+        )
+        balance += result["realizedPnl"]
+        rows.append({
+            "number": t.number,
+            "symbol": t.symbol,
+            "entry": t.entry_price,
+            "stop_loss": t.stop_loss,
+            "exit_type": t.exit_type,
+            "exit_price": t.exit_price,
+            "leverage": t.leverage,
+            "margin_percent": t.margin_percent,
+            "tp_count": len(tp_dicts),
+            "rr_achieved": result.get("rrAchieved"),
+            "why_none": (
+                "no entry" if not t.entry_price else
+                "no stop_loss" if t.stop_loss is None else
+                "entry == stop_loss" if abs((t.entry_price or 0) - (t.stop_loss or 0)) < 1e-12 else
+                "no exit" if result.get("rrAchieved") == 0 and not t.exit_price and not t.exit_type else
+                "ok"
+            ),
+        })
+    return rows
+
+
 class DashboardOut(CamelModel):
     trade_count: int
     closed_count: int
