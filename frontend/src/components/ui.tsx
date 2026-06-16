@@ -112,7 +112,8 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
 export function usePagination<T>(items: T[], storageKey?: string) {
   const [pageSize, setPageSizeRaw] = useState<number>(() => {
     if (!storageKey || typeof window === "undefined") return 10;
-    const v = Number(localStorage.getItem(`${storageKey}_pageSize`));
+    // Key is versioned (v2) so stale values from older builds are ignored.
+    const v = Number(localStorage.getItem(`tj_pg_${storageKey}_v2`));
     return v > 0 ? v : 10;
   });
   const [page, setPage] = useState(1);
@@ -122,7 +123,7 @@ export function usePagination<T>(items: T[], storageKey?: string) {
     setPageSizeRaw(safe);
     setPage(1);
     if (storageKey && typeof window !== "undefined") {
-      localStorage.setItem(`${storageKey}_pageSize`, String(safe));
+      localStorage.setItem(`tj_pg_${storageKey}_v2`, String(safe));
     }
   };
 
