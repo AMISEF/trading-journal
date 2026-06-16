@@ -246,8 +246,11 @@ export function Paginator({
           </div>
         )}
         {total > 0 && (
-          <span className="text-muted text-xs" dir="ltr">
-            {faNum(start + 1)}–{faNum(end)} از {faNum(total)}
+          <span className="text-muted text-xs">
+            نمایش <b className="text-text">{faNum(end - start)}</b> از <b className="text-text">{faNum(total)}</b> مورد
+            {totalPages > 1 && (
+              <span className="mr-1 text-muted/60">(صفحه {faNum(page)} از {faNum(totalPages)})</span>
+            )}
           </span>
         )}
       </div>

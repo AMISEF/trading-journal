@@ -1021,6 +1021,9 @@ function WinLossCard({ data }: { data: DashboardData }) {
   const winRatePct = (data.winRate ?? 0) * 100;
   const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
 
+  // Track hovered segment to show tooltip below the donut (not inside it).
+  const [hovered, setHovered] = useState<{ label: string; count: number; pct: number; rgb: string } | null>(null);
+
   const rows = [
     { label: "معاملات سودآور", count: wl.win, rgb: TINTS.green, pct: pct(wl.win) },
     { label: "معاملات زیان‌ده", count: wl.loss, rgb: TINTS.red, pct: pct(wl.loss) },
@@ -1028,9 +1031,9 @@ function WinLossCard({ data }: { data: DashboardData }) {
   ];
 
   const pieData = [
-    { name: "win", value: wl.win, rgb: TINTS.green },
-    { name: "loss", value: wl.loss, rgb: TINTS.red },
-    { name: "be", value: wl.breakeven, rgb: TINTS.sky },
+    { name: "win", value: wl.win, rgb: TINTS.green, label: "سودآور" },
+    { name: "loss", value: wl.loss, rgb: TINTS.red, label: "زیان‌ده" },
+    { name: "be", value: wl.breakeven, rgb: TINTS.sky, label: "سربه‌سر" },
   ].filter((d) => d.value > 0);
 
   return (
@@ -1062,6 +1065,16 @@ function WinLossCard({ data }: { data: DashboardData }) {
               startAngle={90}
               endAngle={-270}
               animationDuration={1000}
+              onMouseEnter={(entry) => {
+                const r = rows.find(
+                  (x) =>
+                    (entry.name === "win" && x.rgb === TINTS.green) ||
+                    (entry.name === "loss" && x.rgb === TINTS.red) ||
+                    (entry.name === "be" && x.rgb === TINTS.sky)
+                );
+                if (r) setHovered(r);
+              }}
+              onMouseLeave={() => setHovered(null)}
             >
               {pieData.map((d, i) => (
                 <Cell
@@ -1072,13 +1085,6 @@ function WinLossCard({ data }: { data: DashboardData }) {
                 />
               ))}
             </Pie>
-            <Tooltip
-              {...tooltipStyle("rgba(148,163,184,0.18)")}
-              formatter={(v: number, n: string) => [
-                faNum(v),
-                n === "win" ? "سودآور" : n === "loss" ? "زیان‌ده" : "سربه‌سر",
-              ]}
-            />
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
@@ -1087,6 +1093,24 @@ function WinLossCard({ data }: { data: DashboardData }) {
           </div>
           <div className="mt-1.5 text-[10px] font-semibold tracking-widest text-muted">WIN RATE</div>
         </div>
+      </div>
+
+      {/* Hover tooltip shown BELOW the donut, never inside it */}
+      <div className="mt-2 flex h-10 items-center justify-center">
+        {hovered ? (
+          <div
+            className="rounded-xl px-4 py-1.5 text-sm font-semibold"
+            style={{
+              background: `rgba(${hovered.rgb},0.12)`,
+              border: `1px solid rgba(${hovered.rgb},0.3)`,
+              color: `rgb(${hovered.rgb})`,
+            }}
+          >
+            {hovered.label}: {faNum(hovered.count)} معامله ({faNum(hovered.pct.toFixed(1))}٪)
+          </div>
+        ) : (
+          <span className="text-xs text-muted">روی بخش‌های نمودار نگه دارید</span>
+        )}
       </div>
 
       {/* Breakdown bars */}
