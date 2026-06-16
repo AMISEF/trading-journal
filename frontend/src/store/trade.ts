@@ -27,6 +27,7 @@ function normalizeTrade(t: Trade): Trade {
     entryReasons: t.entryReasons ?? [],
     exitReasons: t.exitReasons ?? [],
     takeProfits: t.takeProfits ?? [],
+    entryLevels: t.entryLevels ?? [],
     emotions: t.emotions ?? {},
     checklistTicks: t.checklistTicks ?? {},
   };

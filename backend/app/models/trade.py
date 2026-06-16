@@ -41,6 +41,12 @@ class Trade(Base):
     margin_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Optional multi-level (DCA / "پله") entry. When present this is the source of
+    # truth for the entry: ``entry_price`` is stored as the quantity-weighted
+    # average of the levels and ``margin_percent`` as the sum of their percents.
+    # Each item: {"order": int, "price": float|None, "margin_percent": float|None}.
+    entry_levels: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     analysis_tf: Mapped[str | None] = mapped_column(String(20), nullable=True)
     trigger_tf: Mapped[str | None] = mapped_column(String(20), nullable=True)
 

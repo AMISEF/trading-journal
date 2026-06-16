@@ -112,8 +112,45 @@ function TimeframeSelect({
   );
 }
 import { useCalcPreview } from "../useCalcPreview";
-import { decimalsForTick, formatSignedUsd, formatUsd, pnlColorClass } from "@/lib/format";
-import type { TakeProfit } from "@/lib/types";
+import { decimalsForTick, faNum, formatSignedUsd, formatUsd, pnlColorClass } from "@/lib/format";
+import type { EntryLevel, TakeProfit } from "@/lib/types";
+
+/** Format a raw price (not a currency) for display. */
+function formatPrice(v: number | null | undefined): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  return v.toLocaleString("en-US", { maximumFractionDigits: 8 });
+}
+
+/**
+ * Collapse multi-level entries into a single entry + total margin.
+ *
+ * Every level's percent is taken against the SAME wallet balance, so two "4%"
+ * levels are two equal-dollar buys ($20 + $20) — the second is never reduced.
+ * The average is quantity-weighted (the real exchange breakeven):
+ *   avgEntry = Σ marginᵢ / Σ(marginᵢ / priceᵢ)
+ */
+export function deriveEntryLevels(levels: EntryLevel[]): {
+  avgEntry: number | null;
+  totalPct: number;
+} {
+  const priced = levels.filter((l) => l.price != null && l.price > 0);
+  const weighted = priced.filter((l) => l.marginPercent != null && l.marginPercent > 0);
+  if (weighted.length > 0) {
+    const totalPct = weighted.reduce((s, l) => s + (l.marginPercent as number), 0);
+    const denom = weighted.reduce(
+      (s, l) => s + (l.marginPercent as number) / (l.price as number),
+      0
+    );
+    return { avgEntry: denom > 0 ? totalPct / denom : null, totalPct };
+  }
+  // Prices entered but no margins yet: keep a live entry (simple average) so the
+  // SL% / RR preview still works. Total margin stays 0 until the user fills it.
+  if (priced.length > 0) {
+    const avg = priced.reduce((s, l) => s + (l.price as number), 0) / priced.length;
+    return { avgEntry: avg, totalPct: 0 };
+  }
+  return { avgEntry: null, totalPct: 0 };
+}
 
 export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
   const trade = useTrade((s) => s.trade);
@@ -128,6 +165,33 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
   if (!trade) return null;
 
   const tickDecimals = decimalsForTick(0.01); // symbol tick handled live in input
+
+  // Working entry levels: use the stored levels, or synthesize a single level
+  // from the legacy entryPrice/marginPercent so old trades keep working.
+  const levels: EntryLevel[] =
+    trade.entryLevels && trade.entryLevels.length > 0
+      ? trade.entryLevels
+      : [{ order: 1, price: trade.entryPrice, marginPercent: trade.marginPercent }];
+
+  // Commit a new set of levels: re-number them and keep entryPrice/marginPercent
+  // (the canonical fields the calc engine reads) in sync with the derived values.
+  const commitLevels = (next: EntryLevel[]) => {
+    const reordered = next.map((l, i) => ({ ...l, order: i + 1 }));
+    const { avgEntry, totalPct } = deriveEntryLevels(reordered);
+    patch({
+      entryLevels: reordered,
+      entryPrice: avgEntry,
+      marginPercent: totalPct > 0 ? Math.round(totalPct * 100) / 100 : null,
+    });
+  };
+  const setLevel = (i: number, fields: Partial<EntryLevel>) =>
+    commitLevels(levels.map((l, idx) => (idx === i ? { ...l, ...fields } : l)));
+  const addLevel = () =>
+    commitLevels([...levels, { order: levels.length + 1, price: null, marginPercent: null }]);
+  const removeLevel = (i: number) => commitLevels(levels.filter((_, idx) => idx !== i));
+
+  const { avgEntry, totalPct } = deriveEntryLevels(levels);
+  const multiLevel = levels.length > 1;
 
   const updateTp = (i: number, fields: Partial<TakeProfit>) => {
     const tps = trade.takeProfits.map((tp, idx) =>
@@ -183,15 +247,102 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
         />
       </Field>
 
-      {/* Entry */}
-      <Field label="قیمت ورود">
-        <NumberInput
-          value={trade.entryPrice}
-          disabled={readOnly}
-          step={Math.pow(10, -tickDecimals)}
-          onChange={(entryPrice) => patch({ entryPrice })}
-        />
-      </Field>
+      {/* Entry levels (DCA / پله‌ای) */}
+      <div className="md:col-span-2">
+        <div className="mb-2 flex items-center justify-between">
+          <label className="tj-label mb-0">
+            ورود {multiLevel && <span className="font-normal text-muted">(پله‌ای)</span>}
+          </label>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={addLevel}
+              className="rounded-lg bg-primary px-3 py-1 text-sm font-medium text-white"
+            >
+              + افزودن پله
+            </button>
+          )}
+        </div>
+        <div className="space-y-3">
+          {levels.map((lvl, i) => {
+            const lvlDollar =
+              lvl.marginPercent != null && balance
+                ? Math.round((lvl.marginPercent / 100) * balance * 100) / 100
+                : null;
+            return (
+              <div key={i} className="tj-card p-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-sm font-bold text-primary">
+                    {faNum(i + 1)}
+                  </span>
+                  <div className="grid flex-1 gap-2 sm:grid-cols-3">
+                    <NumberInput
+                      value={lvl.price}
+                      disabled={readOnly}
+                      step={Math.pow(10, -tickDecimals)}
+                      placeholder="قیمت ورود"
+                      onChange={(price) => setLevel(i, { price })}
+                    />
+                    <div className="relative">
+                      <NumberInput
+                        value={lvl.marginPercent}
+                        disabled={readOnly}
+                        placeholder="درصد ولت"
+                        onChange={(marginPercent) => setLevel(i, { marginPercent })}
+                      />
+                      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted">%</span>
+                    </div>
+                    <div className="relative">
+                      <NumberInput
+                        value={lvlDollar}
+                        disabled={readOnly}
+                        placeholder="دلار"
+                        onChange={(dollar) => {
+                          if (dollar != null && balance > 0) {
+                            setLevel(i, {
+                              marginPercent: Math.round((dollar / balance) * 10000) / 100,
+                            });
+                          } else if (dollar == null) {
+                            setLevel(i, { marginPercent: null });
+                          }
+                        }}
+                      />
+                      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted">$</span>
+                    </div>
+                  </div>
+                  {!readOnly && levels.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeLevel(i)}
+                      className="shrink-0 text-xs text-loss"
+                      title="حذف پله"
+                    >
+                      حذف
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Derived summary: average entry + total margin + total volume */}
+        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+          <span className="text-muted">
+            {multiLevel ? "میانگین ورود" : "قیمت ورود"}:{" "}
+            <b className="text-text" dir="ltr">{formatPrice(avgEntry)}</b>
+          </span>
+          <span className="text-muted">
+            مارجین کل:{" "}
+            <b className="text-text" dir="ltr">
+              {totalPct > 0 ? `${faNum(Math.round(totalPct * 100) / 100)}%` : "—"}
+            </b>{" "}
+            / <b className="text-text" dir="ltr">{formatUsd(marginNoLeverage, 0)}</b>
+          </span>
+          <span className="text-muted">
+            حجم با اهرم: <b className="text-text" dir="ltr">{formatUsd(totalVolume, 0)}</b>
+          </span>
+        </div>
+      </div>
 
       {/* Leverage */}
       <Field label="اهرم (Leverage)">
@@ -200,42 +351,6 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
           disabled={readOnly}
           onChange={(leverage) => patch({ leverage })}
         />
-      </Field>
-
-      {/* Margin % + $ with computed total volume */}
-      <Field
-        label="مارجین"
-        hint={
-          <div className="space-y-0.5 text-xs text-muted">
-            <div>حجم با اهرم: <b className="text-text" dir="ltr">{formatUsd(totalVolume, 0)}</b></div>
-            <div>حجم بدون اهرم: <b className="text-text" dir="ltr">{formatUsd(marginNoLeverage, 0)}</b></div>
-          </div>
-        }
-      >
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <NumberInput
-              value={trade.marginPercent}
-              disabled={readOnly}
-              placeholder="درصد"
-              onChange={(marginPercent) => patch({ marginPercent })}
-            />
-            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted">%</span>
-          </div>
-          <div className="relative flex-1">
-            <NumberInput
-              value={marginNoLeverage != null ? Math.round(marginNoLeverage * 100) / 100 : null}
-              disabled={readOnly}
-              placeholder="دلار"
-              onChange={(dollar) => {
-                if (dollar != null && balance > 0) {
-                  patch({ marginPercent: Math.round((dollar / balance) * 10000) / 100 });
-                }
-              }}
-            />
-            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted">$</span>
-          </div>
-        </div>
       </Field>
 
       {/* Stop loss with computed loss */}

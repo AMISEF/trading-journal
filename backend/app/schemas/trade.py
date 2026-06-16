@@ -20,6 +20,18 @@ class TakeProfitOut(CamelModel):
     save_percent: float = 0.0
 
 
+class EntryLevelIn(CamelModel):
+    order: int
+    price: float | None = None
+    margin_percent: float | None = None
+
+
+class EntryLevelOut(CamelModel):
+    order: int
+    price: float | None = None
+    margin_percent: float | None = None
+
+
 class TradeIn(CamelModel):
     """All fields optional so PATCH can accept any subset (auto-save)."""
 
@@ -51,6 +63,7 @@ class TradeIn(CamelModel):
     image_after: str | None = None
     tags: list[str] | None = None
     take_profits: list[TakeProfitIn] | None = None
+    entry_levels: list[EntryLevelIn] | None = None
 
 
 class PerTpOut(CamelModel):
@@ -116,6 +129,7 @@ class TradeOut(CamelModel):
     created_at: datetime
     updated_at: datetime
     take_profits: list[TakeProfitOut] = Field(default_factory=list)
+    entry_levels: list[EntryLevelOut] = Field(default_factory=list)
     calc: CalcOut
 
 

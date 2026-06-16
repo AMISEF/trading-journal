@@ -29,6 +29,13 @@ export interface TakeProfit {
   savePercent: number;
 }
 
+/** A single entry level (DCA / "پله"). marginPercent is % of the wallet. */
+export interface EntryLevel {
+  order: number;
+  price: number | null;
+  marginPercent: number | null;
+}
+
 /** Per-TP computed numbers returned by the calc engine. */
 export interface PerTpCalc {
   order: number;
@@ -92,6 +99,9 @@ export interface Trade {
   imageAfter: string | null;
   tags: string[];
   takeProfits: TakeProfit[];
+  /** Optional multi-level entry. When present, entryPrice/marginPercent are the
+   * derived weighted-average entry and total margin. */
+  entryLevels: EntryLevel[];
   calc: Calc | null;
 }
 

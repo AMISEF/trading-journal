@@ -12,7 +12,7 @@ from app.core.deps import get_current_user, get_db
 from app.models.trade import TakeProfit, Trade
 from app.models.user import User
 from app.schemas.trade import TradeIn, TradeOut
-from app.services import balances
+from app.services import balances, calc as calc_engine
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -45,6 +45,28 @@ def _apply_take_profits(trade: Trade, tps: list[dict]) -> None:
                 save_percent=tp.get("save_percent", 0.0) or 0.0,
             )
         )
+
+
+def _apply_entry_levels(trade: Trade, levels: list[dict]) -> None:
+    """Store multi-level (DCA / "پله") entries and derive the canonical entry.
+
+    ``entry_price`` becomes the quantity-weighted average and ``margin_percent``
+    the sum of the levels' percents, so the rest of the calc pipeline keeps
+    working off a single entry/margin pair.
+    """
+    trade.entry_levels = [
+        {
+            "order": lvl.get("order", i + 1),
+            "price": lvl.get("price"),
+            "margin_percent": lvl.get("margin_percent"),
+        }
+        for i, lvl in enumerate(levels)
+    ]
+    avg_entry, total_pct = calc_engine.derive_entry_from_levels(trade.entry_levels)
+    if avg_entry is not None:
+        trade.entry_price = avg_entry
+    if total_pct and total_pct > 0:
+        trade.margin_percent = total_pct
 
 
 async def _persist_computed(
@@ -93,6 +115,7 @@ async def create_trade(
 
     data = body.model_dump(exclude_unset=True)
     take_profits = data.pop("take_profits", None)
+    entry_levels = data.pop("entry_levels", None)
 
     trade = Trade(
         user_id=user.id,
@@ -103,6 +126,8 @@ async def create_trade(
     _apply_fields(trade, data)
     if take_profits is not None:
         _apply_take_profits(trade, take_profits)
+    if entry_levels is not None:
+        _apply_entry_levels(trade, entry_levels)
 
     db.add(trade)
     await db.flush()  # assign trade.id before computing
@@ -150,9 +175,12 @@ async def update_trade(
 
     data = body.model_dump(exclude_unset=True)
     take_profits = data.pop("take_profits", None)
+    entry_levels = data.pop("entry_levels", None)
     _apply_fields(trade, data)
     if take_profits is not None:
         _apply_take_profits(trade, take_profits)
+    if entry_levels is not None:
+        _apply_entry_levels(trade, entry_levels)
 
     await db.flush()
     await db.refresh(trade, attribute_names=["take_profits"])

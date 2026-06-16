@@ -76,5 +76,13 @@ def trade_to_out(
             {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
             for tp in trade.take_profits
         ],
+        entry_levels=[
+            {
+                "order": lvl.get("order"),
+                "price": lvl.get("price"),
+                "margin_percent": lvl.get("margin_percent"),
+            }
+            for lvl in (trade.entry_levels or [])
+        ],
         calc=calc,
     )

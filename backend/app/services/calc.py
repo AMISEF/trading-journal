@@ -29,6 +29,46 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
+def derive_entry_from_levels(
+    levels: list[dict] | None,
+) -> tuple[float | None, float | None]:
+    """Collapse multi-level (DCA / "پله") entries into a single entry + margin.
+
+    Returns ``(avg_entry, total_margin_percent)`` where:
+
+    * ``total_margin_percent`` is the SUM of every level's margin percent. Each
+      percent is taken against the same wallet balance, so two levels of "4%"
+      are two equal-dollar buys (e.g. $20 + $20) — the second is never reduced.
+    * ``avg_entry`` is the quantity-weighted average entry price, i.e. the real
+      breakeven an exchange would show:  ``Σ marginᵢ / Σ(marginᵢ / priceᵢ)``.
+      Feeding this single ``(avg_entry, total_margin_percent)`` pair into
+      ``compute`` reproduces the exact aggregate PnL of all the tranches.
+
+    Levels missing a price or percent are ignored. Returns ``(None, None)`` when
+    there is nothing usable.
+    """
+    if not levels:
+        return None, None
+    priced: list[float] = []          # prices that are set
+    weighted: list[tuple[float, float]] = []  # (price, margin_percent)
+    for lvl in levels:
+        price = _to_float(lvl.get("price"))
+        pct = _to_float(lvl.get("margin_percent", lvl.get("marginPercent")))
+        if price and price > 0:
+            priced.append(price)
+            if pct and pct > 0:
+                weighted.append((price, pct))
+    if weighted:
+        total_pct = sum(pct for _, pct in weighted)
+        denom = sum(pct / price for price, pct in weighted)
+        avg_entry = (total_pct / denom) if denom else None
+        return avg_entry, total_pct
+    # Prices but no margins yet: keep a live entry (simple average), margin = 0.
+    if priced:
+        return (sum(priced) / len(priced)), 0.0
+    return None, None
+
+
 def compute(
     direction: str | None,
     entry: float | None,
