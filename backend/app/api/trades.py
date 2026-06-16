@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
@@ -201,5 +201,14 @@ async def delete_trade(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     trade = await _get_owned_trade(db, user, trade_id)
+    deleted_number = trade.number
     await db.delete(trade)
+    # Shift every subsequent trade's number down by 1 so there are no gaps.
+    # PostgreSQL evaluates the full UPDATE atomically, so the unique constraint
+    # is satisfied at statement end (deleted_number is already freed above).
+    await db.execute(
+        update(Trade)
+        .where(Trade.user_id == user.id, Trade.number > deleted_number)
+        .values(number=Trade.number - 1)
+    )
     await db.commit()

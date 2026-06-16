@@ -101,8 +101,13 @@ function JournalsInner() {
 
   const bulkDelete = async () => {
     if (!confirm(`${selected.size} معامله حذف شود؟`)) return;
-    await Promise.all([...selected].map((id) => tradesApi.remove(id)));
-    setTrades((prev) => prev?.filter((t) => !selected.has(t.id)) ?? null);
+    // Delete sequentially (not in parallel) so the server's renumbering
+    // logic runs one at a time and produces a consistent gap-free sequence.
+    const ids = [...selected];
+    for (const id of ids) await tradesApi.remove(id);
+    // Re-fetch so trade numbers are up to date after renumbering.
+    const refreshed = await tradesApi.list();
+    setTrades(refreshed);
     setSelected(new Set());
   };
 
