@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { Badge, Button, Spinner, StatusDot } from "@/components/ui";
+import { Badge, Button, Paginator, Spinner, StatusDot, usePagination } from "@/components/ui";
 import { exportUrl, tradesApi } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 import type { Trade, TradeStatus } from "@/lib/types";
@@ -148,10 +148,17 @@ function JournalsInner() {
     return rows;
   }, [trades, search, statusFilter, tagFilter, sortKey, sortDesc]);
 
+  const pagination = usePagination(filtered, "journals");
+
+  // Reset to page 1 whenever filters change
+  // (filtering re-creates `filtered`, so pagination.slice auto-adjusts via safePage)
+
   const groups = useMemo(() => {
-    if (group === "none") return [{ key: "all", label: "", rows: filtered }];
+    // Paginate the filtered list first, then group the visible page
+    const pageRows = pagination.slice;
+    if (group === "none") return [{ key: "all", label: "", rows: pageRows }];
     const map = new Map<string, Trade[]>();
-    for (const t of filtered) {
+    for (const t of pageRows) {
       let k = "—";
       if (group === "status") k = statusLabel(t.status);
       else if (group === "direction") k = t.direction;
@@ -160,7 +167,8 @@ function JournalsInner() {
       map.get(k)!.push(t);
     }
     return [...map.entries()].map(([key, rows]) => ({ key, label: key, rows }));
-  }, [filtered, group]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.slice, group]);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -259,6 +267,17 @@ function JournalsInner() {
         </Button>
       </div>
 
+      {/* Paginator top */}
+      <Paginator
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        pageSize={pagination.pageSize}
+        total={pagination.total}
+        start={pagination.start}
+        setPage={pagination.setPage}
+        setPageSize={pagination.setPageSize}
+      />
+
       {filtered.length === 0 && (
         <div className="tj-card p-10 text-center text-muted">
           معامله‌ای یافت نشد.
@@ -286,6 +305,19 @@ function JournalsInner() {
           )}
         </div>
       ))}
+
+      {/* Paginator bottom */}
+      {filtered.length > 0 && (
+        <Paginator
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          total={pagination.total}
+          start={pagination.start}
+          setPage={pagination.setPage}
+          setPageSize={pagination.setPageSize}
+        />
+      )}
     </div>
   );
 }
