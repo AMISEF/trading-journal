@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import EmailStr
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
@@ -15,7 +15,7 @@ from app.api.serializers import trade_to_out, user_to_out
 from app.core.deps import get_current_admin, get_db
 from app.core.security import hash_password
 from app.models.template import ChecklistTemplate, ReasonTemplate
-from app.models.trade import Trade
+from app.models.trade import TakeProfit, Trade
 from app.models.user import User
 from app.schemas.template import ChecklistOut
 from app.schemas.base import CamelModel
@@ -231,16 +231,21 @@ async def admin_delete_trade(
     _admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    trade = await db.get(Trade, trade_id)
-    if trade is None:
+    # Read only the columns we need — avoids loading the ORM relationship and the
+    # async lazy-load cascade that fails for trades that have take_profits.
+    row = await db.execute(
+        select(Trade.user_id, Trade.number).where(Trade.id == trade_id)
+    )
+    found = row.first()
+    if found is None:
         raise HTTPException(status_code=404, detail="Trade not found")
-    user_id = trade.user_id
-    deleted_number = trade.number
-    # Eager-load take_profits so the delete-orphan cascade does not trigger a
-    # lazy load during commit (which fails under async SQLAlchemy).
-    await db.refresh(trade, attribute_names=["take_profits"])
-    await db.delete(trade)
-    await db.flush()  # send DELETE to DB before the renumber UPDATE
+    user_id, deleted_number = found
+
+    # Delete children then the trade with plain Core statements (no ORM cascade),
+    # then renumber. Statements run sequentially in one transaction, so the row
+    # is gone before the renumber UPDATE and no unique constraint can clash.
+    await db.execute(delete(TakeProfit).where(TakeProfit.trade_id == trade_id))
+    await db.execute(delete(Trade).where(Trade.id == trade_id))
     await db.execute(
         update(Trade)
         .where(Trade.user_id == user_id, Trade.number > deleted_number)
