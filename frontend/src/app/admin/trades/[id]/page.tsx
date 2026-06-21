@@ -32,6 +32,8 @@ function Inner() {
   const { trade, setTrade, reset } = useTrade();
   const [ready, setReady] = useState(false);
   const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplate[]>([]);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     adminApi
@@ -39,18 +41,61 @@ function Inner() {
       .then((t) => {
         setTrade(t);
         setReady(true);
-        // Load the trade owner's checklist templates.
         adminApi.userChecklists(String(t.userId)).then(setChecklistTemplates).catch(() => {});
       })
       .catch(() => setReady(true));
     return () => reset();
   }, [id, setTrade, reset]);
 
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await adminApi.deleteTrade(id);
+      router.back();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (!ready) return <Spinner label="در حال بارگذاری معامله…" />;
   if (!trade) return <p className="text-loss">معامله یافت نشد.</p>;
 
   return (
     <div className="space-y-5">
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="tj-card w-full max-w-sm space-y-4 p-6">
+            <h2 className="text-lg font-bold text-loss">حذف ژورنال</h2>
+            <p className="text-sm text-muted">
+              آیا از حذف معامله{" "}
+              <span className="font-bold text-foreground">
+                #{faNum(trade.number)}{" "}
+                <span dir="ltr">{trade.symbol || ""}</span>
+              </span>{" "}
+              مطمئن هستید؟ این عمل برگشت‌پذیر نیست.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-loss py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "در حال حذف…" : "بله، حذف شود"}
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-surface-2"
+                onClick={() => setShowConfirm(false)}
+                disabled={deleting}
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="tj-card flex items-center justify-between gap-3 p-4">
         <div className="flex items-center gap-3">
           <button onClick={() => router.back()} className="text-sm text-primary">
@@ -63,7 +108,15 @@ function Inner() {
           </div>
           <StatusBadge status={trade.status} />
         </div>
-        <Badge tone="muted">حالت فقط‌خواندنی</Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone="muted">حالت فقط‌خواندنی</Badge>
+          <button
+            className="rounded px-3 py-1.5 text-sm text-loss border border-loss/30 hover:bg-loss/10 transition-colors"
+            onClick={() => setShowConfirm(true)}
+          >
+            حذف ژورنال
+          </button>
+        </div>
       </div>
 
       <TradeTabs readOnly checklistTemplates={checklistTemplates} />

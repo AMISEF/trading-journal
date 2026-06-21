@@ -213,6 +213,8 @@ export const adminApi = {
     http.get<ChecklistTemplate[]>(`/admin/users/${id}/checklists`).then((r) => r.data),
   trade: (id: string) =>
     http.get<Trade>(`/admin/trades/${id}`).then((r) => r.data),
+  deleteTrade: (id: string) =>
+    http.delete(`/admin/trades/${id}`).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------
