@@ -66,8 +66,9 @@ function Inner() {
       setTrades((prev) => prev ? prev.filter((t) => t.id !== confirmTrade.id) : prev);
       setConfirmTrade(null);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setDeleteError(msg || "حذف با خطا مواجه شد.");
+      const resp = (e as { response?: { data?: { detail?: string }; status?: number } })?.response;
+      const msg = resp?.data?.detail ?? `خطای سرور (${resp?.status ?? "?"})`;
+      setDeleteError(msg);
     } finally {
       setDeleting(false);
     }

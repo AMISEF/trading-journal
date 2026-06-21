@@ -240,6 +240,7 @@ async def admin_delete_trade(
     # lazy load during commit (which fails under async SQLAlchemy).
     await db.refresh(trade, attribute_names=["take_profits"])
     await db.delete(trade)
+    await db.flush()  # send DELETE to DB before the renumber UPDATE
     await db.execute(
         update(Trade)
         .where(Trade.user_id == user_id, Trade.number > deleted_number)
