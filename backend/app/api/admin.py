@@ -236,6 +236,9 @@ async def admin_delete_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
     user_id = trade.user_id
     deleted_number = trade.number
+    # Eager-load take_profits so the delete-orphan cascade does not trigger a
+    # lazy load during commit (which fails under async SQLAlchemy).
+    await db.refresh(trade, attribute_names=["take_profits"])
     await db.delete(trade)
     await db.execute(
         update(Trade)
