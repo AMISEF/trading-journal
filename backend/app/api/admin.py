@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import EmailStr
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
@@ -223,6 +223,26 @@ async def delete_user(
     await db.delete(target)
     await db.commit()
     return {"ok": True}
+
+
+@router.delete("/trades/{trade_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def admin_delete_trade(
+    trade_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    trade = await db.get(Trade, trade_id)
+    if trade is None:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    user_id = trade.user_id
+    deleted_number = trade.number
+    await db.delete(trade)
+    await db.execute(
+        update(Trade)
+        .where(Trade.user_id == user_id, Trade.number > deleted_number)
+        .values(number=Trade.number - 1)
+    )
+    await db.commit()
 
 
 @router.post("/users/{user_id}/reset-password")

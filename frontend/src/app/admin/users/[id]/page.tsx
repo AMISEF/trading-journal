@@ -30,6 +30,9 @@ function Inner() {
   const userId = String(params.id);
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [search, setSearch] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmTrade, setConfirmTrade] = useState<Trade | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     adminApi.userTrades(userId).then(setTrades).catch(() => setTrades([]));
@@ -53,8 +56,54 @@ function Inner() {
   const pnl = (t: Trade) => t.calc?.realizedPnl ?? t.realizedPnl ?? null;
   const rr  = (t: Trade) => t.calc?.rrAchieved  ?? t.rrAchieved  ?? null;
 
+  async function handleDeleteConfirm() {
+    if (!confirmTrade) return;
+    setDeleting(true);
+    try {
+      await adminApi.deleteTrade(String(confirmTrade.id));
+      setTrades((prev) => prev ? prev.filter((t) => t.id !== confirmTrade.id) : prev);
+      setConfirmTrade(null);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
+      {confirmTrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="tj-card w-full max-w-sm space-y-4 p-6">
+            <h2 className="text-lg font-bold text-loss">حذف ژورنال</h2>
+            <p className="text-sm text-muted">
+              آیا از حذف معامله{" "}
+              <span className="font-bold text-foreground">
+                #{faNum(confirmTrade.number)}{" "}
+                <span dir="ltr">{confirmTrade.symbol || ""}</span>
+              </span>{" "}
+              مطمئن هستید؟ این عمل برگشت‌پذیر نیست.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-loss py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+              >
+                {deleting ? "در حال حذف…" : "بله، حذف شود"}
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-surface-2"
+                onClick={() => setConfirmTrade(null)}
+                disabled={deleting}
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <button onClick={() => router.push("/admin")} className="text-sm text-primary">
         → بازگشت به کاربران
       </button>
@@ -100,6 +149,7 @@ function Inner() {
                   <th className="p-3">نتیجه</th>
                   <th className="p-3">برچسب‌ها</th>
                   <th className="p-3">وضعیت</th>
+                  <th className="p-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -154,6 +204,14 @@ function Inner() {
                     </td>
                     <td className="p-3">
                       <StatusDot status={t.status} pnl={pnl(t)} exitType={t.exitType} />
+                    </td>
+                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="rounded px-2 py-1 text-xs text-loss hover:bg-loss/10 transition-colors"
+                        onClick={() => setConfirmTrade(t)}
+                      >
+                        حذف
+                      </button>
                     </td>
                   </tr>
                 ))}
