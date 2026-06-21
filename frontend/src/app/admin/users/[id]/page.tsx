@@ -33,6 +33,7 @@ function Inner() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmTrade, setConfirmTrade] = useState<Trade | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     adminApi.userTrades(userId).then(setTrades).catch(() => setTrades([]));
@@ -59,10 +60,14 @@ function Inner() {
   async function handleDeleteConfirm() {
     if (!confirmTrade) return;
     setDeleting(true);
+    setDeleteError("");
     try {
       await adminApi.deleteTrade(String(confirmTrade.id));
       setTrades((prev) => prev ? prev.filter((t) => t.id !== confirmTrade.id) : prev);
       setConfirmTrade(null);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setDeleteError(msg || "حذف با خطا مواجه شد.");
     } finally {
       setDeleting(false);
     }
@@ -82,6 +87,7 @@ function Inner() {
               </span>{" "}
               مطمئن هستید؟ این عمل برگشت‌پذیر نیست.
             </p>
+            {deleteError && <p className="text-sm text-loss">{deleteError}</p>}
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
@@ -94,7 +100,7 @@ function Inner() {
               <button
                 type="button"
                 className="rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-surface-2"
-                onClick={() => setConfirmTrade(null)}
+                onClick={() => { setConfirmTrade(null); setDeleteError(""); }}
                 disabled={deleting}
               >
                 انصراف

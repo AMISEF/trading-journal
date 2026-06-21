@@ -34,6 +34,7 @@ function Inner() {
   const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplate[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     adminApi
@@ -49,10 +50,13 @@ function Inner() {
 
   async function handleDelete() {
     setDeleting(true);
+    setDeleteError("");
     try {
       await adminApi.deleteTrade(id);
       router.back();
-    } finally {
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setDeleteError(msg || "حذف با خطا مواجه شد.");
       setDeleting(false);
     }
   }
@@ -74,6 +78,7 @@ function Inner() {
               </span>{" "}
               مطمئن هستید؟ این عمل برگشت‌پذیر نیست.
             </p>
+            {deleteError && <p className="text-sm text-loss">{deleteError}</p>}
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
@@ -86,7 +91,7 @@ function Inner() {
               <button
                 type="button"
                 className="rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-surface-2"
-                onClick={() => setShowConfirm(false)}
+                onClick={() => { setShowConfirm(false); setDeleteError(""); }}
                 disabled={deleting}
               >
                 انصراف
