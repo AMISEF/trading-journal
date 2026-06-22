@@ -384,6 +384,7 @@ function TradeTable({
               />
             </th>
             <th className="p-3">#</th>
+            <th className="p-3">ش.معامله</th>
             <th className="p-3">نماد</th>
             <th className="p-3">جهت</th>
             <th className="p-3">VOL</th>
@@ -413,6 +414,9 @@ function TradeTable({
               </td>
               <td className="cursor-pointer p-3 text-center font-medium" onClick={() => onOpen(t.id)}>
                 {faNum(t.number)}
+              </td>
+              <td className="cursor-pointer p-3 text-center" dir="ltr" onClick={() => onOpen(t.id)}>
+                {t.tradeNumber != null ? <span className="font-medium text-primary">{faNum(t.tradeNumber)}</span> : <span className="text-muted">—</span>}
               </td>
               <td className="cursor-pointer p-3 text-center font-medium" dir="ltr" onClick={() => onOpen(t.id)}>
                 {t.symbol || "—"}
@@ -470,6 +474,9 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
               <StatusDot status={t.status} pnl={pnlOf(t)} exitType={t.exitType} />
               <span className="font-bold" dir="ltr">{t.symbol || "—"}</span>
               <span className="text-xs text-muted">#{faNum(t.number)}</span>
+              {t.tradeNumber != null && (
+                <span className="text-xs font-medium text-primary" dir="ltr">ش.{faNum(t.tradeNumber)}</span>
+              )}
             </div>
             <DirCell dir={t.direction} />
           </div>

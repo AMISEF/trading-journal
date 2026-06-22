@@ -147,6 +147,7 @@ function Inner() {
               <thead className="text-muted">
                 <tr className="border-b border-border">
                   <th className="p-3">#</th>
+                  <th className="p-3">ش.معامله</th>
                   <th className="p-3">نماد</th>
                   <th className="p-3">جهت</th>
                   <th className="p-3">تایم‌فریم</th>
@@ -167,6 +168,7 @@ function Inner() {
                     className="cursor-pointer border-b border-border/60 hover:bg-surface-2 text-right"
                   >
                     <td className="p-3 font-medium text-primary">{faNum(t.number)}</td>
+                    <td className="p-3" dir="ltr">{t.tradeNumber != null ? <span className="font-medium text-primary">{faNum(t.tradeNumber)}</span> : <span className="text-muted">—</span>}</td>
                     <td className="p-3" dir="ltr">{t.symbol || "—"}</td>
                     <td className="p-3">
                       {t.direction === "LONG" ? (

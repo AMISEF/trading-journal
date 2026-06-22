@@ -263,6 +263,22 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
         />
       </Field>
 
+      {/* Manual trade reference number */}
+      <Field label="شماره معامله">
+        <input
+          type="number"
+          dir="ltr"
+          className="tj-input"
+          disabled={readOnly}
+          placeholder="اختیاری"
+          value={trade.tradeNumber ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            patch({ tradeNumber: v === "" ? null : Math.trunc(Number(v)) });
+          }}
+        />
+      </Field>
+
       {/* Entry levels (DCA / پله‌ای) */}
       <div className="md:col-span-2">
         <div className="mb-2 flex items-center justify-between">

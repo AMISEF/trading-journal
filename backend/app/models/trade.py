@@ -30,6 +30,7 @@ class Trade(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     number: Mapped[int] = mapped_column(Integer)
+    trade_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # --- Core trade fields ---
     symbol: Mapped[str | None] = mapped_column(String(50), nullable=True)

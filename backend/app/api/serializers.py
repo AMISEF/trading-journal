@@ -39,6 +39,7 @@ def trade_to_out(
         id=trade.id,
         user_id=trade.user_id,
         number=trade.number,
+        trade_number=trade.trade_number,
         symbol=trade.symbol,
         direction=trade.direction,
         status=trade.status,

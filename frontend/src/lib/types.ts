@@ -68,6 +68,7 @@ export interface Trade {
   id: string;
   userId: string;
   number: number;
+  tradeNumber: number | null;
   symbol: string;
   direction: Direction;
   status: TradeStatus;

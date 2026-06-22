@@ -18,12 +18,12 @@ router = APIRouter(prefix="/api/trades", tags=["trades"])
 
 # Fields that can be set directly on the Trade model from TradeIn.
 _SCALAR_FIELDS = [
-    "symbol", "direction", "status", "entry_price", "leverage", "margin_percent",
-    "stop_loss", "analysis_tf", "trigger_tf", "is_risk_free_plan", "open_date",
-    "close_date", "exit_type", "exit_price", "trail_exit_value", "trail_is_percent",
-    "is_risk_free_mgmt", "emotions", "checklist_ticks", "entry_reasons",
-    "exit_reasons", "entry_note", "exit_note", "general_note", "image_before",
-    "image_after", "tags",
+    "trade_number", "symbol", "direction", "status", "entry_price", "leverage",
+    "margin_percent", "stop_loss", "analysis_tf", "trigger_tf", "is_risk_free_plan",
+    "open_date", "close_date", "exit_type", "exit_price", "trail_exit_value",
+    "trail_is_percent", "is_risk_free_mgmt", "emotions", "checklist_ticks",
+    "entry_reasons", "exit_reasons", "entry_note", "exit_note", "general_note",
+    "image_before", "image_after", "tags",
 ]
 
 

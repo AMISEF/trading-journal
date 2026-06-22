@@ -37,6 +37,7 @@ class EntryLevelOut(CamelModel):
 class TradeIn(CamelModel):
     """All fields optional so PATCH can accept any subset (auto-save)."""
 
+    trade_number: int | None = None
     symbol: str | None = None
     direction: str | None = None  # LONG | SHORT
     status: str | None = None  # PLANNED | OPEN | CLOSED
@@ -97,6 +98,7 @@ class TradeOut(CamelModel):
     id: int
     user_id: int
     number: int
+    trade_number: int | None = None
     symbol: str | None = None
     direction: str
     status: str
