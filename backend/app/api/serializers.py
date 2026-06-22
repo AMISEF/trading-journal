@@ -81,6 +81,7 @@ def trade_to_out(
                 "order": lvl.get("order"),
                 "price": lvl.get("price"),
                 "margin_percent": lvl.get("margin_percent"),
+                "is_activated": lvl.get("is_activated"),
             }
             for lvl in (trade.entry_levels or [])
         ],

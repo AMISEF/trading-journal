@@ -128,6 +128,9 @@ function formatPrice(v: number | null | undefined): string {
  * levels are two equal-dollar buys ($20 + $20) — the second is never reduced.
  * The average is quantity-weighted (the real exchange breakeven):
  *   avgEntry = Σ marginᵢ / Σ(marginᵢ / priceᵢ)
+ *
+ * This function ignores isActivated — it always uses ALL levels. Use it for
+ * planning/display purposes. For stored calc values, use deriveActivatedEntry.
  */
 export function deriveEntryLevels(levels: EntryLevel[]): {
   avgEntry: number | null;
@@ -152,6 +155,19 @@ export function deriveEntryLevels(levels: EntryLevel[]): {
   return { avgEntry: null, totalPct: 0 };
 }
 
+/**
+ * Like deriveEntryLevels but respects activation status.
+ * Level 1 is always included; levels 2+ are excluded only when isActivated === false.
+ * (isActivated undefined = treated as activated, for backward compat.)
+ */
+export function deriveActivatedEntry(levels: EntryLevel[]): {
+  avgEntry: number | null;
+  totalPct: number;
+} {
+  const active = levels.filter((l, i) => i === 0 || l.isActivated !== false);
+  return deriveEntryLevels(active);
+}
+
 export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
   const trade = useTrade((s) => s.trade);
   const patch = useTrade((s) => s.patch);
@@ -174,10 +190,10 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
       : [{ order: 1, price: trade.entryPrice, marginPercent: trade.marginPercent }];
 
   // Commit a new set of levels: re-number them and keep entryPrice/marginPercent
-  // (the canonical fields the calc engine reads) in sync with the derived values.
+  // (the canonical fields the calc engine reads) in sync with the activated levels.
   const commitLevels = (next: EntryLevel[]) => {
     const reordered = next.map((l, i) => ({ ...l, order: i + 1 }));
-    const { avgEntry, totalPct } = deriveEntryLevels(reordered);
+    const { avgEntry, totalPct } = deriveActivatedEntry(reordered);
     patch({
       entryLevels: reordered,
       entryPrice: avgEntry,

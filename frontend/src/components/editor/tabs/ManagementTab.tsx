@@ -12,8 +12,9 @@ import { useAuth } from "@/store/auth";
 import { useCalcPreview } from "../useCalcPreview";
 import { JalaliDateTime } from "../JalaliDateTime";
 import { Field, NumberInput, Switch } from "../fields";
-import { formatSignedUsd, formatRatio, pnlColorClass } from "@/lib/format";
+import { faNum, formatSignedUsd, formatRatio, pnlColorClass } from "@/lib/format";
 import type { ExitType, TakeProfit } from "@/lib/types";
+import { deriveActivatedEntry } from "./EssentialsTab";
 
 // Maps an exit-zone selection to an exitType + closes the trade.
 const BASE_EXIT_OPTIONS: { value: string; label: string; exitType: ExitType }[] = [
@@ -39,6 +40,22 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
   const calc = readOnly ? (trade?.calc ?? null) : liveCalc;
 
   if (!trade) return null;
+
+  const levels = trade.entryLevels ?? [];
+
+  const toggleLevelActivation = (levelIndex: number, activated: boolean) => {
+    if (readOnly) return;
+    const newLevels = levels.map((l, idx) =>
+      idx === levelIndex ? { ...l, isActivated: activated } : l
+    );
+    const reordered = newLevels.map((l, i) => ({ ...l, order: i + 1 }));
+    const { avgEntry, totalPct } = deriveActivatedEntry(reordered);
+    patch({
+      entryLevels: reordered,
+      entryPrice: avgEntry,
+      marginPercent: totalPct > 0 ? Math.round(totalPct * 100) / 100 : null,
+    });
+  };
 
   const updateTp = (i: number, fields: Partial<TakeProfit>) => {
     const tps = trade.takeProfits.map((tp, idx) =>
@@ -112,6 +129,44 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
 
   return (
     <div className="space-y-6">
+      {/* Entry level activation — shown only for multi-level trades */}
+      {levels.length > 1 && (
+        <div>
+          <label className="tj-label">فعال‌سازی پله‌های ورود</label>
+          <div className="space-y-2">
+            {levels.slice(1).map((level, i) => {
+              const levelIndex = i + 1;
+              const activated = level.isActivated !== false;
+              return (
+                <div key={levelIndex} className="tj-card p-3 flex items-center justify-between gap-3">
+                  <div className="text-sm">
+                    <span className="font-medium">پله {faNum(levelIndex + 1)}</span>
+                    {level.price != null && (
+                      <span dir="ltr" className="text-muted mx-2">{level.price}</span>
+                    )}
+                    {level.marginPercent != null && (
+                      <span className="text-muted">({faNum(level.marginPercent)}%)</span>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded accent-primary"
+                      disabled={readOnly}
+                      checked={activated}
+                      onChange={(e) => toggleLevelActivation(levelIndex, e.target.checked)}
+                    />
+                    <span className={`text-sm ${activated ? "text-profit" : "text-muted"}`}>
+                      {activated ? "فعال شد" : "فعال نشد"}
+                    </span>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* TPs with save% */}
       <div>
         <label className="tj-label">تارگت‌ها و درصد ذخیره</label>

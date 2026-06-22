@@ -51,7 +51,13 @@ def derive_entry_from_levels(
         return None, None
     priced: list[float] = []          # prices that are set
     weighted: list[tuple[float, float]] = []  # (price, margin_percent)
-    for lvl in levels:
+    for i, lvl in enumerate(levels):
+        # Level 1 always included; levels 2+ skipped when explicitly deactivated.
+        order = lvl.get("order")
+        is_first = (i == 0) or (order == 1)
+        is_activated = lvl.get("is_activated", lvl.get("isActivated"))
+        if not is_first and is_activated is False:
+            continue
         price = _to_float(lvl.get("price"))
         pct = _to_float(lvl.get("margin_percent", lvl.get("marginPercent")))
         if price and price > 0:

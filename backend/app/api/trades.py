@@ -59,6 +59,7 @@ def _apply_entry_levels(trade: Trade, levels: list[dict]) -> None:
             "order": lvl.get("order", i + 1),
             "price": lvl.get("price"),
             "margin_percent": lvl.get("margin_percent"),
+            "is_activated": lvl.get("is_activated"),
         }
         for i, lvl in enumerate(levels)
     ]

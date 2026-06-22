@@ -34,6 +34,8 @@ export interface EntryLevel {
   order: number;
   price: number | null;
   marginPercent: number | null;
+  /** undefined/true = activated (included in calc); false = not activated (excluded). */
+  isActivated?: boolean;
 }
 
 /** Per-TP computed numbers returned by the calc engine. */

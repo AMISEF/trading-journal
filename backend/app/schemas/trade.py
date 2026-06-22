@@ -24,12 +24,14 @@ class EntryLevelIn(CamelModel):
     order: int
     price: float | None = None
     margin_percent: float | None = None
+    is_activated: bool | None = None
 
 
 class EntryLevelOut(CamelModel):
     order: int
     price: float | None = None
     margin_percent: float | None = None
+    is_activated: bool | None = None
 
 
 class TradeIn(CamelModel):
