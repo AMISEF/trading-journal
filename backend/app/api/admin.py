@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import EmailStr
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
@@ -246,10 +246,16 @@ async def admin_delete_trade(
     # is gone before the renumber UPDATE and no unique constraint can clash.
     await db.execute(delete(TakeProfit).where(TakeProfit.trade_id == trade_id))
     await db.execute(delete(Trade).where(Trade.id == trade_id))
+    # Two-step renumber to avoid per-row unique constraint violations in PostgreSQL.
+    # Step 1: negate all affected numbers (safe — all positive numbers become negative)
     await db.execute(
-        update(Trade)
-        .where(Trade.user_id == user_id, Trade.number > deleted_number)
-        .values(number=Trade.number - 1)
+        text("UPDATE trades SET number = -number WHERE user_id = :uid AND number > :n"),
+        {"uid": user_id, "n": deleted_number},
+    )
+    # Step 2: shift negated numbers to their final values (-n → n-1)
+    await db.execute(
+        text("UPDATE trades SET number = (-number) - 1 WHERE user_id = :uid AND number < 0"),
+        {"uid": user_id},
     )
     await db.commit()
 
