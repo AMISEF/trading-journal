@@ -445,6 +445,11 @@ function TradeTable({
               <td className="cursor-pointer p-3 text-center" dir="ltr" onClick={() => onOpen(t.id)}>
                 <div className={pnlColorClass(pnlOf(t))}>{formatSignedUsd(pnlOf(t))}</div>
                 <div className={`text-xs ${pnlColorClass(pctOf(t))}`}>{formatPct(pctOf(t))}</div>
+                {t.calc?.capitalPct != null && t.calc.capitalPct !== 0 && (
+                  <div className={`text-xs font-medium ${pnlColorClass(t.calc.capitalPct)}`}>
+                    {t.calc.capitalPct > 0 ? "+" : ""}{t.calc.capitalPct.toFixed(2)}٪ سرمایه
+                  </div>
+                )}
               </td>
               <td className="p-3">
                 <TagChips tags={t.tags ?? []} colorMap={colorMap} />
@@ -487,6 +492,13 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
             <Info label="R:R کسب" value={formatRatio(t.calc?.rrAchieved ?? t.rrAchieved)} />
             <Info label="تاریخ" value={formatJalaliDate(t.openDate)} />
             <Info label="نتیجه" value={formatSignedUsd(pnlOf(t))} cls={pnlColorClass(pnlOf(t))} />
+            {t.calc?.capitalPct != null && t.calc.capitalPct !== 0 && (
+              <Info
+                label="% سرمایه"
+                value={`${t.calc.capitalPct > 0 ? "+" : ""}${t.calc.capitalPct.toFixed(2)}%`}
+                cls={pnlColorClass(t.calc.capitalPct)}
+              />
+            )}
           </div>
           {(t.tags ?? []).length > 0 && (
             <div className="mt-2">

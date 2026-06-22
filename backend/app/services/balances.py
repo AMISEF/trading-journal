@@ -21,6 +21,20 @@ def _tp_dicts(trade: Trade) -> list[dict]:
     ]
 
 
+def _count_activated_levels(trade: Trade) -> int:
+    """Count how many entry levels are active (level 1 always + levels 2+ if not deactivated)."""
+    levels = trade.entry_levels or []
+    if not levels:
+        return 1
+    n = 0
+    for i, lvl in enumerate(levels):
+        is_first = (i == 0) or (lvl.get("order") == 1)
+        is_activated = lvl.get("is_activated", lvl.get("isActivated"))
+        if is_first or is_activated is not False:
+            n += 1
+    return max(1, n)
+
+
 def _txn_sum(
     transactions: list[WalletTransaction] | None,
     before_date=None,
@@ -123,4 +137,5 @@ def compute_for_trade(
         trail_is_percent=bool(trade.trail_is_percent),
         exit_price=trade.exit_price,
         session=session_for(trade.open_date),
+        n_activated_levels=_count_activated_levels(trade),
     )

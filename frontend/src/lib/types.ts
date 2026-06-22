@@ -59,6 +59,7 @@ export interface Calc {
   rrAchieved: number;
   realizedPnl: number;
   resultPct: number;
+  capitalPct: number;
   session: string | null;
   perTp: PerTpCalc[];
 }
@@ -152,6 +153,7 @@ export interface CalcPreviewRequest {
   trailExitValue?: number | null;
   trailIsPercent?: boolean | null;
   walletBalance?: number | null;
+  nActivatedLevels?: number;
 }
 
 export interface DashboardData {

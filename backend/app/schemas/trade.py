@@ -88,6 +88,7 @@ class CalcOut(CamelModel):
     rr_achieved: float | None = None
     realized_pnl: float = 0.0
     result_pct: float = 0.0
+    capital_pct: float = 0.0
     session: str | None = None
     per_tp: list[PerTpOut] = Field(default_factory=list)
 
@@ -151,3 +152,4 @@ class CalcPreviewIn(CamelModel):
     trail_exit_value: float | None = None
     trail_is_percent: bool | None = None
     wallet_balance: float | None = None
+    n_activated_levels: int = 1

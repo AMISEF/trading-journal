@@ -13,6 +13,11 @@ import type { Calc, Trade } from "@/lib/types";
 export function useCalcPreview(trade: Trade | null, walletBalance: number) {
   const [calc, setCalc] = useState<Calc | null>(trade?.calc ?? null);
 
+  // Count entry levels that are active (level 1 always + levels 2+ unless deactivated).
+  const nActivatedLevels = trade
+    ? Math.max(1, trade.entryLevels.filter((l, i) => i === 0 || l.isActivated !== false).length)
+    : 1;
+
   // Build a stable signature of the inputs that affect the calc.
   const sig = trade
     ? JSON.stringify({
@@ -27,6 +32,7 @@ export function useCalcPreview(trade: Trade | null, walletBalance: number) {
         tv: trade.trailExitValue,
         tp: trade.trailIsPercent,
         w: walletBalance,
+        n: nActivatedLevels,
       })
     : "";
   const debouncedSig = useDebounced(sig, 500);
@@ -50,6 +56,7 @@ export function useCalcPreview(trade: Trade | null, walletBalance: number) {
         trailExitValue: trade.trailExitValue,
         trailIsPercent: trade.trailIsPercent,
         walletBalance,
+        nActivatedLevels,
       })
       .then((c) => !cancelled && setCalc(c))
       .catch(() => {});

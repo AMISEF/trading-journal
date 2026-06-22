@@ -230,22 +230,65 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
 
       {/* Stop loss summary */}
       <div className="tj-card p-4">
-        <div className="mb-2 text-sm font-medium">حد ضرر</div>
-        <div className="grid grid-cols-3 gap-3 text-sm text-right">
+        <div className="mb-2 text-sm font-medium">حد ضرر (ریسک ۱R)</div>
+        <div className="grid grid-cols-4 gap-3 text-sm text-right">
           <div>
             <div className="text-xs text-muted mb-0.5">قیمت</div>
             <div className="font-medium" dir="ltr">{trade.stopLoss ?? "—"}</div>
           </div>
           <div>
-            <div className="text-xs text-muted mb-0.5">درصد</div>
+            <div className="text-xs text-muted mb-0.5">درصد موضع</div>
             <div className="text-loss" dir="ltr">{lossPct != null ? `${lossPct.toFixed(2)}%` : "—"}</div>
           </div>
           <div>
             <div className="text-xs text-muted mb-0.5">دلار</div>
             <div className="text-loss" dir="ltr">{formatSignedUsd(lossDollar)}</div>
           </div>
+          <div>
+            <div className="text-xs text-muted mb-0.5">% سرمایه</div>
+            <div className="text-loss" dir="ltr">
+              {calc && calc.risk1r && previewBalance
+                ? `${((calc.risk1r / previewBalance) * 100).toFixed(2)}%`
+                : "—"}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Trade result — shown when trade is closed */}
+      {trade.exitType && trade.exitType !== "NOT_ACTIVATED" && (
+        <div className="tj-card p-4">
+          <div className="mb-2 text-sm font-medium">نتیجه معامله</div>
+          <div className="grid grid-cols-3 gap-3 text-sm text-right">
+            <div>
+              <div className="text-xs text-muted mb-0.5">سود / زیان</div>
+              <div className={`font-bold ${pnlColorClass(calc?.realizedPnl)}`} dir="ltr">
+                {formatSignedUsd(calc?.realizedPnl ?? null)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted mb-0.5">% مارجین</div>
+              <div className={pnlColorClass(calc?.resultPct)} dir="ltr">
+                {calc?.resultPct != null ? `${calc.resultPct.toFixed(2)}%` : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted mb-0.5">% سرمایه</div>
+              <div className={`font-bold ${pnlColorClass(calc?.capitalPct)}`} dir="ltr">
+                {calc?.capitalPct != null ? `${calc.capitalPct.toFixed(2)}%` : "—"}
+              </div>
+            </div>
+          </div>
+          {calc?.rrAchieved != null && (
+            <div className="mt-2 text-xs text-muted">
+              R:R کسب‌شده:{" "}
+              <span className={`font-semibold ${pnlColorClass(calc.rrAchieved)}`} dir="ltr">
+                {formatRatio(calc.rrAchieved)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Risk-free management */}
       <Switch
