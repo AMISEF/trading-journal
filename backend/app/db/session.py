@@ -23,15 +23,29 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create all tables if they don't exist yet.
+    """Create all tables and apply incremental column migrations on startup.
 
-    Phase 1 keeps things simple: instead of running Alembic migrations, we just
-    create the tables on startup. Importing the models here ensures they are
-    registered on Base.metadata before create_all runs.
+    Uses create_all for new tables, then ALTER TABLE … ADD COLUMN IF NOT EXISTS
+    for columns added after the initial schema was deployed.
     """
+    from sqlalchemy import text
+
     # Import models so they register with Base.metadata.
     from app.models import user, trade, template, wallet_transaction  # noqa: F401
     from app.db.base import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Incremental column migrations (safe to re-run — IF NOT EXISTS guard).
+        migrations = [
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_number INTEGER",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_levels JSONB",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS balance_snapshot FLOAT",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS exit_price FLOAT",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS user_group VARCHAR(50)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS capital_reset_date TIMESTAMP WITH TIME ZONE",
+        ]
+        for stmt in migrations:
+            await conn.execute(text(stmt))
