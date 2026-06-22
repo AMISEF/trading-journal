@@ -14,7 +14,7 @@ import {
   pnlColorClass,
 } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
-import type { Trade } from "@/lib/types";
+import type { Trade, User } from "@/lib/types";
 
 export default function AdminUserTradesPage() {
   return (
@@ -29,30 +29,70 @@ function Inner() {
   const router = useRouter();
   const userId = String(params.id);
   const [trades, setTrades] = useState<Trade[] | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [search, setSearch] = useState("");
-  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmTrade, setConfirmTrade] = useState<Trade | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupError, setGroupError] = useState("");
 
   useEffect(() => {
     adminApi.userTrades(userId).then(setTrades).catch(() => setTrades([]));
+    adminApi.users().then((users) => {
+      const u = users.find((u) => String(u.id) === userId);
+      if (u) setUser(u);
+    }).catch(() => {});
   }, [userId]);
 
   const filtered = useMemo(() => {
     if (!trades) return [];
-    if (!search.trim()) return trades;
+    // Sort descending (latest trade first)
+    const sorted = [...trades].sort((a, b) => b.number - a.number);
+    if (!search.trim()) return sorted;
     const q = search.toLowerCase();
-    return trades.filter(
+    return sorted.filter(
       (t) =>
         t.symbol?.toLowerCase().includes(q) ||
         String(t.number).includes(q)
     );
   }, [trades, search]);
 
+  const handleSetGroup = async (group: string | null) => {
+    setGroupBusy(true);
+    setGroupError("");
+    try {
+      const updated = await adminApi.setGroup(userId, group);
+      setUser(updated);
+    } catch {
+      setGroupError("خطا در تغییر گروه");
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const handleResetCapital = async () => {
+    if (!confirm("آیا مطمئن هستید؟ این عمل سرمایه را به ۱۰۰۰ دلار ریست می‌کند و همه معاملات قبلی را قفل می‌کند.")) return;
+    setGroupBusy(true);
+    setGroupError("");
+    try {
+      const updated = await adminApi.resetCapital(userId);
+      setUser(updated);
+      // Refresh trades to reflect locked status
+      const refreshed = await adminApi.userTrades(userId);
+      setTrades(refreshed);
+    } catch {
+      setGroupError("خطا در ریست سرمایه");
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
   const pagination = usePagination(filtered, "admin_user_journals");
 
   if (!trades) return <Spinner label="در حال بارگذاری ژورنال‌ها…" />;
+
+  const isCryptoTeam = user?.userGroup === "CRYPTOSMART_TEAM";
 
   const pnl = (t: Trade) => t.calc?.realizedPnl ?? t.realizedPnl ?? null;
   const rr  = (t: Trade) => t.calc?.rrAchieved  ?? t.rrAchieved  ?? null;
@@ -115,13 +155,65 @@ function Inner() {
         → بازگشت به کاربران
       </button>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">ژورنال‌های کاربر</h1>
+        <h1 className="text-2xl font-bold">
+          ژورنال‌های کاربر
+          {user && (
+            <span className="mr-2 text-base font-normal text-muted">
+              {user.firstName} {user.lastName}
+            </span>
+          )}
+          {isCryptoTeam && (
+            <span className="mr-2 rounded-full bg-amber-100 px-2.5 py-0.5 text-sm font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              Cryptosmart Team
+            </span>
+          )}
+        </h1>
         <input
           className="tj-input w-48"
           placeholder="جستجو (نماد یا شماره)"
           value={search}
           onChange={(e) => { setSearch(e.target.value); pagination.setPage(1); }}
         />
+      </div>
+
+      {/* Cryptosmart Team management */}
+      <div className="tj-card p-4 space-y-3">
+        <div className="text-sm font-semibold">مدیریت گروه Cryptosmart Team</div>
+        <div className="flex flex-wrap gap-2 items-center">
+          {isCryptoTeam ? (
+            <button
+              type="button"
+              disabled={groupBusy}
+              onClick={() => handleSetGroup(null)}
+              className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+            >
+              {groupBusy ? "…" : "حذف از Cryptosmart Team"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={groupBusy}
+              onClick={() => handleSetGroup("CRYPTOSMART_TEAM")}
+              className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+            >
+              {groupBusy ? "…" : "افزودن به Cryptosmart Team"}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={groupBusy}
+            onClick={handleResetCapital}
+            className="rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            {groupBusy ? "…" : "ریست سرمایه به $۱۰۰۰ + قفل معاملات"}
+          </button>
+          {user?.capitalResetDate && (
+            <span className="text-xs text-muted">
+              آخرین ریست: {new Date(user.capitalResetDate).toLocaleDateString("fa-IR")}
+            </span>
+          )}
+        </div>
+        {groupError && <p className="text-xs text-loss">{groupError}</p>}
       </div>
 
       {trades.length === 0 && (
@@ -165,9 +257,16 @@ function Inner() {
                   <tr
                     key={t.id}
                     onClick={() => router.push(`/admin/trades/${t.id}`)}
-                    className="cursor-pointer border-b border-border/60 hover:bg-surface-2 text-right"
+                    className={`cursor-pointer border-b border-border/60 text-right ${t.isLocked ? "opacity-60 bg-surface-2" : "hover:bg-surface-2"}`}
                   >
-                    <td className="p-3 font-medium text-primary">{faNum(t.number)}</td>
+                    <td className="p-3 font-medium text-primary">
+                      {faNum(t.number)}
+                      {t.isLocked && (
+                        <span className="mr-1 rounded bg-gray-300 px-1 py-0.5 text-[9px] font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                          قفل
+                        </span>
+                      )}
+                    </td>
                     <td className="p-3" dir="ltr">{t.tradeNumber != null ? <span className="font-medium text-primary">{faNum(t.tradeNumber)}</span> : <span className="text-muted">—</span>}</td>
                     <td className="p-3" dir="ltr">{t.symbol || "—"}</td>
                     <td className="p-3">
@@ -194,6 +293,11 @@ function Inner() {
                       <span className={`block text-xs ${pnlColorClass(t.calc?.resultPct)}`}>
                         {formatPct(t.calc?.resultPct)}
                       </span>
+                      {t.calc?.capitalPct != null && t.calc.capitalPct !== 0 && (
+                        <span className={`block text-xs font-medium ${pnlColorClass(t.calc.capitalPct)}`}>
+                          {t.calc.capitalPct > 0 ? "+" : ""}{t.calc.capitalPct.toFixed(2)}٪ سرمایه
+                        </span>
+                      )}
                     </td>
                     <td className="p-3">
                       {t.tags && t.tags.length > 0 ? (

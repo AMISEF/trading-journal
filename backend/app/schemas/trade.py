@@ -118,6 +118,7 @@ class TradeOut(CamelModel):
     trail_exit_value: float | None = None
     trail_is_percent: bool = False
     is_risk_free_mgmt: bool = False
+    is_locked: bool = False
     realized_pnl: float | None = None
     rr_expected: float | None = None
     rr_achieved: float | None = None

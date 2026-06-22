@@ -402,18 +402,25 @@ function TradeTable({
           {rows.map((t) => (
             <tr
               key={t.id}
-              className={`border-b border-border/60 hover:bg-surface-2 ${selected.has(t.id) ? "bg-primary-soft" : ""}`}
+              className={`border-b border-border/60 ${t.isLocked ? "opacity-60 bg-gray-100 dark:bg-gray-800/40" : `hover:bg-surface-2 ${selected.has(t.id) ? "bg-primary-soft" : ""}`}`}
             >
               <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={selected.has(t.id)}
-                  onChange={() => onToggle(t.id)}
-                  className="cursor-pointer"
-                />
+                {!t.isLocked && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(t.id)}
+                    onChange={() => onToggle(t.id)}
+                    className="cursor-pointer"
+                  />
+                )}
               </td>
               <td className="cursor-pointer p-3 text-center font-medium" onClick={() => onOpen(t.id)}>
                 {faNum(t.number)}
+                {t.isLocked && (
+                  <span className="mr-1 rounded bg-gray-300 px-1 py-0.5 text-[9px] font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    قفل شده
+                  </span>
+                )}
               </td>
               <td className="cursor-pointer p-3 text-center" dir="ltr" onClick={() => onOpen(t.id)}>
                 {t.tradeNumber != null ? <span className="font-medium text-primary">{faNum(t.tradeNumber)}</span> : <span className="text-muted">—</span>}
@@ -472,8 +479,15 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
         <div
           key={t.id}
           onClick={() => onOpen(t.id)}
-          className="tj-card cursor-pointer p-4 hover:border-primary"
+          className={`tj-card cursor-pointer p-4 relative ${t.isLocked ? "opacity-70 bg-gray-100 dark:bg-gray-800/50" : "hover:border-primary"}`}
         >
+          {t.isLocked && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-gray-400/20 dark:bg-gray-700/30">
+              <span className="rounded-lg bg-gray-500/80 px-3 py-1.5 text-sm font-bold text-white">
+                قفل شده
+              </span>
+            </div>
+          )}
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <StatusDot status={t.status} pnl={pnlOf(t)} exitType={t.exitType} />

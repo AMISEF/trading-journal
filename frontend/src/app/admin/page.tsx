@@ -78,7 +78,14 @@ function AdminUsers() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id} className="border-b border-border/60 hover:bg-surface-2">
-                <td className="p-3 font-medium">{u.firstName} {u.lastName}</td>
+                <td className="p-3 font-medium">
+                  {u.firstName} {u.lastName}
+                  {u.userGroup === "CRYPTOSMART_TEAM" && (
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                      Cryptosmart Team
+                    </span>
+                  )}
+                </td>
                 <td className="p-3" dir="ltr">@{u.username}</td>
                 <td className="p-3" dir="ltr">{u.email}</td>
                 <td className="p-3">

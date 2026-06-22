@@ -19,6 +19,8 @@ export interface User {
   role: Role;
   walletMargin: number;
   currentBalance: number;
+  userGroup: string | null;
+  capitalResetDate: string | null;
   createdAt: string;
 }
 
@@ -89,6 +91,7 @@ export interface Trade {
   trailExitValue: number | null;
   trailIsPercent: boolean | null;
   isRiskFreeMgmt: boolean;
+  isLocked: boolean;
   realizedPnl: number | null;
   rrExpected: number | null;
   rrAchieved: number | null;

@@ -24,6 +24,8 @@ def user_to_out(
         role=user.role,
         wallet_margin=user.wallet_margin,
         current_balance=balances.current_balance(user, trades, transactions),
+        user_group=user.user_group,
+        capital_reset_date=user.capital_reset_date,
         created_at=user.created_at,
     )
 
@@ -58,6 +60,7 @@ def trade_to_out(
         trail_exit_value=trade.trail_exit_value,
         trail_is_percent=trade.trail_is_percent,
         is_risk_free_mgmt=trade.is_risk_free_mgmt,
+        is_locked=trade.is_locked,
         realized_pnl=trade.realized_pnl,
         rr_expected=trade.rr_expected,
         rr_achieved=trade.rr_achieved,

@@ -17,8 +17,10 @@ class UserOut(CamelModel):
     last_name: str
     role: str
     wallet_margin: float
-    # currentBalance = walletMargin + sum(realizedPnl of CLOSED trades).
+    # currentBalance = walletMargin + sum(realizedPnl of CLOSED, unlocked trades).
     current_balance: float
+    user_group: str | None = None
+    capital_reset_date: datetime | None = None
     created_at: datetime
 
 

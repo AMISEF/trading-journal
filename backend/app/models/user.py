@@ -28,6 +28,13 @@ class User(Base):
     # Starting wallet/margin balance the user enters manually.
     wallet_margin: Mapped[float] = mapped_column(Float, default=1000.0)
 
+    # Optional group membership (e.g. "CRYPTOSMART_TEAM").
+    user_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Date when capital was last reset (for group members). Trades before this
+    # date are locked and don't affect the running balance.
+    capital_reset_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     # All trades belonging to this user.

@@ -72,6 +72,10 @@ class Trade(Base):
     trail_is_percent: Mapped[bool] = mapped_column(Boolean, default=False)
     is_risk_free_mgmt: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # When True this trade is frozen: excluded from balance calculations and
+    # cannot be edited via the normal PATCH endpoint.
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Computed and persisted results
     realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
     rr_expected: Mapped[float | None] = mapped_column(Float, nullable=True)

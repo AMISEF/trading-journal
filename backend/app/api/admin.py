@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Optional
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import EmailStr
 from sqlalchemy import delete, select, text, update
@@ -54,6 +56,10 @@ class AdminUserUpdate(CamelModel):
 
 class AdminResetPassword(CamelModel):
     new_password: str
+
+
+class AdminSetGroup(CamelModel):
+    user_group: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +264,50 @@ async def admin_delete_trade(
         {"uid": user_id},
     )
     await db.commit()
+
+
+@router.post("/users/{user_id}/set-group", response_model=UserOut)
+async def set_user_group(
+    user_id: int,
+    body: AdminSetGroup,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    """Assign (or remove) a user from a group, e.g. 'CRYPTOSMART_TEAM'."""
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.user_group = body.user_group
+    await db.commit()
+    await db.refresh(target)
+    trades = await crud.load_user_trades(db, target.id)
+    transactions = await crud.load_user_transactions(db, target.id)
+    return user_to_out(target, trades, transactions)
+
+
+@router.post("/users/{user_id}/reset-capital", response_model=UserOut)
+async def reset_user_capital(
+    user_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    """Reset a user's capital to $1000, lock all existing trades, record reset date."""
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.wallet_margin = 1000.0
+    target.capital_reset_date = datetime.now(timezone.utc)
+
+    # Lock all existing trades for this user.
+    await db.execute(
+        update(Trade).where(Trade.user_id == user_id).values(is_locked=True)
+    )
+    await db.commit()
+    await db.refresh(target)
+    trades = await crud.load_user_trades(db, target.id)
+    transactions = await crud.load_user_transactions(db, target.id)
+    return user_to_out(target, trades, transactions)
 
 
 @router.post("/users/{user_id}/reset-password")

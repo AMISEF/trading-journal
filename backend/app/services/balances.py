@@ -80,10 +80,10 @@ def current_balance(
     trades: list[Trade],
     transactions: list[WalletTransaction] | None = None,
 ) -> float:
-    """wallet_margin + ALL transactions + PnL of CLOSED trades in order."""
+    """wallet_margin + ALL transactions + PnL of CLOSED, unlocked trades in order."""
     balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
     for t in sorted(trades, key=lambda x: x.number):
-        if t.status == "CLOSED":
+        if t.status == "CLOSED" and not getattr(t, "is_locked", False):
             balance += realized_pnl_of(t, balance)
     return balance
 
@@ -107,7 +107,7 @@ def balance_before_trade(
     for t in sorted(trades, key=lambda x: x.number):
         if t.number >= trade.number:
             break
-        if t.status == "CLOSED":
+        if t.status == "CLOSED" and not getattr(t, "is_locked", False):
             balance += realized_pnl_of(t, balance)
     return balance
 
