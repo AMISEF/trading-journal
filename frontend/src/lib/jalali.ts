@@ -85,6 +85,18 @@ export function jalaliToISO(jy: number, jm: number, jd: number, time: string): s
   }
 }
 
+/** Convert Jalali date to Gregorian ISO date string "YYYY-MM-DD". */
+export function jalaliToGregorianDate(jy: number, jm: number, jd: number): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  try {
+    // Use noon to avoid any UTC-offset date shift
+    const d = dayjs(`${jy}-${pad(jm)}-${pad(jd)} 12:00`, { jalali: true } as any);
+    if (d.isValid()) return d.format("YYYY-MM-DD");
+  } catch {}
+  const { gy, gm, gd } = jalaliToGregorian(jy, jm, jd);
+  return `${gy}-${pad(gm)}-${pad(gd)}`;
+}
+
 /** Number of days in a Jalali month. */
 export function jalaliDaysInMonth(jy: number, jm: number): number {
   try {

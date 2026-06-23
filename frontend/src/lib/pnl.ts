@@ -5,7 +5,7 @@
  * The Persian (Jalali) week starts on Saturday, so weekly buckets are
  * anchored to the most recent Saturday.
  */
-import { getJalaliParts, toPersianDigits } from "./jalali";
+import { JALALI_MONTHS, getJalaliParts, toPersianDigits } from "./jalali";
 
 export const GREGORIAN_MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -25,11 +25,6 @@ export interface PnlPeriodRow {
   jalaliLabel: string;
   pnl: number;
 }
-
-export const JALALI_MONTHS = [
-  "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-  "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
-];
 
 /** Group the daily series by Jalali calendar month. */
 export function buildMonthlyData(pnlByDay: PnlByDay[]): PnlPeriodRow[] {

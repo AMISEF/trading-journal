@@ -33,7 +33,7 @@ import {
   formatUsd,
   pnlColorClass,
 } from "@/lib/format";
-import { getJalaliParts, toPersianDigits } from "@/lib/jalali";
+import { JALALI_MONTHS, getJalaliParts, jalaliDaysInMonth, jalaliToGregorianDate, toPersianDigits } from "@/lib/jalali";
 import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
 
 export default function DashboardPage() {
@@ -82,21 +82,23 @@ interface CalCell {
   isToday: boolean;
 }
 
-function buildMonthGrid(year: number, month: number, pnlMap: Map<string, number>): CalCell[] {
-  const today = new Date().toISOString().slice(0, 10);
-  const totalDays = new Date(year, month, 0).getDate();
-  const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
-  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // Mon=0
+/** Build a calendar grid driven by Jalali year/month. `day` = Jalali day, `jalaliDay` = Gregorian day. */
+function buildJalaliMonthGrid(jy: number, jm: number, pnlMap: Map<string, number>): CalCell[] {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const totalDays = jalaliDaysInMonth(jy, jm);
+  const firstIso = jalaliToGregorianDate(jy, jm, 1);
+  const firstDow = new Date(`${firstIso}T12:00:00`).getDay(); // 0=Sun
+  const startOffset = firstDow === 0 ? 6 : firstDow - 1; // Mon=0
 
   const cells: CalCell[] = [];
   for (let i = 0; i < startOffset; i++) {
     cells.push({ day: null, date: null, pnl: 0, jalaliDay: null, isToday: false });
   }
-  for (let d = 1; d <= totalDays; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const pnl = pnlMap.get(dateStr) ?? 0;
-    const jp = getJalaliParts(dateStr);
-    cells.push({ day: d, date: dateStr, pnl, jalaliDay: jp?.day ?? null, isToday: dateStr === today });
+  for (let jd = 1; jd <= totalDays; jd++) {
+    const isoDate = jalaliToGregorianDate(jy, jm, jd);
+    const pnl = pnlMap.get(isoDate) ?? 0;
+    const gregDay = parseInt(isoDate.split("-")[2], 10);
+    cells.push({ day: jd, date: isoDate, pnl, jalaliDay: gregDay, isToday: isoDate === todayIso });
   }
   return cells;
 }
@@ -108,11 +110,14 @@ function fmtUsdt(v: number): string {
 
 function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string; pnl: number }[]; walletMargin: number }) {
   const today = new Date();
+  const todayJp = getJalaliParts(today.toISOString().slice(0, 10));
   const [preset, setPreset] = useState<"7d" | "30d" | "custom">("30d");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth() + 1);
+  const [jCustomFrom, setJCustomFrom] = useState("");
+  const [jCustomTo, setJCustomTo] = useState("");
+  const [jViewYear, setJViewYear] = useState(todayJp?.year ?? 1404);
+  const [jViewMonth, setJViewMonth] = useState(todayJp?.month ?? 1);
   const [chartType, setChartType] = useState<"calendar" | "bar">("calendar");
   const [profitView, setProfitView] = useState<"daily" | "weekly" | "monthly">("daily");
 
@@ -152,24 +157,33 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
   const todayPnl = pnlMap.get(todayStr) ?? null;
 
   const calendarCells = useMemo(
-    () => buildMonthGrid(viewYear, viewMonth, pnlMap),
-    [viewYear, viewMonth, pnlMap]
+    () => buildJalaliMonthGrid(jViewYear, jViewMonth, pnlMap),
+    [jViewYear, jViewMonth, pnlMap]
   );
 
   const monthlyData = useMemo(() => buildMonthlyData(pnlByDay), [pnlByDay]);
   const weeklyData = useMemo(() => buildWeeklyData(pnlByDay), [pnlByDay]);
 
-  // Month navigation
+  // Month navigation (Jalali months)
   const prevMonth = () => {
-    if (viewMonth === 1) { setViewYear(y => y - 1); setViewMonth(12); }
-    else setViewMonth(m => m - 1);
+    if (jViewMonth === 1) { setJViewYear(y => y - 1); setJViewMonth(12); }
+    else setJViewMonth(m => m - 1);
   };
   const nextMonth = () => {
-    if (viewMonth === 12) { setViewYear(y => y + 1); setViewMonth(1); }
-    else setViewMonth(m => m + 1);
+    if (jViewMonth === 12) { setJViewYear(y => y + 1); setJViewMonth(1); }
+    else setJViewMonth(m => m + 1);
   };
 
-  const jalaliInfo = getJalaliParts(`${viewYear}-${String(viewMonth).padStart(2, "0")}-15`);
+  function parseJalaliInput(s: string): string {
+    const normalized = s
+      .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+      .replace(/[-\.]/g, "/");
+    const parts = normalized.split("/").map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return "";
+    const [jy, jm, jd] = parts;
+    if (jy < 1300 || jy > 1500 || jm < 1 || jm > 12 || jd < 1 || jd > 31) return "";
+    return jalaliToGregorianDate(jy, jm, jd);
+  }
 
   // Daily bar chart data (only non-null cells)
   const dailyBarData = calendarCells
@@ -219,17 +233,31 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
             <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
           </svg>
           <input
-            type="date"
+            type="text"
             className="w-28 bg-transparent text-sm text-text outline-none"
-            value={customFrom}
-            onChange={(e) => { setCustomFrom(e.target.value); setPreset("custom"); }}
+            placeholder="۱۴۰۴/۰۳/۰۱"
+            value={jCustomFrom}
+            onChange={(e) => {
+              const val = e.target.value;
+              setJCustomFrom(val);
+              const geo = parseJalaliInput(val);
+              if (geo) { setCustomFrom(geo); setPreset("custom"); }
+              else if (!val) setCustomFrom("");
+            }}
           />
-          <span className="text-muted">→</span>
+          <span className="text-muted">←</span>
           <input
-            type="date"
+            type="text"
             className="w-28 bg-transparent text-sm text-text outline-none"
-            value={customTo}
-            onChange={(e) => { setCustomTo(e.target.value); setPreset("custom"); }}
+            placeholder="۱۴۰۴/۰۳/۳۱"
+            value={jCustomTo}
+            onChange={(e) => {
+              const val = e.target.value;
+              setJCustomTo(val);
+              const geo = parseJalaliInput(val);
+              if (geo) { setCustomTo(geo); setPreset("custom"); }
+              else if (!val) setCustomTo("");
+            }}
           />
         </div>
       </div>
@@ -326,13 +354,9 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
               ‹
             </button>
             <div className="text-sm font-medium">
-              {jalaliInfo && (
-                <>
-                  <span className="font-bold" style={{ color: `rgb(${TINTS.mint})` }}>{jalaliInfo.monthName} {toPersianDigits(jalaliInfo.year)}</span>
-                  <span className="mx-1.5 text-muted">/</span>
-                  <span className="text-muted">{GREGORIAN_MONTHS[viewMonth - 1]} {viewYear}</span>
-                </>
-              )}
+              <span className="font-bold" style={{ color: `rgb(${TINTS.mint})` }}>
+                {JALALI_MONTHS[jViewMonth - 1]} {toPersianDigits(jViewYear)}
+              </span>
             </div>
             <button
               onClick={nextMonth}
@@ -397,9 +421,9 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                     }}
                   >
                     <div className="flex items-start justify-between">
-                      <span className="text-sm font-bold leading-none text-text">{cell.day}</span>
+                      <span className="text-sm font-bold leading-none text-text">{cell.day !== null ? toPersianDigits(cell.day) : ""}</span>
                       {cell.jalaliDay && (
-                        <span className="text-[9px] leading-none text-muted">{toPersianDigits(cell.jalaliDay)}</span>
+                        <span className="text-[9px] leading-none text-muted">{cell.jalaliDay}</span>
                       )}
                     </div>
                     <div
@@ -435,7 +459,6 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                 >
                   <div>
                     <div className="text-sm font-bold">{row.jalaliLabel}</div>
-                    <div className="text-xs text-muted">{row.label}</div>
                   </div>
                   <div className="text-base font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">
                     {row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(4)} USDT
@@ -528,14 +551,14 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
-                <XAxis dataKey="day" stroke={cssVar("--muted")} fontSize={11} />
+                <XAxis dataKey="day" stroke={cssVar("--muted")} fontSize={11} tickFormatter={(v) => toPersianDigits(v)} />
                 <YAxis stroke={cssVar("--muted")} fontSize={11} tickFormatter={(v) => `${v.toFixed(1)}`} />
                 <Tooltip
                   contentStyle={{ background: "var(--surface)", border: `1px solid ${border}`, borderRadius: 12, fontSize: 12 }}
                   cursor={{ fill: "rgba(148,163,184,0.08)" }}
                   formatter={(v: number, _: string, props: any) => [
                     `${v.toFixed(4)} USDT`,
-                    `Day ${props.payload?.day}${props.payload?.jalaliDay ? ` (${toPersianDigits(props.payload.jalaliDay)})` : ""}`,
+                    props.payload?.day != null ? `روز ${toPersianDigits(props.payload.day)}` : "",
                   ]}
                 />
                 <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
