@@ -34,7 +34,7 @@ import {
   pnlColorClass,
 } from "@/lib/format";
 import { getJalaliParts, toPersianDigits } from "@/lib/jalali";
-import { GREGORIAN_MONTHS, buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
+import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
 
 export default function DashboardPage() {
   return (
@@ -977,12 +977,12 @@ function DashboardInner() {
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-/** Format an ISO date "2026-06-03" into a compact "3 Jun" axis label. */
+/** Format an ISO date "2026-06-03" into a compact Jalali "۳ خرداد" axis label. */
 function shortDate(iso: string | null): string {
   if (!iso) return "";
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  return `${d} ${GREGORIAN_MONTHS[m - 1]?.slice(0, 3) ?? m}`;
+  const jp = getJalaliParts(iso);
+  if (!jp) return iso;
+  return `${toPersianDigits(jp.day)} ${jp.monthName}`;
 }
 
 /** One stat cell in the equity card header. */

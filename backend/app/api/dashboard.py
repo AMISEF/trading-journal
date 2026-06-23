@@ -97,10 +97,11 @@ async def dashboard(
 ) -> DashboardOut:
     trades = await crud.load_user_trades(db, user.id)
     transactions = await crud.load_user_transactions(db, user.id)
-    closed = [t for t in trades if t.status == "CLOSED"]
+    unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
+    closed = [t for t in unlocked if t.status == "CLOSED"]
     closed.sort(key=lambda t: t.number)
 
-    trade_count = len(trades)
+    trade_count = len(unlocked)
     closed_count = len(closed)
 
     # --- Running equity curve + per-trade PnL + RR (using the same balance logic) ---

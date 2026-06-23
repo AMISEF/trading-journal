@@ -26,25 +26,29 @@ export interface PnlPeriodRow {
   pnl: number;
 }
 
+export const JALALI_MONTHS = [
+  "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+  "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
+];
+
 /** Group the daily series by Jalali calendar month. */
 export function buildMonthlyData(pnlByDay: PnlByDay[]): PnlPeriodRow[] {
-  const byMonth = new Map<string, number>();
+  const byMonth = new Map<string, { pnl: number; jalaliYear: number; jalaliMonth: number }>();
   pnlByDay.forEach(({ date, pnl }) => {
-    const key = date.slice(0, 7);
-    byMonth.set(key, (byMonth.get(key) ?? 0) + pnl);
+    const jp = getJalaliParts(date.slice(0, 10));
+    if (!jp) return;
+    const key = `${jp.year}-${String(jp.month).padStart(2, "0")}`;
+    const existing = byMonth.get(key) ?? { pnl: 0, jalaliYear: jp.year, jalaliMonth: jp.month };
+    byMonth.set(key, { pnl: existing.pnl + pnl, jalaliYear: jp.year, jalaliMonth: jp.month });
   });
   return [...byMonth.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, pnl]) => {
-      const [y, m] = key.split("-").map(Number);
-      const jp = getJalaliParts(`${y}-${String(m).padStart(2, "0")}-15`);
-      return {
-        key,
-        label: `${GREGORIAN_MONTHS[m - 1]} ${y}`,
-        jalaliLabel: jp ? `${jp.monthName} ${toPersianDigits(jp.year)}` : key,
-        pnl,
-      };
-    });
+    .map(([key, { pnl, jalaliYear, jalaliMonth }]) => ({
+      key,
+      label: `${JALALI_MONTHS[jalaliMonth - 1]} ${jalaliYear}`,
+      jalaliLabel: `${JALALI_MONTHS[jalaliMonth - 1]} ${toPersianDigits(jalaliYear)}`,
+      pnl,
+    }));
 }
 
 /** Group the daily series into Saturday-anchored weeks. */

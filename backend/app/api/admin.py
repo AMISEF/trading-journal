@@ -362,10 +362,11 @@ async def user_dashboard(
 
     trades = await crud.load_user_trades(db, target.id)
     transactions = await crud.load_user_transactions(db, target.id)
-    closed = [t for t in trades if t.status == "CLOSED"]
+    unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
+    closed = [t for t in unlocked if t.status == "CLOSED"]
     closed.sort(key=lambda t: t.number)
 
-    trade_count = len(trades)
+    trade_count = len(unlocked)
     closed_count = len(closed)
 
     # --- Running equity curve + per-trade PnL + RR ---
