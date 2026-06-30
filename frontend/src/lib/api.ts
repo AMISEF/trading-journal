@@ -8,6 +8,7 @@
  */
 import axios, { AxiosInstance } from "axios";
 import type {
+  AIAnalysis,
   AuthResponse,
   Calc,
   CalcPreviewRequest,
@@ -219,6 +220,29 @@ export const adminApi = {
     http.get<Trade>(`/admin/trades/${id}`).then((r) => r.data),
   deleteTrade: (id: string) =>
     http.delete(`/admin/trades/${id}`).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// AI coach (Claude-powered trade analysis)
+// ---------------------------------------------------------------------------
+export const aiApi = {
+  // Current user's own trade / journal.
+  getTrade: (id: string) =>
+    http.get<AIAnalysis>(`/ai/trades/${id}`).then((r) => r.data),
+  analyzeTrade: (id: string) =>
+    http.post<AIAnalysis>(`/ai/trades/${id}`, {}).then((r) => r.data),
+  getOverall: () => http.get<AIAnalysis>(`/ai/overall`).then((r) => r.data),
+  analyzeOverall: () =>
+    http.post<AIAnalysis>(`/ai/overall`, {}).then((r) => r.data),
+  // Admin: coach any user / their trades.
+  adminGetTrade: (id: string) =>
+    http.get<AIAnalysis>(`/ai/admin/trades/${id}`).then((r) => r.data),
+  adminAnalyzeTrade: (id: string) =>
+    http.post<AIAnalysis>(`/ai/admin/trades/${id}`, {}).then((r) => r.data),
+  adminGetOverall: (userId: string) =>
+    http.get<AIAnalysis>(`/ai/admin/users/${userId}/overall`).then((r) => r.data),
+  adminAnalyzeOverall: (userId: string) =>
+    http.post<AIAnalysis>(`/ai/admin/users/${userId}/overall`, {}).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------

@@ -11,8 +11,9 @@ import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Button, Spinner, StatusDot } from "@/components/ui";
 import { TradeTabs } from "@/components/editor/TradeTabs";
+import { AICoachPanel } from "@/components/AICoachPanel";
 import { useTrade, SaveStatus } from "@/store/trade";
-import { tradesApi } from "@/lib/api";
+import { aiApi, tradesApi } from "@/lib/api";
 import { faNum } from "@/lib/format";
 import type { TradeStatus } from "@/lib/types";
 
@@ -109,6 +110,14 @@ function EditorInner() {
 
       {/* Tabbed editor */}
       <TradeTabs />
+
+      {/* AI coach: deep review of this trade */}
+      <AICoachPanel
+        title="تحلیل هوش مصنوعی این معامله"
+        subtitle="بررسی کامل ورود، خروج، مدیریت ریسک، احساسات و چارت — همراه با توصیه‌های بهبود"
+        fetcher={() => aiApi.getTrade(trade.id)}
+        generator={() => aiApi.analyzeTrade(trade.id)}
+      />
     </div>
   );
 }

@@ -188,6 +188,13 @@ export interface AuthResponse {
   user: User;
 }
 
+/** AI coach analysis result (per-trade or whole-journal). */
+export interface AIAnalysis {
+  analysis: string | null;
+  generatedAt: string | null;
+  enabled: boolean;
+}
+
 export interface WalletTransaction {
   id: string;
   userId: string;

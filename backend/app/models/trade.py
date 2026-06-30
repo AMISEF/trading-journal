@@ -81,6 +81,11 @@ class Trade(Base):
     rr_expected: Mapped[float | None] = mapped_column(Float, nullable=True)
     rr_achieved: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Cached AI coach analysis (Markdown). Generated on demand and stored so the
+    # panel can be re-opened without spending another API call.
+    ai_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_analysis_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Flexible JSON fields
     emotions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     checklist_ticks: Mapped[dict | None] = mapped_column(JSON, nullable=True)

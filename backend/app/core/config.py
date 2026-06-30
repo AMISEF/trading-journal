@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     # Folder on disk where uploaded images are saved.
     UPLOAD_DIR: str = "./uploads"
 
+    # --- AI trade analysis (Claude / Anthropic) -----------------------------
+    # The feature stays disabled until a key is provided. Set ANTHROPIC_API_KEY
+    # in the server .env to enable the "AI coach" endpoints. AI_MODEL must be a
+    # vision-capable Claude model so chart images can be analysed.
+    ANTHROPIC_API_KEY: str = ""
+    AI_MODEL: str = "claude-opus-4-8"
+    AI_MAX_TOKENS: int = 2500
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

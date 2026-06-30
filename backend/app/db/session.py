@@ -46,6 +46,10 @@ async def init_db() -> None:
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS user_group VARCHAR(50)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS capital_reset_date TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS ai_analysis TEXT",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS ai_analysis_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall_at TIMESTAMP WITH TIME ZONE",
         ]
         for stmt in migrations:
             await conn.execute(text(stmt))

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, String
+from sqlalchemy import DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -34,6 +34,10 @@ class User(Base):
     # Date when capital was last reset (for group members). Trades before this
     # date are locked and don't affect the running balance.
     capital_reset_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Cached AI coach "overall" report (Markdown) across the whole journal.
+    ai_overall: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_overall_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 

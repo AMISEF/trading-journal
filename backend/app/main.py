@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     admin,
+    ai,
     auth,
     calc,
     dashboard,
@@ -75,3 +76,4 @@ app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(uploads.router)
 app.include_router(wallet.router)
+app.include_router(ai.router)

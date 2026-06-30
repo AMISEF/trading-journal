@@ -23,7 +23,8 @@ import {
 } from "recharts";
 import { AppShell } from "@/components/AppShell";
 import { Spinner } from "@/components/ui";
-import { dashboardApi } from "@/lib/api";
+import { AICoachPanel } from "@/components/AICoachPanel";
+import { aiApi, dashboardApi } from "@/lib/api";
 import type { DashboardData } from "@/lib/types";
 import {
   faNum,
@@ -994,6 +995,14 @@ function DashboardInner() {
           </div>
         </ChartCard>
       </div>
+
+      {/* ── AI coach: whole-journal coaching report ── */}
+      <AICoachPanel
+        title="مربی هوش مصنوعی — تحلیل کلی معاملات"
+        subtitle="بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامه‌ی بهبود"
+        fetcher={() => aiApi.getOverall()}
+        generator={() => aiApi.analyzeOverall()}
+      />
     </div>
   );
 }

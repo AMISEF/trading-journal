@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Paginator, Spinner, StatusDot, usePagination } from "@/components/ui";
-import { adminApi } from "@/lib/api";
+import { AICoachPanel } from "@/components/AICoachPanel";
+import { adminApi, aiApi } from "@/lib/api";
 import {
   faNum,
   formatPct,
@@ -215,6 +216,14 @@ function Inner() {
         </div>
         {groupError && <p className="text-xs text-loss">{groupError}</p>}
       </div>
+
+      {/* AI coach: whole-journal coaching report for this user */}
+      <AICoachPanel
+        title="مربی هوش مصنوعی — تحلیل کلی معاملات کاربر"
+        subtitle="بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامه‌ی بهبود"
+        fetcher={() => aiApi.adminGetOverall(userId)}
+        generator={() => aiApi.adminAnalyzeOverall(userId)}
+      />
 
       {trades.length === 0 && (
         <div className="tj-card p-10 text-center text-muted">

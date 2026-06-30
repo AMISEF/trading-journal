@@ -12,7 +12,8 @@ import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Spinner, StatusDot } from "@/components/ui";
 import { TradeTabs } from "@/components/editor/TradeTabs";
-import { adminApi } from "@/lib/api";
+import { AICoachPanel } from "@/components/AICoachPanel";
+import { adminApi, aiApi } from "@/lib/api";
 import { useTrade } from "@/store/trade";
 import { faNum } from "@/lib/format";
 import type { ChecklistTemplate, TradeStatus } from "@/lib/types";
@@ -126,6 +127,14 @@ function Inner() {
       </div>
 
       <TradeTabs readOnly checklistTemplates={checklistTemplates} />
+
+      {/* AI coach: deep review of this trade (admin) */}
+      <AICoachPanel
+        title="تحلیل هوش مصنوعی این معامله"
+        subtitle="بررسی کامل ورود، خروج، مدیریت ریسک، احساسات و چارت — همراه با توصیه‌های بهبود"
+        fetcher={() => aiApi.adminGetTrade(id)}
+        generator={() => aiApi.adminAnalyzeTrade(id)}
+      />
     </div>
   );
 }
