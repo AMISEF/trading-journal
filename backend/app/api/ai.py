@@ -42,6 +42,16 @@ class AIAnalysisOut(CamelModel):
     # None | "PENDING" | "DONE" | "ERROR"
     status: str | None = None
     error: str | None = None
+    # Follow-up chat thread: list of {role, content, at}.
+    chat: list[dict] = []
+
+
+class ChatIn(CamelModel):
+    message: str
+
+
+# Keep the stored chat thread bounded.
+_MAX_CHAT_MESSAGES = 40
 
 
 def _utcnow() -> datetime:
@@ -90,6 +100,19 @@ async def generate_trade_analysis(
     return await _start_trade_job(db, trade)
 
 
+@router.post("/trades/{trade_id}/chat", response_model=AIAnalysisOut)
+async def chat_trade(
+    trade_id: int,
+    body: ChatIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    trade = await _load_trade(db, trade_id)
+    if trade is None or trade.user_id != user.id:
+        raise HTTPException(status_code=404, detail="معامله یافت نشد")
+    return await _do_trade_chat(db, user, trade, body.message)
+
+
 # ---------------------------------------------------------------------------
 # Overall analysis (current user)
 # ---------------------------------------------------------------------------
@@ -108,6 +131,15 @@ async def generate_overall_analysis(
     return await _start_overall_job(db, user)
 
 
+@router.post("/overall/chat", response_model=AIAnalysisOut)
+async def chat_overall(
+    body: ChatIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    return await _do_overall_chat(db, user, body.message)
+
+
 # ---------------------------------------------------------------------------
 # Institutional due-diligence report (current user)
 # ---------------------------------------------------------------------------
@@ -124,6 +156,15 @@ async def generate_report(
     db: AsyncSession = Depends(get_db),
 ) -> AIAnalysisOut:
     return await _start_report_job(db, user)
+
+
+@router.post("/report/chat", response_model=AIAnalysisOut)
+async def chat_report(
+    body: ChatIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    return await _do_report_chat(db, user, body.message)
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +194,22 @@ async def admin_generate_trade_analysis(
     return await _start_trade_job(db, trade)
 
 
+@router.post("/admin/trades/{trade_id}/chat", response_model=AIAnalysisOut)
+async def admin_chat_trade(
+    trade_id: int,
+    body: ChatIn,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    trade = await _load_trade(db, trade_id)
+    if trade is None:
+        raise HTTPException(status_code=404, detail="معامله یافت نشد")
+    owner = await db.get(User, trade.user_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+    return await _do_trade_chat(db, owner, trade, body.message)
+
+
 @router.get("/admin/users/{user_id}/overall", response_model=AIAnalysisOut)
 async def admin_get_overall_analysis(
     user_id: int,
@@ -175,6 +232,19 @@ async def admin_generate_overall_analysis(
     if target is None:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
     return await _start_overall_job(db, target)
+
+
+@router.post("/admin/users/{user_id}/overall/chat", response_model=AIAnalysisOut)
+async def admin_chat_overall(
+    user_id: int,
+    body: ChatIn,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+    return await _do_overall_chat(db, target, body.message)
 
 
 @router.get("/admin/users/{user_id}/report", response_model=AIAnalysisOut)
@@ -201,6 +271,19 @@ async def admin_generate_report(
     return await _start_report_job(db, target)
 
 
+@router.post("/admin/users/{user_id}/report/chat", response_model=AIAnalysisOut)
+async def admin_chat_report(
+    user_id: int,
+    body: ChatIn,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+    return await _do_report_chat(db, target, body.message)
+
+
 # ---------------------------------------------------------------------------
 # Response builders
 # ---------------------------------------------------------------------------
@@ -211,6 +294,7 @@ def _trade_out(trade: Trade) -> AIAnalysisOut:
         enabled=ai_analysis.is_enabled(),
         status=trade.ai_analysis_status,
         error=trade.ai_analysis_error,
+        chat=list(trade.ai_chat or []),
     )
 
 
@@ -221,6 +305,7 @@ def _overall_out(user: User) -> AIAnalysisOut:
         enabled=ai_analysis.is_enabled(),
         status=user.ai_overall_status,
         error=user.ai_overall_error,
+        chat=list(user.ai_overall_chat or []),
     )
 
 
@@ -231,7 +316,70 @@ def _report_out(user: User) -> AIAnalysisOut:
         enabled=ai_analysis.is_enabled(),
         status=user.ai_report_status,
         error=user.ai_report_error,
+        chat=list(user.ai_report_chat or []),
     )
+
+
+# ---------------------------------------------------------------------------
+# Chat helpers
+# ---------------------------------------------------------------------------
+def _chat_append(history: list[dict], user_msg: str, assistant_msg: str) -> list[dict]:
+    out = list(history or [])
+    out.append({"role": "user", "content": user_msg.strip(), "at": _utcnow().isoformat()})
+    out.append({"role": "assistant", "content": assistant_msg, "at": _utcnow().isoformat()})
+    return out[-_MAX_CHAT_MESSAGES:]
+
+
+async def _run_chat(context: str, history: list[dict], message: str) -> str:
+    if not message or not message.strip():
+        raise HTTPException(status_code=400, detail="پیام خالی است")
+    try:
+        return await ai_analysis.chat_reply(context, history, message)
+    except ai_analysis.AINotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ai_analysis.AIRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+async def _do_trade_chat(
+    db: AsyncSession, owner: User, trade: Trade, message: str
+) -> AIAnalysisOut:
+    all_trades = await crud.load_user_trades(db, owner.id)
+    transactions = await crud.load_user_transactions(db, owner.id)
+    context = ai_analysis.build_trade_summary(owner, all_trades, trade, transactions)
+    if trade.ai_analysis:
+        context += "\n\n[تحلیل قبلیِ این معامله]\n" + trade.ai_analysis
+    history = list(trade.ai_chat or [])
+    reply = await _run_chat(context, history, message)
+    trade.ai_chat = _chat_append(history, message, reply)
+    await db.commit()
+    return _trade_out(trade)
+
+
+async def _do_overall_chat(db: AsyncSession, owner: User, message: str) -> AIAnalysisOut:
+    context = owner.ai_overall
+    if not context:
+        all_trades = await crud.load_user_trades(db, owner.id)
+        transactions = await crud.load_user_transactions(db, owner.id)
+        context = ai_analysis.build_overall_summary(owner, all_trades, transactions)
+    history = list(owner.ai_overall_chat or [])
+    reply = await _run_chat(context, history, message)
+    owner.ai_overall_chat = _chat_append(history, message, reply)
+    await db.commit()
+    return _overall_out(owner)
+
+
+async def _do_report_chat(db: AsyncSession, owner: User, message: str) -> AIAnalysisOut:
+    context = owner.ai_report
+    if not context:
+        all_trades = await crud.load_user_trades(db, owner.id)
+        transactions = await crud.load_user_transactions(db, owner.id)
+        context = ai_analysis.build_institutional_summary(owner, all_trades, transactions)
+    history = list(owner.ai_report_chat or [])
+    reply = await _run_chat(context, history, message)
+    owner.ai_report_chat = _chat_append(history, message, reply)
+    await db.commit()
+    return _report_out(owner)
 
 
 # ---------------------------------------------------------------------------

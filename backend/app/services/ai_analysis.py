@@ -763,6 +763,11 @@ async def _complete(
     else:
         url, headers, payload = _openai_request(key, system, user_text, images, tokens)
 
+    return await _send(url, headers, payload, style)
+
+
+async def _send(url: str, headers: dict, payload: dict, style: str) -> str:
+    """POST the prepared request and extract the assistant's text."""
     try:
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
             resp = await client.post(url, json=payload, headers=headers)
@@ -784,6 +789,77 @@ async def _complete(
     if not text:
         raise AIRequestError("پاسخ خالی از سرویس هوش مصنوعی دریافت شد.")
     return text
+
+
+# Chat replies are short and conversational — keep them snappy.
+_CHAT_MAX_TOKENS = 1500
+_CHAT_CONTEXT_LIMIT = 14000  # chars of grounding context to include
+_CHAT_HISTORY_TURNS = 16     # most recent turns kept in the prompt
+
+_CHAT_SYSTEM_PROMPT = """\
+تو یک مربی حرفه‌ای معامله‌گری کریپتو هستی که با خودِ معامله‌گر گفتگو می‌کنی.
+بر اساس «اطلاعات زمینه» (داده‌ها و تحلیل معاملات او) که در ادامه می‌آید، به سؤال‌های او پاسخ بده.
+
+قواعد:
+- کوتاه، دقیق و عملی پاسخ بده؛ از پرگویی پرهیز کن (در حد چند جمله یا چند بولت).
+- فقط بر اساس داده‌های واقعی همین کاربر صحبت کن؛ اگر داده‌ای نیست صادقانه بگو.
+- همیشه جهت‌گیریِ پاسخ به‌سمت بهبود کیفیت معاملات، وین‌ریت و مدیریت ریسک کاربر باشد.
+- به فارسی پاسخ بده.
+
+اطلاعات زمینه:
+{context}
+"""
+
+
+async def chat_reply(
+    context_text: str,
+    history: list[dict],
+    message: str,
+) -> str:
+    """Multi-turn coach chat grounded in ``context_text``."""
+    key = _api_key()
+    if not key:
+        raise AINotConfigured(
+            "گفتگوی هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است."
+        )
+    style = (settings.AI_API_STYLE or "openai").strip().lower()
+    system = _CHAT_SYSTEM_PROMPT.format(context=(context_text or "—")[:_CHAT_CONTEXT_LIMIT])
+
+    turns: list[dict] = []
+    for m in history[-_CHAT_HISTORY_TURNS:]:
+        role = m.get("role")
+        content = (m.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            turns.append({"role": role, "content": content})
+    turns.append({"role": "user", "content": message.strip()})
+
+    if style == "anthropic":
+        base = (settings.AI_BASE_URL or "https://api.anthropic.com").rstrip("/")
+        payload = {
+            "model": settings.AI_MODEL,
+            "max_tokens": _CHAT_MAX_TOKENS,
+            "system": system,
+            "messages": turns,
+        }
+        headers = {
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        url = f"{base}/v1/messages"
+    else:
+        base = (settings.AI_BASE_URL or "").rstrip("/")
+        if not base:
+            raise AINotConfigured("AI_BASE_URL برای حالت openai تنظیم نشده است.")
+        payload = {
+            "model": settings.AI_MODEL,
+            "max_tokens": _CHAT_MAX_TOKENS,
+            "messages": [{"role": "system", "content": system}, *turns],
+        }
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        url = f"{base}/chat/completions"
+
+    return await _send(url, headers, payload, style)
 
 
 def _openai_request(key, system, user_text, images, max_tokens):

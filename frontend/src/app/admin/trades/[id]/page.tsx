@@ -126,15 +126,16 @@ function Inner() {
         </div>
       </div>
 
-      <TradeTabs readOnly checklistTemplates={checklistTemplates} />
-
-      {/* AI coach: deep review of this trade (admin) */}
+      {/* AI coach: deep review of this trade (admin, kept near the top) */}
       <AICoachPanel
         title="تحلیل هوش مصنوعی این معامله"
         subtitle="بررسی کامل ورود، خروج، مدیریت ریسک، احساسات و چارت — همراه با توصیه‌های بهبود"
         fetcher={() => aiApi.adminGetTrade(id)}
         generator={() => aiApi.adminAnalyzeTrade(id)}
+        chat={{ send: (m) => aiApi.adminChatTrade(id, m) }}
       />
+
+      <TradeTabs readOnly checklistTemplates={checklistTemplates} />
     </div>
   );
 }

@@ -108,16 +108,17 @@ function EditorInner() {
         </div>
       </div>
 
-      {/* Tabbed editor */}
-      <TradeTabs />
-
-      {/* AI coach: deep review of this trade */}
+      {/* AI coach: deep review of this trade (kept near the top for visibility) */}
       <AICoachPanel
         title="تحلیل هوش مصنوعی این معامله"
         subtitle="بررسی کامل ورود، خروج، مدیریت ریسک، احساسات و چارت — همراه با توصیه‌های بهبود"
         fetcher={() => aiApi.getTrade(trade.id)}
         generator={() => aiApi.analyzeTrade(trade.id)}
+        chat={{ send: (m) => aiApi.chatTrade(trade.id, m) }}
       />
+
+      {/* Tabbed editor */}
+      <TradeTabs />
     </div>
   );
 }

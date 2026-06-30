@@ -678,6 +678,7 @@ function DashboardInner() {
         subtitle="بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامه‌ی بهبود"
         fetcher={() => aiApi.getOverall()}
         generator={() => aiApi.analyzeOverall()}
+        chat={{ send: (m) => aiApi.chatOverall(m) }}
       />
 
       {/* ── Institutional due-diligence report (full 19-section, PDF) ── */}
@@ -690,6 +691,7 @@ function DashboardInner() {
           title: "گزارش ارزیابی نهادی معاملات",
           subject: authUser ? `${authUser.firstName} ${authUser.lastName} (@${authUser.username})` : undefined,
         }}
+        chat={{ send: (m) => aiApi.chatReport(m) }}
       />
 
       {/* ── KPI cards ── */}

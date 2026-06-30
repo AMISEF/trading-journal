@@ -223,6 +223,7 @@ function Inner() {
         subtitle="بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامه‌ی بهبود"
         fetcher={() => aiApi.adminGetOverall(userId)}
         generator={() => aiApi.adminAnalyzeOverall(userId)}
+        chat={{ send: (m) => aiApi.adminChatOverall(userId, m) }}
       />
 
       {/* Institutional due-diligence report (full 19-section, PDF export) */}
@@ -235,6 +236,7 @@ function Inner() {
           title: "گزارش ارزیابی نهادی معامله‌گر",
           subject: user ? `${user.firstName} ${user.lastName} (@${user.username})` : undefined,
         }}
+        chat={{ send: (m) => aiApi.adminChatReport(userId, m) }}
       />
 
       {trades.length === 0 && (

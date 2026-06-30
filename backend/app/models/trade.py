@@ -88,6 +88,8 @@ class Trade(Base):
     # Background-job state: None | "PENDING" | "DONE" | "ERROR".
     ai_analysis_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ai_analysis_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Follow-up chat about this trade: list of {role, content, at}.
+    ai_chat: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Flexible JSON fields
     emotions: Mapped[dict | None] = mapped_column(JSON, nullable=True)

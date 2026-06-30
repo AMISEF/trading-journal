@@ -238,6 +238,13 @@ export const aiApi = {
   getReport: () => http.get<AIAnalysis>(`/ai/report`).then((r) => r.data),
   analyzeReport: () =>
     http.post<AIAnalysis>(`/ai/report`, {}).then((r) => r.data),
+  // Chat (current user).
+  chatTrade: (id: string, message: string) =>
+    http.post<AIAnalysis>(`/ai/trades/${id}/chat`, { message }).then((r) => r.data),
+  chatOverall: (message: string) =>
+    http.post<AIAnalysis>(`/ai/overall/chat`, { message }).then((r) => r.data),
+  chatReport: (message: string) =>
+    http.post<AIAnalysis>(`/ai/report/chat`, { message }).then((r) => r.data),
   // Admin: coach any user / their trades.
   adminGetTrade: (id: string) =>
     http.get<AIAnalysis>(`/ai/admin/trades/${id}`).then((r) => r.data),
@@ -251,6 +258,13 @@ export const aiApi = {
     http.get<AIAnalysis>(`/ai/admin/users/${userId}/report`).then((r) => r.data),
   adminAnalyzeReport: (userId: string) =>
     http.post<AIAnalysis>(`/ai/admin/users/${userId}/report`, {}).then((r) => r.data),
+  // Chat (admin coaching any user).
+  adminChatTrade: (id: string, message: string) =>
+    http.post<AIAnalysis>(`/ai/admin/trades/${id}/chat`, { message }).then((r) => r.data),
+  adminChatOverall: (userId: string, message: string) =>
+    http.post<AIAnalysis>(`/ai/admin/users/${userId}/overall/chat`, { message }).then((r) => r.data),
+  adminChatReport: (userId: string, message: string) =>
+    http.post<AIAnalysis>(`/ai/admin/users/${userId}/report/chat`, { message }).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------

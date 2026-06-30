@@ -188,6 +188,13 @@ export interface AuthResponse {
   user: User;
 }
 
+/** One message in an AI coach chat thread. */
+export interface ChatMessage {
+  role: "user" | "assistant" | string;
+  content: string;
+  at?: string;
+}
+
 /** AI coach analysis result (per-trade or whole-journal). */
 export interface AIAnalysis {
   analysis: string | null;
@@ -196,6 +203,8 @@ export interface AIAnalysis {
   /** Background-job state: null | "PENDING" | "DONE" | "ERROR". */
   status: string | null;
   error: string | null;
+  /** Follow-up chat thread. */
+  chat: ChatMessage[];
 }
 
 export interface WalletTransaction {

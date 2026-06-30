@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, String, Text
+from sqlalchemy import JSON, DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -47,6 +47,10 @@ class User(Base):
     ai_report_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ai_report_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ai_report_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Follow-up chat threads: list of {role, content, at}.
+    ai_overall_chat: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    ai_report_chat: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
