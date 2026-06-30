@@ -53,7 +53,9 @@ _MEDIA_TYPES = {
 # typical per-image limits.
 _MAX_IMAGE_B64 = 7_000_000
 
-_REQUEST_TIMEOUT = 120.0
+# Generous because the call runs in a background job, not a request the client
+# (or an upstream proxy / Cloudflare) is holding open.
+_REQUEST_TIMEOUT = 240.0
 
 _TRADE_SYSTEM_PROMPT = """\
 تو یک مربی حرفه‌ای معامله‌گری (Trading Coach) هستی که به یک معامله‌گر کریپتو کمک می‌کنی عملکردش را بهبود دهد.

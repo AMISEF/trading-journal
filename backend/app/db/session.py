@@ -48,8 +48,12 @@ async def init_db() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS capital_reset_date TIMESTAMP WITH TIME ZONE",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS ai_analysis TEXT",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS ai_analysis_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS ai_analysis_status VARCHAR(20)",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS ai_analysis_error TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall_status VARCHAR(20)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall_error TEXT",
         ]
         for stmt in migrations:
             await conn.execute(text(stmt))

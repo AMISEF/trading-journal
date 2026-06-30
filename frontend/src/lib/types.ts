@@ -193,6 +193,9 @@ export interface AIAnalysis {
   analysis: string | null;
   generatedAt: string | null;
   enabled: boolean;
+  /** Background-job state: null | "PENDING" | "DONE" | "ERROR". */
+  status: string | null;
+  error: string | null;
 }
 
 export interface WalletTransaction {

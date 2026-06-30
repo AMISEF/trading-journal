@@ -5,60 +5,102 @@
  * (re)generate it, and renders the Markdown result. Reused for both per-trade
  * and whole-journal ("overall") analysis via the fetcher/generator props.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AIAnalysis } from "@/lib/types";
 import { formatJalaliDateTime } from "@/lib/jalali";
 
 interface Props {
-  /** GET the cached analysis (returns null analysis when none exists yet). */
+  /** GET the cached analysis / job status. */
   fetcher: () => Promise<AIAnalysis>;
-  /** POST to (re)generate the analysis. */
+  /** POST to (re)generate the analysis (starts a background job). */
   generator: () => Promise<AIAnalysis>;
   title?: string;
   /** Short hint shown under the title. */
   subtitle?: string;
 }
 
+const POLL_MS = 4000;
+const MAX_POLLS = 60; // ~4 minutes, then re-enable with a retry hint
+
 export function AICoachPanel({ fetcher, generator, title, subtitle }: Props) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(true);
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
+  const polls = useRef(0);
+
+  const apply = (res: AIAnalysis) => {
+    setAnalysis(res.analysis);
+    setGeneratedAt(res.generatedAt);
+    setEnabled(res.enabled);
+    setStatus(res.status);
+    if (res.status === "ERROR" && res.error) setError(res.error);
+    else if (res.status !== "ERROR") setError("");
+  };
+
+  // Poll while a background job is running.
+  const poll = async () => {
+    if (polls.current >= MAX_POLLS) {
+      setStatus(null);
+      setError("تحلیل بیش از حد انتظار طول کشید. لطفاً دوباره تلاش کنید.");
+      return;
+    }
+    polls.current += 1;
+    try {
+      const res = await fetcher();
+      if (!mounted.current) return;
+      apply(res);
+      if (res.status === "PENDING") {
+        timer.current = setTimeout(poll, POLL_MS);
+      }
+    } catch {
+      if (mounted.current) timer.current = setTimeout(poll, POLL_MS);
+    }
+  };
+
   useEffect(() => {
-    let active = true;
+    mounted.current = true;
     fetcher()
       .then((res) => {
-        if (!active) return;
-        setAnalysis(res.analysis);
-        setGeneratedAt(res.generatedAt);
-        setEnabled(res.enabled);
+        if (!mounted.current) return;
+        apply(res);
+        if (res.status === "PENDING") {
+          polls.current = 0;
+          timer.current = setTimeout(poll, POLL_MS);
+        }
       })
       .catch(() => {})
-      .finally(() => active && setLoading(false));
+      .finally(() => mounted.current && setLoading(false));
     return () => {
-      active = false;
+      mounted.current = false;
+      if (timer.current) clearTimeout(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const run = async () => {
-    setBusy(true);
     setError("");
+    setStatus("PENDING");
     try {
       const res = await generator();
-      setAnalysis(res.analysis);
-      setGeneratedAt(res.generatedAt);
-      setEnabled(res.enabled);
+      if (!mounted.current) return;
+      apply(res);
+      if (timer.current) clearTimeout(timer.current);
+      polls.current = 0;
+      timer.current = setTimeout(poll, POLL_MS);
     } catch (e: unknown) {
       const resp = (e as { response?: { data?: { detail?: string }; status?: number } })?.response;
+      setStatus(null);
       setError(resp?.data?.detail ?? `خطای سرور (${resp?.status ?? "?"})`);
-    } finally {
-      setBusy(false);
     }
   };
+
+  const pending = status === "PENDING";
 
   return (
     <div className="tj-card space-y-4 p-5">
@@ -77,10 +119,10 @@ export function AICoachPanel({ fetcher, generator, title, subtitle }: Props) {
         <button
           type="button"
           onClick={run}
-          disabled={busy || (!enabled && !analysis)}
+          disabled={pending || (!enabled && !analysis)}
           className="rounded-xl bg-gradient-to-l from-violet-600 to-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? "در حال تحلیل…" : analysis ? "تحلیل مجدد" : "تحلیل کن"}
+          {pending ? "در حال تحلیل…" : analysis ? "تحلیل مجدد" : "تحلیل کن"}
         </button>
       </div>
 
@@ -96,29 +138,31 @@ export function AICoachPanel({ fetcher, generator, title, subtitle }: Props) {
         </div>
       )}
 
-      {busy && (
+      {pending && (
         <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-2 px-4 py-4 text-sm text-muted">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
-          در حال بررسی همه‌ی جزئیات معامله… این کار ممکن است تا یک دقیقه طول بکشد.
+          در حال بررسی همه‌ی جزئیات… تحلیل در پس‌زمینه انجام می‌شود و نتیجه به‌صورت خودکار نمایش داده خواهد شد (ممکن است تا یک دقیقه طول بکشد).
         </div>
       )}
 
-      {loading && !busy && (
+      {loading && !pending && (
         <p className="text-sm text-muted">در حال بارگذاری…</p>
       )}
 
-      {analysis && !busy && (
+      {analysis && (
         <div className="space-y-2">
-          <Markdown content={analysis} />
+          <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-border bg-surface-2/40 p-4">
+            <Markdown content={analysis} />
+          </div>
           {generatedAt && (
-            <p className="pt-2 text-xs text-muted">
+            <p className="pt-1 text-xs text-muted">
               آخرین تحلیل: {formatJalaliDateTime(generatedAt)}
             </p>
           )}
         </div>
       )}
 
-      {!analysis && !busy && !loading && enabled && (
+      {!analysis && !pending && !loading && enabled && !error && (
         <p className="text-sm text-muted">
           برای دریافت تحلیل و توصیه‌های بهبود، روی «تحلیل کن» بزنید.
         </p>

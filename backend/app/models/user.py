@@ -38,6 +38,9 @@ class User(Base):
     # Cached AI coach "overall" report (Markdown) across the whole journal.
     ai_overall: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_overall_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Background-job state: None | "PENDING" | "DONE" | "ERROR".
+    ai_overall_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ai_overall_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 

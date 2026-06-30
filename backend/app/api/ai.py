@@ -1,12 +1,16 @@
 """AI trading-coach routes.
 
-Per-trade and whole-journal analysis powered by Claude. Results are cached on
-the row (``trades.ai_analysis`` / ``users.ai_overall``) so the panel can be
-re-opened without spending another API call; ``POST`` regenerates.
+Generation runs as a detached background job so the HTTP request returns
+immediately (the model can take longer than a proxy/Cloudflare timeout). The
+client polls ``GET`` until ``status`` becomes ``DONE`` or ``ERROR``. Results are
+cached on the row (``trades.ai_analysis`` / ``users.ai_overall``) so the panel
+re-opens without spending another API call; ``POST`` regenerates.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,18 +20,28 @@ from sqlalchemy.orm import selectinload
 
 from app.api import crud
 from app.core.deps import get_current_admin, get_current_user, get_db
+from app.db.session import AsyncSessionLocal
 from app.models.trade import Trade
 from app.models.user import User
 from app.schemas.base import CamelModel
 from app.services import ai_analysis
 
+logger = logging.getLogger("app.api.ai")
+
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+
+# Keep strong references to detached tasks so they are not garbage-collected
+# mid-flight (asyncio only holds weak references to running tasks).
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
 class AIAnalysisOut(CamelModel):
     analysis: str | None = None
     generated_at: datetime | None = None
     enabled: bool = True
+    # None | "PENDING" | "DONE" | "ERROR"
+    status: str | None = None
+    error: str | None = None
 
 
 def _utcnow() -> datetime:
@@ -43,6 +57,12 @@ async def _load_trade(db: AsyncSession, trade_id: int) -> Trade | None:
     return result.scalars().first()
 
 
+def _spawn(coro) -> None:
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
 # ---------------------------------------------------------------------------
 # Per-trade analysis (current user)
 # ---------------------------------------------------------------------------
@@ -55,11 +75,7 @@ async def get_trade_analysis(
     trade = await _load_trade(db, trade_id)
     if trade is None or trade.user_id != user.id:
         raise HTTPException(status_code=404, detail="معامله یافت نشد")
-    return AIAnalysisOut(
-        analysis=trade.ai_analysis,
-        generated_at=trade.ai_analysis_at,
-        enabled=ai_analysis.is_enabled(),
-    )
+    return _trade_out(trade)
 
 
 @router.post("/trades/{trade_id}", response_model=AIAnalysisOut)
@@ -71,7 +87,7 @@ async def generate_trade_analysis(
     trade = await _load_trade(db, trade_id)
     if trade is None or trade.user_id != user.id:
         raise HTTPException(status_code=404, detail="معامله یافت نشد")
-    return await _run_trade_analysis(db, user, trade)
+    return await _start_trade_job(db, trade)
 
 
 # ---------------------------------------------------------------------------
@@ -81,11 +97,7 @@ async def generate_trade_analysis(
 async def get_overall_analysis(
     user: User = Depends(get_current_user),
 ) -> AIAnalysisOut:
-    return AIAnalysisOut(
-        analysis=user.ai_overall,
-        generated_at=user.ai_overall_at,
-        enabled=ai_analysis.is_enabled(),
-    )
+    return _overall_out(user)
 
 
 @router.post("/overall", response_model=AIAnalysisOut)
@@ -93,7 +105,7 @@ async def generate_overall_analysis(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AIAnalysisOut:
-    return await _run_overall_analysis(db, user)
+    return await _start_overall_job(db, user)
 
 
 # ---------------------------------------------------------------------------
@@ -108,11 +120,7 @@ async def admin_get_trade_analysis(
     trade = await _load_trade(db, trade_id)
     if trade is None:
         raise HTTPException(status_code=404, detail="معامله یافت نشد")
-    return AIAnalysisOut(
-        analysis=trade.ai_analysis,
-        generated_at=trade.ai_analysis_at,
-        enabled=ai_analysis.is_enabled(),
-    )
+    return _trade_out(trade)
 
 
 @router.post("/admin/trades/{trade_id}", response_model=AIAnalysisOut)
@@ -124,10 +132,7 @@ async def admin_generate_trade_analysis(
     trade = await _load_trade(db, trade_id)
     if trade is None:
         raise HTTPException(status_code=404, detail="معامله یافت نشد")
-    owner = await db.get(User, trade.user_id)
-    if owner is None:
-        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
-    return await _run_trade_analysis(db, owner, trade)
+    return await _start_trade_job(db, trade)
 
 
 @router.get("/admin/users/{user_id}/overall", response_model=AIAnalysisOut)
@@ -139,11 +144,7 @@ async def admin_get_overall_analysis(
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
-    return AIAnalysisOut(
-        analysis=target.ai_overall,
-        generated_at=target.ai_overall_at,
-        enabled=ai_analysis.is_enabled(),
-    )
+    return _overall_out(target)
 
 
 @router.post("/admin/users/{user_id}/overall", response_model=AIAnalysisOut)
@@ -155,41 +156,116 @@ async def admin_generate_overall_analysis(
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
-    return await _run_overall_analysis(db, target)
+    return await _start_overall_job(db, target)
 
 
 # ---------------------------------------------------------------------------
-# Shared workers
+# Response builders
 # ---------------------------------------------------------------------------
-async def _run_trade_analysis(
-    db: AsyncSession, owner: User, trade: Trade
-) -> AIAnalysisOut:
-    all_trades = await crud.load_user_trades(db, owner.id)
-    transactions = await crud.load_user_transactions(db, owner.id)
-    try:
-        text = await ai_analysis.analyze_trade(owner, all_trades, trade, transactions)
-    except ai_analysis.AINotConfigured as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ai_analysis.AIRequestError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+def _trade_out(trade: Trade) -> AIAnalysisOut:
+    return AIAnalysisOut(
+        analysis=trade.ai_analysis,
+        generated_at=trade.ai_analysis_at,
+        enabled=ai_analysis.is_enabled(),
+        status=trade.ai_analysis_status,
+        error=trade.ai_analysis_error,
+    )
 
-    trade.ai_analysis = text
-    trade.ai_analysis_at = _utcnow()
+
+def _overall_out(user: User) -> AIAnalysisOut:
+    return AIAnalysisOut(
+        analysis=user.ai_overall,
+        generated_at=user.ai_overall_at,
+        enabled=ai_analysis.is_enabled(),
+        status=user.ai_overall_status,
+        error=user.ai_overall_error,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Job starters: flip status to PENDING, return immediately, run in background
+# ---------------------------------------------------------------------------
+async def _start_trade_job(db: AsyncSession, trade: Trade) -> AIAnalysisOut:
+    if not ai_analysis.is_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است.",
+        )
+    trade.ai_analysis_status = "PENDING"
+    trade.ai_analysis_error = None
     await db.commit()
-    return AIAnalysisOut(analysis=text, generated_at=trade.ai_analysis_at, enabled=True)
+    _spawn(_run_trade_job(trade.id, trade.user_id))
+    return _trade_out(trade)
 
 
-async def _run_overall_analysis(db: AsyncSession, owner: User) -> AIAnalysisOut:
-    all_trades = await crud.load_user_trades(db, owner.id)
-    transactions = await crud.load_user_transactions(db, owner.id)
-    try:
-        text = await ai_analysis.analyze_overall(owner, all_trades, transactions)
-    except ai_analysis.AINotConfigured as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ai_analysis.AIRequestError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    owner.ai_overall = text
-    owner.ai_overall_at = _utcnow()
+async def _start_overall_job(db: AsyncSession, owner: User) -> AIAnalysisOut:
+    if not ai_analysis.is_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است.",
+        )
+    owner.ai_overall_status = "PENDING"
+    owner.ai_overall_error = None
     await db.commit()
-    return AIAnalysisOut(analysis=text, generated_at=owner.ai_overall_at, enabled=True)
+    _spawn(_run_overall_job(owner.id))
+    return _overall_out(owner)
+
+
+# ---------------------------------------------------------------------------
+# Background workers (own DB session, isolated from the request lifecycle)
+# ---------------------------------------------------------------------------
+async def _run_trade_job(trade_id: int, owner_id: int) -> None:
+    async with AsyncSessionLocal() as db:
+        try:
+            owner = await db.get(User, owner_id)
+            trade = await _load_trade(db, trade_id)
+            if owner is None or trade is None:
+                return
+            all_trades = await crud.load_user_trades(db, owner_id)
+            transactions = await crud.load_user_transactions(db, owner_id)
+            text = await ai_analysis.analyze_trade(owner, all_trades, trade, transactions)
+            trade.ai_analysis = text
+            trade.ai_analysis_at = _utcnow()
+            trade.ai_analysis_status = "DONE"
+            trade.ai_analysis_error = None
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001 - record failure for the client
+            logger.exception("AI trade analysis failed (trade=%s)", trade_id)
+            await _record_trade_error(trade_id, str(exc))
+
+
+async def _run_overall_job(owner_id: int) -> None:
+    async with AsyncSessionLocal() as db:
+        try:
+            owner = await db.get(User, owner_id)
+            if owner is None:
+                return
+            all_trades = await crud.load_user_trades(db, owner_id)
+            transactions = await crud.load_user_transactions(db, owner_id)
+            text = await ai_analysis.analyze_overall(owner, all_trades, transactions)
+            owner.ai_overall = text
+            owner.ai_overall_at = _utcnow()
+            owner.ai_overall_status = "DONE"
+            owner.ai_overall_error = None
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("AI overall analysis failed (user=%s)", owner_id)
+            await _record_overall_error(owner_id, str(exc))
+
+
+async def _record_trade_error(trade_id: int, message: str) -> None:
+    async with AsyncSessionLocal() as db:
+        trade = await db.get(Trade, trade_id)
+        if trade is not None:
+            trade.ai_analysis_status = "ERROR"
+            trade.ai_analysis_error = message[:500]
+            await db.commit()
+
+
+async def _record_overall_error(owner_id: int, message: str) -> None:
+    async with AsyncSessionLocal() as db:
+        owner = await db.get(User, owner_id)
+        if owner is not None:
+            owner.ai_overall_status = "ERROR"
+            owner.ai_overall_error = message[:500]
+            await db.commit()

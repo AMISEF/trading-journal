@@ -670,6 +670,14 @@ function DashboardInner() {
         <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
       </div>
 
+      {/* ── AI coach: whole-journal coaching report (top of page) ── */}
+      <AICoachPanel
+        title="مربی هوش مصنوعی — تحلیل کلی معاملات"
+        subtitle="بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامه‌ی بهبود"
+        fetcher={() => aiApi.getOverall()}
+        generator={() => aiApi.analyzeOverall()}
+      />
+
       {/* ── KPI cards ── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <KpiCard
@@ -995,14 +1003,6 @@ function DashboardInner() {
           </div>
         </ChartCard>
       </div>
-
-      {/* ── AI coach: whole-journal coaching report ── */}
-      <AICoachPanel
-        title="مربی هوش مصنوعی — تحلیل کلی معاملات"
-        subtitle="بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامه‌ی بهبود"
-        fetcher={() => aiApi.getOverall()}
-        generator={() => aiApi.analyzeOverall()}
-      />
     </div>
   );
 }
