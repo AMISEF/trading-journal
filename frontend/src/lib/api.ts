@@ -234,6 +234,10 @@ export const aiApi = {
   getOverall: () => http.get<AIAnalysis>(`/ai/overall`).then((r) => r.data),
   analyzeOverall: () =>
     http.post<AIAnalysis>(`/ai/overall`, {}).then((r) => r.data),
+  // Institutional due-diligence report (current user).
+  getReport: () => http.get<AIAnalysis>(`/ai/report`).then((r) => r.data),
+  analyzeReport: () =>
+    http.post<AIAnalysis>(`/ai/report`, {}).then((r) => r.data),
   // Admin: coach any user / their trades.
   adminGetTrade: (id: string) =>
     http.get<AIAnalysis>(`/ai/admin/trades/${id}`).then((r) => r.data),
@@ -243,6 +247,10 @@ export const aiApi = {
     http.get<AIAnalysis>(`/ai/admin/users/${userId}/overall`).then((r) => r.data),
   adminAnalyzeOverall: (userId: string) =>
     http.post<AIAnalysis>(`/ai/admin/users/${userId}/overall`, {}).then((r) => r.data),
+  adminGetReport: (userId: string) =>
+    http.get<AIAnalysis>(`/ai/admin/users/${userId}/report`).then((r) => r.data),
+  adminAnalyzeReport: (userId: string) =>
+    http.post<AIAnalysis>(`/ai/admin/users/${userId}/report`, {}).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------

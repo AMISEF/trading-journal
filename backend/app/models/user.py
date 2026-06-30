@@ -42,6 +42,12 @@ class User(Base):
     ai_overall_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ai_overall_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Cached institutional due-diligence report (Markdown) + its job state.
+    ai_report: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_report_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_report_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ai_report_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     # All trades belonging to this user.

@@ -109,6 +109,24 @@ async def generate_overall_analysis(
 
 
 # ---------------------------------------------------------------------------
+# Institutional due-diligence report (current user)
+# ---------------------------------------------------------------------------
+@router.get("/report", response_model=AIAnalysisOut)
+async def get_report(
+    user: User = Depends(get_current_user),
+) -> AIAnalysisOut:
+    return _report_out(user)
+
+
+@router.post("/report", response_model=AIAnalysisOut)
+async def generate_report(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    return await _start_report_job(db, user)
+
+
+# ---------------------------------------------------------------------------
 # Admin variants (coach any user / their trades)
 # ---------------------------------------------------------------------------
 @router.get("/admin/trades/{trade_id}", response_model=AIAnalysisOut)
@@ -159,6 +177,30 @@ async def admin_generate_overall_analysis(
     return await _start_overall_job(db, target)
 
 
+@router.get("/admin/users/{user_id}/report", response_model=AIAnalysisOut)
+async def admin_get_report(
+    user_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+    return _report_out(target)
+
+
+@router.post("/admin/users/{user_id}/report", response_model=AIAnalysisOut)
+async def admin_generate_report(
+    user_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AIAnalysisOut:
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+    return await _start_report_job(db, target)
+
+
 # ---------------------------------------------------------------------------
 # Response builders
 # ---------------------------------------------------------------------------
@@ -179,6 +221,16 @@ def _overall_out(user: User) -> AIAnalysisOut:
         enabled=ai_analysis.is_enabled(),
         status=user.ai_overall_status,
         error=user.ai_overall_error,
+    )
+
+
+def _report_out(user: User) -> AIAnalysisOut:
+    return AIAnalysisOut(
+        analysis=user.ai_report,
+        generated_at=user.ai_report_at,
+        enabled=ai_analysis.is_enabled(),
+        status=user.ai_report_status,
+        error=user.ai_report_error,
     )
 
 
@@ -209,6 +261,19 @@ async def _start_overall_job(db: AsyncSession, owner: User) -> AIAnalysisOut:
     await db.commit()
     _spawn(_run_overall_job(owner.id))
     return _overall_out(owner)
+
+
+async def _start_report_job(db: AsyncSession, owner: User) -> AIAnalysisOut:
+    if not ai_analysis.is_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است.",
+        )
+    owner.ai_report_status = "PENDING"
+    owner.ai_report_error = None
+    await db.commit()
+    _spawn(_run_report_job(owner.id))
+    return _report_out(owner)
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +316,34 @@ async def _run_overall_job(owner_id: int) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.exception("AI overall analysis failed (user=%s)", owner_id)
             await _record_overall_error(owner_id, str(exc))
+
+
+async def _run_report_job(owner_id: int) -> None:
+    async with AsyncSessionLocal() as db:
+        try:
+            owner = await db.get(User, owner_id)
+            if owner is None:
+                return
+            all_trades = await crud.load_user_trades(db, owner_id)
+            transactions = await crud.load_user_transactions(db, owner_id)
+            text = await ai_analysis.analyze_institutional(owner, all_trades, transactions)
+            owner.ai_report = text
+            owner.ai_report_at = _utcnow()
+            owner.ai_report_status = "DONE"
+            owner.ai_report_error = None
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("AI institutional report failed (user=%s)", owner_id)
+            await _record_report_error(owner_id, str(exc))
+
+
+async def _record_report_error(owner_id: int, message: str) -> None:
+    async with AsyncSessionLocal() as db:
+        owner = await db.get(User, owner_id)
+        if owner is not None:
+            owner.ai_report_status = "ERROR"
+            owner.ai_report_error = message[:500]
+            await db.commit()
 
 
 async def _record_trade_error(trade_id: int, message: str) -> None:

@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AIAnalysis } from "@/lib/types";
 import { formatJalaliDateTime } from "@/lib/jalali";
+import { printReport } from "@/lib/markdown";
 
 interface Props {
   /** GET the cached analysis / job status. */
@@ -17,12 +18,14 @@ interface Props {
   title?: string;
   /** Short hint shown under the title. */
   subtitle?: string;
+  /** When set, shows a "download PDF" button that prints a styled report. */
+  pdf?: { title: string; subject?: string };
 }
 
 const POLL_MS = 4000;
 const MAX_POLLS = 60; // ~4 minutes, then re-enable with a retry hint
 
-export function AICoachPanel({ fetcher, generator, title, subtitle }: Props) {
+export function AICoachPanel({ fetcher, generator, title, subtitle, pdf }: Props) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(true);
@@ -151,6 +154,27 @@ export function AICoachPanel({ fetcher, generator, title, subtitle }: Props) {
 
       {analysis && (
         <div className="space-y-2">
+          {pdf && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() =>
+                  printReport({
+                    title: pdf.title,
+                    subject: pdf.subject,
+                    generatedAt,
+                    contentMarkdown: analysis,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 px-3 py-1.5 text-xs font-semibold text-sky-600 transition hover:bg-sky-50 dark:hover:bg-sky-900/20"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                دانلود PDF
+              </button>
+            </div>
+          )}
           <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-border bg-surface-2/40 p-4">
             <Markdown content={analysis} />
           </div>
@@ -171,7 +195,17 @@ export function AICoachPanel({ fetcher, generator, title, subtitle }: Props) {
   );
 }
 
-// ─── Minimal Markdown renderer (headings, bold, lists, paragraphs) ───────────
+// ─── Minimal Markdown renderer (headings, bold, lists, tables, paragraphs) ───
+const isTableRow = (l: string) => l.trim().startsWith("|") && l.includes("|");
+const isTableSep = (l: string) =>
+  /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(l) && l.includes("-");
+function splitRow(l: string): string[] {
+  let s = l.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split("|").map((c) => c.trim());
+}
+
 function Markdown({ content }: { content: string }) {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const blocks: React.ReactNode[] = [];
@@ -191,11 +225,54 @@ function Markdown({ content }: { content: string }) {
     list = [];
   };
 
-  for (const raw of lines) {
+  let idx = 0;
+  while (idx < lines.length) {
+    const raw = lines[idx];
     const line = raw.trimEnd();
     const trimmed = line.trim();
+
+    // Table: header + separator + body rows
+    if (isTableRow(line) && idx + 1 < lines.length && isTableSep(lines[idx + 1])) {
+      flushList();
+      const header = splitRow(line);
+      idx += 2;
+      const body: string[][] = [];
+      while (idx < lines.length && isTableRow(lines[idx])) {
+        body.push(splitRow(lines[idx]));
+        idx += 1;
+      }
+      blocks.push(
+        <div key={`t-${key++}`} className="overflow-x-auto">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                {header.map((h, i) => (
+                  <th key={i} className="border border-border bg-surface-2 p-2 text-right font-bold">
+                    {inline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((r, ri) => (
+                <tr key={ri}>
+                  {r.map((c, ci) => (
+                    <td key={ci} className="border border-border p-2 text-right">
+                      {inline(c)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
     if (trimmed === "") {
       flushList();
+      idx += 1;
       continue;
     }
     if (trimmed.startsWith("### ")) {
@@ -231,6 +308,7 @@ function Markdown({ content }: { content: string }) {
         </p>
       );
     }
+    idx += 1;
   }
   flushList();
 

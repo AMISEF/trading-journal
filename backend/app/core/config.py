@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""  # legacy alias, still honoured as a key fallback
     AI_MODEL: str = "zyloo/claude-opus-4-7"
     AI_MAX_TOKENS: int = 2500
+    # The institutional due-diligence report is much longer (19 sections).
+    AI_REPORT_MAX_TOKENS: int = 8000
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

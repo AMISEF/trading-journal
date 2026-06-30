@@ -225,6 +225,18 @@ function Inner() {
         generator={() => aiApi.adminAnalyzeOverall(userId)}
       />
 
+      {/* Institutional due-diligence report (full 19-section, PDF export) */}
+      <AICoachPanel
+        title="گزارش نهادی (Institutional) — ارزیابی کامل معامله‌گر"
+        subtitle="۱۹ بخش: امتیازدهی، ریسک، دراودان، مونت‌کارلو، استرس‌تست، مقیاس‌پذیری و تصمیم کمیته — بر اساس تمام دیتا و تصاویر"
+        fetcher={() => aiApi.adminGetReport(userId)}
+        generator={() => aiApi.adminAnalyzeReport(userId)}
+        pdf={{
+          title: "گزارش ارزیابی نهادی معامله‌گر",
+          subject: user ? `${user.firstName} ${user.lastName} (@${user.username})` : undefined,
+        }}
+      />
+
       {trades.length === 0 && (
         <div className="tj-card p-10 text-center text-muted">
           این کاربر معامله‌ای ثبت نکرده است.
