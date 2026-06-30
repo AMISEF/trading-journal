@@ -27,12 +27,20 @@ class Settings(BaseSettings):
     # Folder on disk where uploaded images are saved.
     UPLOAD_DIR: str = "./uploads"
 
-    # --- AI trade analysis (Claude / Anthropic) -----------------------------
-    # The feature stays disabled until a key is provided. Set ANTHROPIC_API_KEY
-    # in the server .env to enable the "AI coach" endpoints. AI_MODEL must be a
-    # vision-capable Claude model so chart images can be analysed.
-    ANTHROPIC_API_KEY: str = ""
-    AI_MODEL: str = "claude-opus-4-8"
+    # --- AI trade analysis (Claude via any compatible gateway) --------------
+    # The feature stays disabled until an API key is provided. Works with the
+    # official Anthropic API or any compatible gateway (e.g. zyloo.io, OpenRouter):
+    #   AI_API_STYLE  – "openai" (POST <base>/chat/completions) or
+    #                   "anthropic" (POST <base>/v1/messages)
+    #   AI_BASE_URL   – gateway base URL, e.g. "https://api.zyloo.io/v1"
+    #                   (leave empty for the official Anthropic API)
+    #   AI_API_KEY    – the gateway/Anthropic key (falls back to ANTHROPIC_API_KEY)
+    #   AI_MODEL      – must be a vision-capable model so charts can be analysed
+    AI_API_STYLE: str = "openai"
+    AI_BASE_URL: str = ""
+    AI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""  # legacy alias, still honoured as a key fallback
+    AI_MODEL: str = "zyloo/claude-opus-4-7"
     AI_MAX_TOKENS: int = 2500
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

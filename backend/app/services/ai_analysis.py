@@ -1,16 +1,22 @@
-"""AI trading coach powered by Claude (Anthropic), with chart-image vision.
+"""AI trading coach powered by Claude (official API or any compatible gateway).
 
 Builds a rich Persian context from every recorded field of a trade (entry,
 exits, take-profits, risk/reward, realised PnL, emotions, checklist, reasons,
-notes and the before/after chart screenshots) and asks Claude to act as a
+notes and the before/after chart screenshots) and asks the model to act as a
 professional trading coach. Two entry points:
 
-* :func:`analyze_trade`   – deep review of a single trade.
-* :func:`analyze_overall` – coaching report across the whole journal
-  (win-rate, profit factor, recurring mistakes, psychology, risk management).
+* :func:`analyze_trade`   – deep review of a single trade (with chart vision).
+* :func:`analyze_overall` – coaching report across the whole journal.
 
-The feature is inert until ``ANTHROPIC_API_KEY`` is configured; callers should
-catch :class:`AINotConfigured` and surface a friendly message.
+Transport is plain ``httpx`` so it works against the official Anthropic API or
+any compatible gateway (e.g. zyloo.io, OpenRouter). The request shape is chosen
+by ``AI_API_STYLE``:
+
+* ``"openai"``     → ``POST <base>/chat/completions`` (OpenAI-compatible),
+* ``"anthropic"``  → ``POST <base>/v1/messages``       (Anthropic-compatible).
+
+The feature is inert until an API key is configured; callers should catch
+:class:`AINotConfigured` and surface a friendly message.
 """
 
 from __future__ import annotations
@@ -18,20 +24,17 @@ from __future__ import annotations
 import base64
 import os
 
+import httpx
+
 from app.core.config import settings
 from app.models.trade import Trade
 from app.models.user import User
 from app.models.wallet_transaction import WalletTransaction
 from app.services import balances
 
-try:  # The dependency may not be installed in minimal environments.
-    from anthropic import AsyncAnthropic
-except ImportError:  # pragma: no cover - import guard
-    AsyncAnthropic = None  # type: ignore[assignment]
-
 
 class AINotConfigured(Exception):
-    """Raised when the AI feature is requested but not configured/installed."""
+    """Raised when the AI feature is requested but not configured."""
 
 
 class AIRequestError(Exception):
@@ -46,9 +49,11 @@ _MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 
-# Roughly 5 MB of raw bytes -> base64; skip anything larger to stay within the
-# API's per-image limits.
+# Roughly 5 MB of raw bytes -> base64; skip anything larger to stay within
+# typical per-image limits.
 _MAX_IMAGE_B64 = 7_000_000
+
+_REQUEST_TIMEOUT = 120.0
 
 _TRADE_SYSTEM_PROMPT = """\
 تو یک مربی حرفه‌ای معامله‌گری (Trading Coach) هستی که به یک معامله‌گر کریپتو کمک می‌کنی عملکردش را بهبود دهد.
@@ -103,21 +108,15 @@ _OVERALL_SYSTEM_PROMPT = """\
 
 
 # ---------------------------------------------------------------------------
-# Configuration / client helpers
+# Configuration helpers
 # ---------------------------------------------------------------------------
+def _api_key() -> str:
+    return settings.AI_API_KEY or settings.ANTHROPIC_API_KEY
+
+
 def is_enabled() -> bool:
-    """True when the AI feature can actually run (lib installed + key present)."""
-    return AsyncAnthropic is not None and bool(settings.ANTHROPIC_API_KEY)
-
-
-def _client() -> "AsyncAnthropic":
-    if AsyncAnthropic is None:
-        raise AINotConfigured("کتابخانه anthropic روی سرور نصب نشده است.")
-    if not settings.ANTHROPIC_API_KEY:
-        raise AINotConfigured(
-            "تحلیل هوش مصنوعی فعال نیست. کلید ANTHROPIC_API_KEY در سرور تنظیم نشده است."
-        )
-    return AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    """True when the AI feature can actually run (an API key is configured)."""
+    return bool(_api_key())
 
 
 # ---------------------------------------------------------------------------
@@ -134,8 +133,8 @@ def _fmt(value: object, suffix: str = "") -> str:
     return f"{value}{suffix}"
 
 
-def _image_block(url: str | None) -> dict | None:
-    """Read an uploaded image off disk and turn it into a Claude image block."""
+def _image_data(url: str | None) -> tuple[str, str] | None:
+    """Read an uploaded image off disk; return ``(media_type, base64)``."""
     if not url:
         return None
     name = os.path.basename(url)
@@ -152,10 +151,7 @@ def _image_block(url: str | None) -> dict | None:
         return None
     if len(data) > _MAX_IMAGE_B64:
         return None
-    return {
-        "type": "image",
-        "source": {"type": "base64", "media_type": media, "data": data},
-    }
+    return media, data
 
 
 def _checklist_summary(ticks: dict | None) -> str:
@@ -323,49 +319,141 @@ def build_overall_summary(
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Transport (httpx) — OpenAI-compatible or Anthropic-compatible
 # ---------------------------------------------------------------------------
-def _text_from(message) -> str:
-    parts = [
-        block.text
-        for block in message.content
-        if getattr(block, "type", None) == "text"
-    ]
-    text = "\n".join(parts).strip()
+async def _complete(
+    system: str,
+    user_text: str,
+    images: list[tuple[str, str, str]] | None = None,
+) -> str:
+    """Send a single-turn request and return the assistant's text.
+
+    ``images`` items are ``(label, media_type, base64)`` tuples.
+    """
+    key = _api_key()
+    if not key:
+        raise AINotConfigured(
+            "تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است."
+        )
+    images = images or []
+    style = (settings.AI_API_STYLE or "openai").strip().lower()
+
+    if style == "anthropic":
+        url, headers, payload = _anthropic_request(key, system, user_text, images)
+    else:
+        url, headers, payload = _openai_request(key, system, user_text, images)
+
+    try:
+        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+    except httpx.HTTPError as exc:
+        raise AIRequestError(f"خطا در ارتباط با سرویس هوش مصنوعی: {exc}") from exc
+
+    if resp.status_code >= 400:
+        snippet = resp.text[:300]
+        raise AIRequestError(
+            f"سرویس هوش مصنوعی خطا برگرداند ({resp.status_code}): {snippet}"
+        )
+
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise AIRequestError("پاسخ نامعتبر از سرویس هوش مصنوعی دریافت شد.") from exc
+
+    text = _anthropic_text(data) if style == "anthropic" else _openai_text(data)
     if not text:
         raise AIRequestError("پاسخ خالی از سرویس هوش مصنوعی دریافت شد.")
     return text
 
 
+def _openai_request(key, system, user_text, images):
+    base = (settings.AI_BASE_URL or "").rstrip("/")
+    if not base:
+        raise AINotConfigured("AI_BASE_URL برای حالت openai تنظیم نشده است.")
+    if images:
+        content: list[dict] = [{"type": "text", "text": user_text}]
+        for label, media, b64 in images:
+            content.append({"type": "text", "text": label})
+            content.append(
+                {"type": "image_url", "image_url": {"url": f"data:{media};base64,{b64}"}}
+            )
+        user_content: object = content
+    else:
+        user_content = user_text
+    payload = {
+        "model": settings.AI_MODEL,
+        "max_tokens": settings.AI_MAX_TOKENS,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+    return f"{base}/chat/completions", headers, payload
+
+
+def _anthropic_request(key, system, user_text, images):
+    base = (settings.AI_BASE_URL or "https://api.anthropic.com").rstrip("/")
+    content: list[dict] = [{"type": "text", "text": user_text}]
+    for label, media, b64 in images:
+        content.append({"type": "text", "text": label})
+        content.append(
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": media, "data": b64},
+            }
+        )
+    payload = {
+        "model": settings.AI_MODEL,
+        "max_tokens": settings.AI_MAX_TOKENS,
+        "system": system,
+        "messages": [{"role": "user", "content": content}],
+    }
+    headers = {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    return f"{base}/v1/messages", headers, payload
+
+
+def _openai_text(data: dict) -> str:
+    try:
+        return (data["choices"][0]["message"]["content"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def _anthropic_text(data: dict) -> str:
+    blocks = data.get("content") or []
+    parts = [b.get("text", "") for b in blocks if b.get("type") == "text"]
+    return "\n".join(parts).strip()
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 async def analyze_trade(
     user: User,
     all_trades: list[Trade],
     trade: Trade,
     transactions: list[WalletTransaction] | None,
 ) -> str:
-    client = _client()
     summary = build_trade_summary(user, all_trades, trade, transactions)
 
-    content: list[dict] = [{"type": "text", "text": summary}]
+    images: list[tuple[str, str, str]] = []
     for label, url in (
         ("تصویر چارت قبل از ورود:", trade.image_before),
         ("تصویر چارت بعد از خروج:", trade.image_after),
     ):
-        block = _image_block(url)
-        if block:
-            content.append({"type": "text", "text": label})
-            content.append(block)
+        data = _image_data(url)
+        if data:
+            images.append((label, data[0], data[1]))
 
-    try:
-        message = await client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=settings.AI_MAX_TOKENS,
-            system=_TRADE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": content}],
-        )
-    except Exception as exc:  # noqa: BLE001 - surface upstream failure cleanly
-        raise AIRequestError(f"خطا در ارتباط با سرویس هوش مصنوعی: {exc}") from exc
-    return _text_from(message)
+    return await _complete(_TRADE_SYSTEM_PROMPT, summary, images)
 
 
 async def analyze_overall(
@@ -373,16 +461,5 @@ async def analyze_overall(
     trades: list[Trade],
     transactions: list[WalletTransaction] | None,
 ) -> str:
-    client = _client()
     summary = build_overall_summary(user, trades, transactions)
-
-    try:
-        message = await client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=settings.AI_MAX_TOKENS,
-            system=_OVERALL_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": [{"type": "text", "text": summary}]}],
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise AIRequestError(f"خطا در ارتباط با سرویس هوش مصنوعی: {exc}") from exc
-    return _text_from(message)
+    return await _complete(_OVERALL_SYSTEM_PROMPT, summary)
