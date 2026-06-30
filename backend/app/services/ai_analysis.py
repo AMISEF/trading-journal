@@ -22,6 +22,7 @@ The feature is inert until an API key is configured; callers should catch
 from __future__ import annotations
 
 import base64
+import json
 import os
 import random
 
@@ -767,28 +768,80 @@ async def _complete(
 
 
 async def _send(url: str, headers: dict, payload: dict, style: str) -> str:
-    """POST the prepared request and extract the assistant's text."""
+    """Stream the request and accumulate the assistant's text.
+
+    Streaming is essential here: gateways such as zyloo.io sit behind Cloudflare,
+    which returns a 524 if the origin sends nothing within ~100s. A long model
+    generation easily exceeds that. With ``stream: true`` the gateway emits tokens
+    within a couple of seconds, so the connection keeps flowing and never trips
+    the timeout. We re-assemble the full text server-side and return it as usual.
+    """
+    payload = {**payload, "stream": True}
+    # `read` is the max gap *between* streamed chunks (not the whole call), so a
+    # long generation is fine as long as tokens keep arriving; a truly hung
+    # upstream still fails instead of blocking forever.
+    timeout = httpx.Timeout(connect=30.0, read=90.0, write=30.0, pool=30.0)
     try:
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                if resp.status_code >= 400:
+                    body = (await resp.aread()).decode("utf-8", "replace")[:300]
+                    raise AIRequestError(
+                        f"سرویس هوش مصنوعی خطا برگرداند ({resp.status_code}): {body}"
+                    )
+                parts: list[str] = []
+                raw: list[str] = []
+                async for line in resp.aiter_lines():
+                    chunk = _parse_sse_line(line, style)
+                    if chunk:
+                        parts.append(chunk)
+                    elif line:
+                        raw.append(line)
+    except AIRequestError:
+        raise
     except httpx.HTTPError as exc:
         raise AIRequestError(f"خطا در ارتباط با سرویس هوش مصنوعی: {exc}") from exc
 
-    if resp.status_code >= 400:
-        snippet = resp.text[:300]
-        raise AIRequestError(
-            f"سرویس هوش مصنوعی خطا برگرداند ({resp.status_code}): {snippet}"
-        )
-
-    try:
-        data = resp.json()
-    except ValueError as exc:
-        raise AIRequestError("پاسخ نامعتبر از سرویس هوش مصنوعی دریافت شد.") from exc
-
-    text = _anthropic_text(data) if style == "anthropic" else _openai_text(data)
+    text = "".join(parts).strip()
+    if not text and raw:
+        # Gateway ignored `stream` and returned a normal JSON body — parse it.
+        try:
+            data = json.loads("".join(raw))
+            text = (_anthropic_text(data) if style == "anthropic" else _openai_text(data)).strip()
+        except ValueError:
+            pass
     if not text:
         raise AIRequestError("پاسخ خالی از سرویس هوش مصنوعی دریافت شد.")
     return text
+
+
+def _parse_sse_line(line: str, style: str) -> str:
+    """Extract a text delta from one SSE line (OpenAI- or Anthropic-style)."""
+    if not line:
+        return ""
+    line = line.strip()
+    if not line.startswith("data:"):
+        return ""
+    data = line[len("data:"):].strip()
+    if not data or data == "[DONE]":
+        return ""
+    try:
+        obj = json.loads(data)
+    except ValueError:
+        return ""
+    if style == "anthropic":
+        if obj.get("type") == "content_block_delta":
+            delta = obj.get("delta") or {}
+            if delta.get("type") == "text_delta":
+                return delta.get("text") or ""
+        return ""
+    # OpenAI-compatible streaming delta
+    try:
+        choice = (obj.get("choices") or [{}])[0]
+        delta = choice.get("delta") or {}
+        return delta.get("content") or ""
+    except (IndexError, AttributeError, TypeError):
+        return ""
 
 
 # Chat replies are short and conversational — keep them snappy.
