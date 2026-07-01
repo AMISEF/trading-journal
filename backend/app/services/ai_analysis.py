@@ -33,6 +33,7 @@ from app.models.trade import Trade
 from app.models.user import User
 from app.models.wallet_transaction import WalletTransaction
 from app.services import balances
+from app.services.sessions import session_for
 
 
 class AINotConfigured(Exception):
@@ -275,17 +276,37 @@ def build_trade_summary(
     if trade.entry_levels:
         entry_lines = "\n".join(
             f"  - پله {lvl.get('order')}: قیمت {_fmt(lvl.get('price'))} | "
-            f"مارجین {_fmt(lvl.get('margin_percent'), '٪')}"
+            f"مارجین {_fmt(lvl.get('margin_percent'), '٪')} | "
+            f"فعال‌شده: {_fmt(lvl.get('is_activated'))}"
             for lvl in trade.entry_levels
         )
-        entry_block = f"ورود پله‌ای:\n{entry_lines}\nمیانگین ورود: {_fmt(trade.entry_price)}"
+        entry_block = f"ورود پله‌ای (DCA):\n{entry_lines}\nمیانگین ورود (وزنی): {_fmt(trade.entry_price)}"
     else:
         entry_block = f"قیمت ورود: {_fmt(trade.entry_price)}"
 
+    trail_block = (
+        f"تریلینگ استاپ: {_fmt(trade.trail_exit_value)}"
+        f"{' ٪' if trade.trail_is_percent else ' (مقدار مطلق)'}"
+        if trade.trail_exit_value is not None
+        else "تریلینگ استاپ: —"
+    )
+
+    has_before = bool(trade.image_before)
+    has_after = bool(trade.image_after)
+    if has_before or has_after:
+        images_note = (
+            f"تصویر چارت قبل از ورود: {'پیوست شده — در ادامه بررسی کن' if has_before else 'ندارد'} | "
+            f"تصویر چارت بعد از خروج: {'پیوست شده — در ادامه بررسی کن' if has_after else 'ندارد'}"
+        )
+    else:
+        images_note = "تصویر چارت: کاربر تصویری برای این معامله ثبت نکرده است."
+
     lines = [
         f"# معامله شماره {trade.number}",
+        f"شماره‌ی معامله در بروکر/صرافی (Trade #): {_fmt(trade.trade_number)}",
         f"نماد: {_fmt(trade.symbol)} | جهت: {_fmt(trade.direction)} | وضعیت: {_fmt(trade.status)}",
         f"تایم‌فریم تحلیل: {_fmt(trade.analysis_tf)} | تایم‌فریم تریگر: {_fmt(trade.trigger_tf)}",
+        images_note,
         "",
         "## ورود و خروج",
         entry_block,
@@ -294,8 +315,10 @@ def build_trade_summary(
         "حد سودها:",
         tp_lines,
         f"نوع خروج: {_fmt(trade.exit_type)} | قیمت خروج: {_fmt(trade.exit_price)}",
+        trail_block,
         f"تاریخ ورود: {_fmt(trade.open_date)} | تاریخ خروج: {_fmt(trade.close_date)}",
-        f"بدون‌ریسک‌شده (مدیریت): {_fmt(trade.is_risk_free_mgmt)}",
+        f"پلن بدون‌ریسک (در برنامه‌ریزی): {_fmt(trade.is_risk_free_plan)} | "
+        f"بدون‌ریسک‌شده (در مدیریت واقعی): {_fmt(trade.is_risk_free_mgmt)}",
         "",
         "## نتایج محاسبه‌شده",
         f"موجودی پایه (snapshot): {_fmt(trade.balance_snapshot)}",
@@ -312,12 +335,14 @@ def build_trade_summary(
         f"چک‌لیست: {_checklist_summary(trade.checklist_ticks)}",
         f"دلایل ورود: {('، '.join(trade.entry_reasons) if trade.entry_reasons else '—')}",
         f"دلایل خروج: {('، '.join(trade.exit_reasons) if trade.exit_reasons else '—')}",
-        f"برچسب‌ها: {('، '.join(trade.tags) if trade.tags else '—')}",
+        f"برچسب‌ها/سبک: {('، '.join(trade.tags) if trade.tags else '—')}",
         "",
         "## یادداشت‌ها",
         f"یادداشت ورود: {_fmt(trade.entry_note)}",
         f"یادداشت خروج: {_fmt(trade.exit_note)}",
         f"یادداشت کلی: {_fmt(trade.general_note)}",
+        "",
+        f"(ثبت شده: {_fmt(trade.created_at)} | آخرین ویرایش: {_fmt(trade.updated_at)})",
     ]
     return "\n".join(lines)
 
@@ -337,12 +362,21 @@ def build_overall_summary(
     rrs: list[float] = []
     wins = losses = breakeven = 0
     sym_pnl: dict[str, float] = {}
+    direction_count = {"LONG": 0, "SHORT": 0}
+    sess_count: dict[str, int] = {}
+    sess_pnl: dict[str, float] = {}
+    checklist_fractions: list[float] = []
+    equity_curve: list[float] = []
     rows: list[str] = []
+
+    balance_running = user.wallet_margin or 0.0
 
     for t in closed:
         calc = balances.compute_for_trade(user, trades, t, transactions)
         pnl = calc.get("realizedPnl") or 0.0
         pnls.append(pnl)
+        balance_running += pnl
+        equity_curve.append(balance_running)
         rr = calc.get("rrAchieved")
         if rr is not None:
             rrs.append(rr)
@@ -354,6 +388,19 @@ def build_overall_summary(
             breakeven += 1
         sym = t.symbol or "?"
         sym_pnl[sym] = sym_pnl.get(sym, 0.0) + pnl
+
+        if t.direction in direction_count:
+            direction_count[t.direction] += 1
+        s = session_for(t.open_date) or "نامشخص"
+        sess_count[s] = sess_count.get(s, 0) + 1
+        sess_pnl[s] = sess_pnl.get(s, 0.0) + pnl
+        ticks = t.checklist_ticks or {}
+        if isinstance(ticks, dict) and ticks:
+            total_ticks = len(ticks)
+            done_ticks = sum(1 for v in ticks.values() if v)
+            if total_ticks:
+                checklist_fractions.append(done_ticks / total_ticks)
+
         entry_r = "، ".join(t.entry_reasons) if t.entry_reasons else "—"
         exit_r = "، ".join(t.exit_reasons) if t.exit_reasons else "—"
         style = "، ".join(t.tags) if t.tags else "—"
@@ -369,17 +416,37 @@ def build_overall_summary(
         )
 
     n = len(closed)
-    gross_profit = sum(p for p in pnls if p > 0)
-    gross_loss = sum(-p for p in pnls if p < 0)
+    win_pnls = [p for p in pnls if p > 0]
+    loss_pnls = [p for p in pnls if p < 0]
+    gross_profit = sum(win_pnls)
+    gross_loss = sum(-p for p in loss_pnls)
     profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
     win_rate = (wins / n * 100) if n else None
+    avg_win = (sum(win_pnls) / len(win_pnls)) if win_pnls else None
+    avg_loss = (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None
     avg_rr = (sum(rrs) / len(rrs)) if rrs else None
     total_pnl = sum(pnls)
+    checklist_discipline = (
+        sum(checklist_fractions) / len(checklist_fractions) * 100
+        if checklist_fractions else None
+    )
 
     best = sorted(sym_pnl.items(), key=lambda kv: kv[1], reverse=True)
     sym_lines = "\n".join(f"  - {s}: {_fmt(p, ' دلار')}" for s, p in best[:8]) or "  —"
 
     current = balances.current_balance(user, trades, transactions)
+    peak_equity = max(equity_curve) if equity_curve else (user.wallet_margin or 0.0)
+    trough_equity = min(equity_curve) if equity_curve else (user.wallet_margin or 0.0)
+
+    dir_total = sum(direction_count.values()) or 1
+    direction_lines = (
+        f"  - لانگ: {direction_count['LONG']} ({_fmt(direction_count['LONG'] / dir_total * 100, '٪')})\n"
+        f"  - شورت: {direction_count['SHORT']} ({_fmt(direction_count['SHORT'] / dir_total * 100, '٪')})"
+    )
+    session_lines = "\n".join(
+        f"  - {s}: {sess_count[s]} معامله | سود/زیان {_fmt(sess_pnl[s], ' دلار')}"
+        for s in sorted(sess_count, key=lambda k: sess_count[k], reverse=True)
+    ) or "  —"
 
     # Keep the trade list bounded so the prompt stays within reasonable limits.
     if len(rows) > 100:
@@ -398,10 +465,21 @@ def build_overall_summary(
         f"سود/زیان خالص: {_fmt(total_pnl, ' دلار')}",
         f"موجودی فعلی: {_fmt(current, ' دلار')} | موجودی اولیه: {_fmt(user.wallet_margin, ' دلار')}",
         "",
+        "## داده‌های داشبورد (کلی — جدای از معاملات تک‌تک)",
+        f"میانگین برد: {_fmt(avg_win, ' دلار')} | میانگین باخت: {_fmt(avg_loss, ' دلار')}",
+        f"سود ناخالص: {_fmt(gross_profit, ' دلار')} | زیان ناخالص: {_fmt(gross_loss, ' دلار')}",
+        f"بالاترین موجودی ثبت‌شده (peak): {_fmt(peak_equity, ' دلار')} | "
+        f"پایین‌ترین موجودی ثبت‌شده (trough): {_fmt(trough_equity, ' دلار')}",
+        f"میانگین رعایت چک‌لیست در کل معاملات: {_fmt(checklist_discipline, '٪') if checklist_discipline is not None else '—'}",
+        "تفکیک جهت معاملات:",
+        direction_lines,
+        "آمار به تفکیک سشن معاملاتی:",
+        session_lines,
+        "",
         "## سود/زیان به تفکیک نماد",
         sym_lines,
         "",
-        "## فهرست معاملات",
+        "## فهرست تک‌تک معاملات (پارامترهای هر معامله)",
         *rows,
     ]
     return "\n".join(header)
