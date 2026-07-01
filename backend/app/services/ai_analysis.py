@@ -22,6 +22,7 @@ The feature is inert until an API key is configured; callers should catch
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 import random
@@ -823,10 +824,15 @@ async def _complete(
     user_text: str,
     images: list[tuple[str, str, str]] | None = None,
     max_tokens: int | None = None,
+    analysis_type: str | None = None,
+    dify_user: str = "trading-journal",
 ) -> str:
     """Send a single-turn request and return the assistant's text.
 
-    ``images`` items are ``(label, media_type, base64)`` tuples.
+    ``images`` items are ``(label, media_type, base64)`` tuples. ``analysis_type``
+    / ``dify_user`` are only used when ``AI_API_STYLE=dify`` — the Dify workflow
+    already has the system prompts baked in per branch, so it only needs to know
+    which branch to run plus the context text (``user_text``) and images.
     """
     key = _api_key()
     if not key:
@@ -837,6 +843,10 @@ async def _complete(
     tokens = max_tokens or settings.AI_MAX_TOKENS
     style = (settings.AI_API_STYLE or "openai").strip().lower()
 
+    if style == "dify":
+        return await _dify_run(
+            analysis_type or "trade", user_text, images, dify_user
+        )
     if style == "anthropic":
         url, headers, payload = _anthropic_request(key, system, user_text, images, tokens)
     else:
@@ -922,6 +932,123 @@ def _parse_sse_line(line: str, style: str) -> str:
         return ""
 
 
+# ---------------------------------------------------------------------------
+# Dify workflow-run transport (AI_API_STYLE=dify)
+# ---------------------------------------------------------------------------
+# Long generations run fine as long as the connection stays open; `read` bounds
+# the gap between SSE events (Dify sends periodic keepalive/step events), not
+# the whole call.
+_DIFY_TIMEOUT = httpx.Timeout(connect=30.0, read=180.0, write=60.0, pool=30.0)
+
+
+async def _dify_upload_file(
+    base: str, key: str, media_type: str, b64_data: str, dify_user: str
+) -> str | None:
+    """Upload one base64-encoded image to Dify; return its ``upload_file_id``."""
+    try:
+        raw = base64.b64decode(b64_data)
+    except (ValueError, binascii.Error):
+        return None
+    ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}.get(
+        media_type, ".png"
+    )
+    headers = {"Authorization": f"Bearer {key}"}
+    files = {"file": (f"chart{ext}", raw, media_type)}
+    data = {"user": dify_user}
+    try:
+        async with httpx.AsyncClient(timeout=_DIFY_TIMEOUT) as client:
+            resp = await client.post(f"{base}/files/upload", headers=headers, files=files, data=data)
+        if resp.status_code >= 400:
+            return None
+        return resp.json().get("id")
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+async def _dify_run(
+    analysis_type: str,
+    context: str,
+    images: list[tuple[str, str, str]],
+    dify_user: str,
+    user_message: str = "",
+    chat_history: str = "",
+) -> str:
+    """Run the Dify workflow (system prompts are baked into its branches)."""
+    key = _api_key()
+    if not key:
+        raise AINotConfigured(
+            "تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است."
+        )
+    base = (settings.AI_BASE_URL or "").rstrip("/")
+    if not base:
+        raise AINotConfigured("AI_BASE_URL برای حالت dify تنظیم نشده است.")
+
+    chart_images = []
+    for _label, media, b64 in images[:2]:
+        file_id = await _dify_upload_file(base, key, media, b64, dify_user)
+        if file_id:
+            chart_images.append(
+                {"type": "image", "transfer_method": "local_file", "upload_file_id": file_id}
+            )
+
+    payload = {
+        "inputs": {
+            "analysis_type": analysis_type,
+            "context": context,
+            "user_message": user_message,
+            "chat_history": chat_history,
+            "chart_images": chart_images,
+        },
+        "response_mode": "streaming",
+        "user": dify_user,
+    }
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+    result_text = ""
+    fallback_text = ""
+    error_msg: str | None = None
+    try:
+        async with httpx.AsyncClient(timeout=_DIFY_TIMEOUT) as client:
+            async with client.stream(
+                "POST", f"{base}/workflows/run", json=payload, headers=headers
+            ) as resp:
+                if resp.status_code >= 400:
+                    body = (await resp.aread()).decode("utf-8", "replace")[:300]
+                    raise AIRequestError(f"سرویس Dify خطا برگرداند ({resp.status_code}): {body}")
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data_str = line[len("data:"):].strip()
+                    if not data_str:
+                        continue
+                    try:
+                        obj = json.loads(data_str)
+                    except ValueError:
+                        continue
+                    event = obj.get("event")
+                    node_data = obj.get("data") or {}
+                    if event == "workflow_finished":
+                        outputs = node_data.get("outputs") or {}
+                        result_text = (outputs.get("result") or "").strip()
+                        error_msg = node_data.get("error")
+                    elif event == "node_finished" and node_data.get("node_type") == "llm":
+                        out = (node_data.get("outputs") or {}).get("text")
+                        if out:
+                            fallback_text = out.strip()
+    except AIRequestError:
+        raise
+    except httpx.HTTPError as exc:
+        raise AIRequestError(f"خطا در ارتباط با Dify: {exc}") from exc
+
+    if error_msg:
+        raise AIRequestError(f"خطای Dify: {error_msg}")
+    text = result_text or fallback_text
+    if not text:
+        raise AIRequestError("پاسخ خالی از Dify دریافت شد.")
+    return text
+
+
 # Chat replies are short and conversational — keep them snappy.
 _CHAT_MAX_TOKENS = 1500
 _CHAT_CONTEXT_LIMIT = 14000  # chars of grounding context to include
@@ -946,6 +1073,7 @@ async def chat_reply(
     context_text: str,
     history: list[dict],
     message: str,
+    dify_user: str = "trading-journal",
 ) -> str:
     """Multi-turn coach chat grounded in ``context_text``."""
     key = _api_key()
@@ -954,6 +1082,20 @@ async def chat_reply(
             "گفتگوی هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است."
         )
     style = (settings.AI_API_STYLE or "openai").strip().lower()
+
+    if style == "dify":
+        history_lines = [
+            f"{'کاربر' if m.get('role') == 'user' else 'دستیار'}: {(m.get('content') or '').strip()}"
+            for m in history[-_CHAT_HISTORY_TURNS:]
+            if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
+        ]
+        chat_history = "\n".join(history_lines)
+        context = (context_text or "—")[:_CHAT_CONTEXT_LIMIT]
+        return await _dify_run(
+            "chat", context, [], dify_user,
+            user_message=message.strip(), chat_history=chat_history,
+        )
+
     system = _CHAT_SYSTEM_PROMPT.format(context=(context_text or "—")[:_CHAT_CONTEXT_LIMIT])
 
     turns: list[dict] = []
@@ -1080,7 +1222,10 @@ async def analyze_trade(
         if data:
             images.append((label, data[0], data[1]))
 
-    return await _complete(_TRADE_SYSTEM_PROMPT, summary, images)
+    return await _complete(
+        _TRADE_SYSTEM_PROMPT, summary, images,
+        analysis_type="trade", dify_user=str(user.id),
+    )
 
 
 async def analyze_overall(
@@ -1092,7 +1237,8 @@ async def analyze_overall(
     # The per-trade scoring table scales with trade count, so allow more room
     # than a single-trade review (the prompt itself enforces conciseness).
     return await _complete(
-        _OVERALL_SYSTEM_PROMPT, summary, max_tokens=settings.AI_REPORT_MAX_TOKENS
+        _OVERALL_SYSTEM_PROMPT, summary, max_tokens=settings.AI_REPORT_MAX_TOKENS,
+        analysis_type="overall", dify_user=str(user.id),
     )
 
 
@@ -1133,4 +1279,6 @@ async def analyze_institutional(
         summary,
         images,
         max_tokens=settings.AI_REPORT_MAX_TOKENS,
+        analysis_type="institutional",
+        dify_user=str(user.id),
     )

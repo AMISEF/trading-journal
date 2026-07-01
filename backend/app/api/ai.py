@@ -330,11 +330,11 @@ def _chat_append(history: list[dict], user_msg: str, assistant_msg: str) -> list
     return out[-_MAX_CHAT_MESSAGES:]
 
 
-async def _run_chat(context: str, history: list[dict], message: str) -> str:
+async def _run_chat(context: str, history: list[dict], message: str, dify_user: str) -> str:
     if not message or not message.strip():
         raise HTTPException(status_code=400, detail="پیام خالی است")
     try:
-        return await ai_analysis.chat_reply(context, history, message)
+        return await ai_analysis.chat_reply(context, history, message, dify_user=dify_user)
     except ai_analysis.AINotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ai_analysis.AIRequestError as exc:
@@ -350,7 +350,7 @@ async def _do_trade_chat(
     if trade.ai_analysis:
         context += "\n\n[تحلیل قبلیِ این معامله]\n" + trade.ai_analysis
     history = list(trade.ai_chat or [])
-    reply = await _run_chat(context, history, message)
+    reply = await _run_chat(context, history, message, str(owner.id))
     trade.ai_chat = _chat_append(history, message, reply)
     await db.commit()
     return _trade_out(trade)
@@ -363,7 +363,7 @@ async def _do_overall_chat(db: AsyncSession, owner: User, message: str) -> AIAna
         transactions = await crud.load_user_transactions(db, owner.id)
         context = ai_analysis.build_overall_summary(owner, all_trades, transactions)
     history = list(owner.ai_overall_chat or [])
-    reply = await _run_chat(context, history, message)
+    reply = await _run_chat(context, history, message, str(owner.id))
     owner.ai_overall_chat = _chat_append(history, message, reply)
     await db.commit()
     return _overall_out(owner)
@@ -376,7 +376,7 @@ async def _do_report_chat(db: AsyncSession, owner: User, message: str) -> AIAnal
         transactions = await crud.load_user_transactions(db, owner.id)
         context = ai_analysis.build_institutional_summary(owner, all_trades, transactions)
     history = list(owner.ai_report_chat or [])
-    reply = await _run_chat(context, history, message)
+    reply = await _run_chat(context, history, message, str(owner.id))
     owner.ai_report_chat = _chat_append(history, message, reply)
     await db.commit()
     return _report_out(owner)

@@ -27,15 +27,25 @@ class Settings(BaseSettings):
     # Folder on disk where uploaded images are saved.
     UPLOAD_DIR: str = "./uploads"
 
-    # --- AI trade analysis (Claude via any compatible gateway) --------------
+    # --- AI trade analysis (Claude via any compatible gateway, or a Dify app) ---
     # The feature stays disabled until an API key is provided. Works with the
-    # official Anthropic API or any compatible gateway (e.g. zyloo.io, OpenRouter):
-    #   AI_API_STYLE  – "openai" (POST <base>/chat/completions) or
-    #                   "anthropic" (POST <base>/v1/messages)
-    #   AI_BASE_URL   – gateway base URL, e.g. "https://api.zyloo.io/v1"
-    #                   (leave empty for the official Anthropic API)
-    #   AI_API_KEY    – the gateway/Anthropic key (falls back to ANTHROPIC_API_KEY)
+    # official Anthropic API, any OpenAI/Anthropic-compatible gateway (zyloo.io,
+    # OpenRouter, ...), or a self-hosted Dify Workflow app:
+    #   AI_API_STYLE  – "openai"    POST <base>/chat/completions
+    #                   "anthropic" POST <base>/v1/messages
+    #                   "dify"      POST <base>/workflows/run (+ /files/upload for
+    #                               chart images) — the app's 4 branches (trade /
+    #                               overall / institutional / chat) already carry
+    #                               their own model + system prompt, so AI_MODEL
+    #                               is unused in this mode.
+    #   AI_BASE_URL   – "openai": gateway base, e.g. "https://api.zyloo.io/v1"
+    #                   "dify": the Dify **API** base, e.g. "http://<host>/v1"
+    #                   (this is the URL shown in the app's "API Access" panel —
+    #                   NOT the /app console page you browse to)
+    #   AI_API_KEY    – the gateway/Anthropic/Dify app key (falls back to
+    #                   ANTHROPIC_API_KEY for backwards compatibility)
     #   AI_MODEL      – must be a vision-capable model so charts can be analysed
+    #                   (ignored when AI_API_STYLE=dify)
     AI_API_STYLE: str = "openai"
     AI_BASE_URL: str = ""
     AI_API_KEY: str = ""
