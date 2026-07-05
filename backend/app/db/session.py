@@ -61,6 +61,8 @@ async def init_db() -> None:
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS ai_chat JSONB",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall_chat JSONB",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_report_chat JSONB",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_tier VARCHAR(20) NOT NULL DEFAULT 'bronze'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP WITH TIME ZONE",
         ]
         for stmt in migrations:
             await conn.execute(text(stmt))
