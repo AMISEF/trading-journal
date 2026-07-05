@@ -23,9 +23,7 @@ import {
 } from "recharts";
 import { AppShell } from "@/components/AppShell";
 import { Spinner } from "@/components/ui";
-import { AICoachPanel } from "@/components/AICoachPanel";
-import { aiApi, dashboardApi } from "@/lib/api";
-import { useAuth } from "@/store/auth";
+import { dashboardApi } from "@/lib/api";
 import type { DashboardData } from "@/lib/types";
 import {
   faNum,
@@ -618,7 +616,6 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
 function DashboardInner() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
-  const authUser = useAuth((s) => s.user);
 
   useEffect(() => {
     dashboardApi
@@ -671,28 +668,6 @@ function DashboardInner() {
         </h1>
         <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
       </div>
-
-      {/* ── AI coach: whole-journal coaching report (top of page) ── */}
-      <AICoachPanel
-        title="مربی هوش مصنوعی — تحلیل کلی معاملات"
-        subtitle="بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامه‌ی بهبود"
-        fetcher={() => aiApi.getOverall()}
-        generator={() => aiApi.analyzeOverall()}
-        chat={{ send: (m) => aiApi.chatOverall(m) }}
-      />
-
-      {/* ── Institutional due-diligence report (full 19-section, PDF) ── */}
-      <AICoachPanel
-        title="گزارش نهادی (Institutional) — ارزیابی کامل معاملات"
-        subtitle="۱۹ بخش: امتیازدهی، ریسک، دراودان، مونت‌کارلو، استرس‌تست، مقیاس‌پذیری و تصمیم نهایی — بر اساس تمام دیتا و تصاویر"
-        fetcher={() => aiApi.getReport()}
-        generator={() => aiApi.analyzeReport()}
-        pdf={{
-          title: "گزارش ارزیابی نهادی معاملات",
-          subject: authUser ? `${authUser.firstName} ${authUser.lastName} (@${authUser.username})` : undefined,
-        }}
-        chat={{ send: (m) => aiApi.chatReport(m) }}
-      />
 
       {/* ── KPI cards ── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
