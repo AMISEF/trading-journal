@@ -23,7 +23,7 @@ from app.schemas.template import ChecklistOut
 from app.schemas.base import CamelModel
 from app.schemas.trade import TradeOut
 from app.schemas.user import UserOut
-from app.services import balances, calc as calc_engine, tabdeal
+from app.services import balances, calc as calc_engine, plans, tabdeal
 from app.services.balances import _txn_sum
 from app.services.sessions import session_for
 
@@ -60,6 +60,13 @@ class AdminResetPassword(CamelModel):
 
 class AdminSetGroup(CamelModel):
     user_group: str | None = None
+
+
+class AdminSetPlan(CamelModel):
+    plan: str  # bronze | silver | gold | diamond
+    # Convenience: set duration in months from *now* instead of an exact date.
+    # 0/None = no expiry (until manually changed). Ignored for bronze.
+    duration_months: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +285,39 @@ async def set_user_group(
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
     target.user_group = body.user_group
+    await db.commit()
+    await db.refresh(target)
+    trades = await crud.load_user_trades(db, target.id)
+    transactions = await crud.load_user_transactions(db, target.id)
+    return user_to_out(target, trades, transactions)
+
+
+@router.post("/users/{user_id}/set-plan", response_model=UserOut)
+async def set_user_plan(
+    user_id: int,
+    body: AdminSetPlan,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    """Assign a subscription plan to a user, optionally for a fixed duration.
+
+    This is the *only* way a plan changes — there is no self-service upgrade
+    endpoint. Payment is handled manually (off-platform) and the admin
+    assigns the plan here once it's confirmed.
+    """
+    tier = body.plan.lower()
+    if tier not in plans.PLAN_LIMITS:
+        raise HTTPException(status_code=400, detail="پلن نامعتبر است")
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.subscription_tier = tier
+    if tier == "bronze" or not body.duration_months:
+        target.subscription_expires_at = None
+    else:
+        target.subscription_expires_at = datetime.now(timezone.utc) + plans.plan_duration(body.duration_months)
+
     await db.commit()
     await db.refresh(target)
     trades = await crud.load_user_trades(db, target.id)

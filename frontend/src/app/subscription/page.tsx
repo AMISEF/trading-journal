@@ -11,67 +11,70 @@ import { useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { faNum } from "@/lib/format";
 
+// ── Billing periods: month count + discount vs. paying monthly ──────────────
+const PERIODS = [
+  { key: "0", months: 1, label: "ماهانه", discountPct: 0 },
+  { key: "1", months: 3, label: "۳ ماهه", discountPct: 10 },
+  { key: "2", months: 6, label: "۶ ماهه", discountPct: 20 },
+  { key: "3", months: 12, label: "سالانه", discountPct: 35 },
+] as const;
+
 const plans = [
   {
     name: "برنزی",
-    description: "برای شروع ژورنال‌نویسی منظم",
-    price: 0,
-    yearlyPrice: 0,
+    description: "برای شروع بدون ریسک — همین امروز ژورنالت رو بساز",
+    monthlyPrice: 0,
     buttonText: "شروع رایگان",
     buttonVariant: "outline" as const,
     popular: false,
     includes: [
-      "ثبت نامحدود معامله",
-      "۱ ژورنال فعال",
-      "داشبورد و نمودار equity",
-      "چک‌لیست روانشناسی پایه",
+      "ثبت تا ۵۰ معامله با تمام جزئیات (ورود، خروج، تصویر، چک‌لیست، احساسات)",
+      "داشبورد کامل و نمودار equity",
+      "همیشه رایگان — بدون نیاز به کارت بانکی",
     ],
   },
   {
     name: "نقره‌ای",
-    description: "برای تریدرهایی که می‌خوان روندشون رو بفهمن",
-    price: 199000,
-    yearlyPrice: 1990000,
+    description: "برای تریدرهایی که می‌خوان از هر معامله درس بگیرن",
+    monthlyPrice: 249000,
     buttonText: "ارتقا به نقره‌ای",
     buttonVariant: "default" as const,
     popular: false,
     includes: [
-      "همه‌ی امکانات برنزی",
-      "۳ ژورنال فعال",
-      "مربی هوش مصنوعی (۱ گزارش در ماه)",
-      "پشتیبانی از طریق تیکت",
+      "ثبت تا ۱۰۰ معامله با تمام جزئیات",
+      "تحلیل هوش مصنوعی روی تک‌تک معاملات",
+      "مربی هوش مصنوعی، هفته‌ای ۱ بار",
+      "همه‌ی امکانات پلن برنزی",
     ],
   },
   {
     name: "طلایی",
-    description: "برای تریدرهای جدی با چند استراتژی",
-    price: 499000,
-    yearlyPrice: 4990000,
+    description: "انتخاب اکثر تریدرهای فعال — تحلیل روزانه، بدون سقف معامله",
+    monthlyPrice: 590000,
     buttonText: "ارتقا به طلایی",
     buttonVariant: "outline" as const,
     popular: true,
     includes: [
-      "همه‌ی امکانات نقره‌ای",
-      "ژورنال نامحدود",
-      "مربی هوش مصنوعی نامحدود",
-      "گزارش نهادی ماهانه",
-      "پشتیبانی اولویت‌دار",
+      "ثبت نامحدود معامله",
+      "تحلیل هوش مصنوعی روی تک‌تک معاملات",
+      "مربی هوش مصنوعی، هر روز ۱ بار",
+      "گزارش و تحلیل نهادی (Institutional) ژورنال، هفته‌ای ۱ بار",
+      "همه‌ی امکانات پلن نقره‌ای",
     ],
   },
   {
     name: "الماسی",
-    description: "بالاترین سطح تحلیل و پشتیبانی",
-    price: 999000,
-    yearlyPrice: 9990000,
+    description: "بدون هیچ سقفی — دسترسی کامل + ربات الگو آنالایزر هدیه",
+    monthlyPrice: 1290000,
     buttonText: "ارتقا به الماسی",
     buttonVariant: "outline" as const,
     popular: false,
     includes: [
-      "همه‌ی امکانات طلایی",
-      "گزارش نهادی نامحدود",
-      "تحلیل هفتگی خودکار",
-      "دسترسی زودهنگام به امکانات جدید",
-      "پشتیبانی اختصاصی",
+      "ثبت نامحدود معامله",
+      "مربی هوش مصنوعی نامحدود",
+      "گزارش و تحلیل نهادی ژورنال، نامحدود",
+      "۱ ماه اشتراک نامحدود ربات الگو آنالایزر، هدیه‌ی ویژه‌ی پلن الماسی",
+      "همه‌ی امکانات پلن طلایی",
     ],
   },
 ];
@@ -86,40 +89,38 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 
   return (
     <div className="flex justify-center" dir="rtl">
-      <div className="relative z-10 mx-auto flex w-fit rounded-full bg-neutral-900 border border-gray-700 p-1">
-        <button
-          onClick={() => handleSwitch("0")}
-          className={cn(
-            "relative z-10 w-fit h-10 rounded-full sm:px-6 px-3 sm:py-2 py-1 font-medium transition-colors",
-            selected === "0" ? "text-white" : "text-gray-200"
-          )}
-        >
-          {selected === "0" && (
-            <motion.span
-              layoutId={"switch"}
-              className="absolute top-0 left-0 h-10 w-full rounded-full border-4 shadow-sm shadow-blue-600 border-blue-600 bg-gradient-to-t from-blue-500 to-blue-600"
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-            />
-          )}
-          <span className="relative">ماهانه</span>
-        </button>
-
-        <button
-          onClick={() => handleSwitch("1")}
-          className={cn(
-            "relative z-10 w-fit h-10 flex-shrink-0 rounded-full sm:px-6 px-3 sm:py-2 py-1 font-medium transition-colors",
-            selected === "1" ? "text-white" : "text-gray-200"
-          )}
-        >
-          {selected === "1" && (
-            <motion.span
-              layoutId={"switch"}
-              className="absolute top-0 left-0 h-10 w-full rounded-full border-4 shadow-sm shadow-blue-600 border-blue-600 bg-gradient-to-t from-blue-500 to-blue-600"
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-            />
-          )}
-          <span className="relative flex items-center gap-2">سالانه (۲ ماه رایگان)</span>
-        </button>
+      <div className="relative z-10 mx-auto flex w-fit flex-wrap items-center gap-1 rounded-full bg-neutral-900 border border-gray-700 p-1">
+        {PERIODS.map((opt) => (
+          <button
+            key={opt.key}
+            onClick={() => handleSwitch(opt.key)}
+            className={cn(
+              "relative z-10 w-fit h-10 flex-shrink-0 rounded-full sm:px-5 px-3 sm:py-2 py-1 font-medium transition-colors",
+              selected === opt.key ? "text-white" : "text-gray-200"
+            )}
+          >
+            {selected === opt.key && (
+              <motion.span
+                layoutId={"switch"}
+                className="absolute top-0 left-0 h-10 w-full rounded-full border-4 shadow-sm shadow-blue-600 border-blue-600 bg-gradient-to-t from-blue-500 to-blue-600"
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+              />
+            )}
+            <span className="relative flex items-center gap-1.5">
+              {opt.label}
+              {opt.discountPct > 0 && (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                    selected === opt.key ? "bg-white/20 text-white" : "bg-emerald-500/15 text-emerald-400"
+                  )}
+                >
+                  ٪{faNum(opt.discountPct)} تخفیف
+                </span>
+              )}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -134,7 +135,8 @@ export default function SubscriptionPage() {
 }
 
 function SubscriptionInner() {
-  const [isYearly, setIsYearly] = useState(false);
+  const [periodKey, setPeriodKey] = useState("0");
+  const period = PERIODS.find((p) => p.key === periodKey)!;
   const pricingRef = useRef<HTMLDivElement>(null);
 
   const revealVariants = {
@@ -154,8 +156,7 @@ function SubscriptionInner() {
     },
   };
 
-  const togglePricingPeriod = (value: string) =>
-    setIsYearly(Number.parseInt(value) === 1);
+  const togglePricingPeriod = (value: string) => setPeriodKey(value);
 
   const handleSupportClick = () => {
     window.open("https://t.me/cryptosmart_sup", "_blank");
@@ -274,15 +275,33 @@ function SubscriptionInner() {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-2xl font-bold">{plan.name}</h3>
                 </div>
-                <div className="flex items-baseline gap-2 justify-end mb-2 h-10">
-                  {plan.price === 0 ? (
+                <div className="flex items-baseline gap-2 justify-end mb-1 h-10">
+                  {plan.monthlyPrice === 0 ? (
                     <span className="text-4xl font-bold tracking-tight">رایگان</span>
                   ) : (
                     <>
                       <span className="text-sm text-gray-400">تومان</span>
                       <span className="text-4xl font-bold tracking-tight" dir="ltr">
-                        {faNum(isYearly ? plan.yearlyPrice.toLocaleString() : plan.price.toLocaleString())}
+                        <NumberFlow
+                          value={Math.round((plan.monthlyPrice * period.months * (1 - period.discountPct / 100)) / 1000) * 1000}
+                        />
                       </span>
+                    </>
+                  )}
+                </div>
+                <div className="mb-2 h-4 text-xs text-gray-500" dir="rtl">
+                  {plan.monthlyPrice > 0 && period.months > 1 && (
+                    <>
+                      معادل{" "}
+                      {faNum(
+                        Math.round(
+                          (plan.monthlyPrice * period.months * (1 - period.discountPct / 100)) / 1000 / period.months
+                        ) * 1000
+                      ).toString()}{" "}
+                      تومان در ماه
+                      {period.discountPct > 0 && (
+                        <span className="text-emerald-400"> · ٪{faNum(period.discountPct)} کمتر از ماهانه</span>
+                      )}
                     </>
                   )}
                 </div>

@@ -12,7 +12,7 @@ from app.core.deps import get_current_user, get_db
 from app.models.trade import TakeProfit, Trade
 from app.models.user import User
 from app.schemas.trade import TradeIn, TradeOut
-from app.services import balances, calc as calc_engine
+from app.services import balances, calc as calc_engine, plans
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -113,6 +113,11 @@ async def create_trade(
         select(func.coalesce(func.max(Trade.number), 0)).where(Trade.user_id == user.id)
     )
     next_number = (max_number.scalar() or 0) + 1
+
+    trade_count = await db.execute(
+        select(func.count()).select_from(Trade).where(Trade.user_id == user.id)
+    )
+    plans.assert_can_create_trade(user, trade_count.scalar() or 0)
 
     data = body.model_dump(exclude_unset=True)
     take_profits = data.pop("take_profits", None)

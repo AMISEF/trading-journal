@@ -24,7 +24,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.trade import Trade
 from app.models.user import User
 from app.schemas.base import CamelModel
-from app.services import ai_analysis
+from app.services import ai_analysis, plans
 
 logger = logging.getLogger("app.api.ai")
 
@@ -97,6 +97,7 @@ async def generate_trade_analysis(
     trade = await _load_trade(db, trade_id)
     if trade is None or trade.user_id != user.id:
         raise HTTPException(status_code=404, detail="معامله یافت نشد")
+    plans.assert_can_analyze_trade(user)
     return await _start_trade_job(db, trade)
 
 
@@ -128,6 +129,7 @@ async def generate_overall_analysis(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AIAnalysisOut:
+    plans.assert_can_generate_coach(user)
     return await _start_overall_job(db, user)
 
 
@@ -155,6 +157,7 @@ async def generate_report(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AIAnalysisOut:
+    plans.assert_can_generate_report(user)
     return await _start_report_job(db, user)
 
 

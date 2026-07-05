@@ -37,6 +37,9 @@ function Inner() {
   const [deleteError, setDeleteError] = useState("");
   const [groupBusy, setGroupBusy] = useState(false);
   const [groupError, setGroupError] = useState("");
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planError, setPlanError] = useState("");
+  const [planDuration, setPlanDuration] = useState<number>(1);
 
   useEffect(() => {
     adminApi.userTrades(userId).then(setTrades).catch(() => setTrades([]));
@@ -86,6 +89,19 @@ function Inner() {
       setGroupError("خطا در ریست سرمایه");
     } finally {
       setGroupBusy(false);
+    }
+  };
+
+  const handleSetPlan = async (plan: string) => {
+    setPlanBusy(true);
+    setPlanError("");
+    try {
+      const updated = await adminApi.setPlan(userId, plan, plan === "bronze" ? null : planDuration);
+      setUser(updated);
+    } catch {
+      setPlanError("خطا در تغییر پلن اشتراک");
+    } finally {
+      setPlanBusy(false);
     }
   };
 
@@ -215,6 +231,57 @@ function Inner() {
           )}
         </div>
         {groupError && <p className="text-xs text-loss">{groupError}</p>}
+      </div>
+
+      {/* Subscription plan management */}
+      <div className="tj-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          مدیریت اشتراک کاربر
+          {user && (
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                user.subscriptionTier === "diamond" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+                : user.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                : user.subscriptionTier === "silver" ? "bg-slate-200 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
+                : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+              }`}
+            >
+              {{ bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[user.subscriptionTier] ?? user.subscriptionTier}
+            </span>
+          )}
+          {user?.subscriptionExpiresAt && (
+            <span className="text-xs font-normal text-muted">
+              انقضا: {new Date(user.subscriptionExpiresAt).toLocaleDateString("fa-IR")}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs text-muted">مدت (ماه):</label>
+          <select
+            className="tj-input w-20 py-1 text-xs"
+            value={planDuration}
+            onChange={(e) => setPlanDuration(Number(e.target.value))}
+          >
+            <option value={1}>۱</option>
+            <option value={3}>۳</option>
+            <option value={6}>۶</option>
+            <option value={12}>۱۲</option>
+          </select>
+
+          {(["bronze", "silver", "gold", "diamond"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              disabled={planBusy || user?.subscriptionTier === p}
+              onClick={() => handleSetPlan(p)}
+              className="rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary-soft disabled:opacity-40"
+            >
+              {planBusy ? "…" : { bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[p]}
+            </button>
+          ))}
+        </div>
+        {planError && <p className="text-xs text-loss">{planError}</p>}
       </div>
 
       {/* AI coach: whole-journal coaching report for this user */}

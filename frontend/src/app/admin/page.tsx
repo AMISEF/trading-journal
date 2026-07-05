@@ -70,6 +70,7 @@ function AdminUsers() {
               <th className="p-3">نام کاربری</th>
               <th className="p-3">ایمیل</th>
               <th className="p-3">نقش</th>
+              <th className="p-3">اشتراک</th>
               <th className="p-3">موجودی</th>
               <th className="p-3">عضویت</th>
               <th className="p-3">عملیات</th>
@@ -90,6 +91,18 @@ function AdminUsers() {
                 <td className="p-3" dir="ltr">{u.email}</td>
                 <td className="p-3">
                   <Badge tone={u.role === "ADMIN" ? "neutral" : "muted"}>{u.role}</Badge>
+                </td>
+                <td className="p-3">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      u.subscriptionTier === "diamond" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+                      : u.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                      : u.subscriptionTier === "silver" ? "bg-slate-200 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
+                      : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                    }`}
+                  >
+                    {{ bronze: "برنزی", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[u.subscriptionTier] ?? u.subscriptionTier}
+                  </span>
                 </td>
                 <td className="p-3" dir="ltr">{formatUsd(u.currentBalance)}</td>
                 <td className="p-3">{formatJalaliDate(u.createdAt)}</td>
