@@ -52,6 +52,16 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    href: "/subscription",
+    label: "خرید اشتراک",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 3h12l3 5-9 13L3 8z" />
+        <path d="M3 8h18M8 3l4 5-4 13M16 3l-4 5 4 13" />
+      </svg>
+    ),
+  },
+  {
     href: "/admin",
     label: "ادمین",
     adminOnly: true,

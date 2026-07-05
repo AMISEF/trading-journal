@@ -143,6 +143,16 @@ body {
   animation: sheen 4s ease-in-out infinite;
 }
 
+/* Rotating conic gradient used for the Diamond subscription tier's border. */
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spin-slow 6s linear infinite;
+}
+
 /* Form inputs share a consistent look across both themes. */
 .tj-input {
   width: 100%;
