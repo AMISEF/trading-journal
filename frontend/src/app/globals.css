@@ -29,6 +29,9 @@
   --glass-border: rgba(255, 255, 255, 0.7);
   --glass-shadow: 0 12px 40px -16px rgba(90, 105, 150, 0.3);
   --glass-blur: 18px;
+
+  --gradient-color: #8350e8;
+  --sparkles-color: #8350e8;
 }
 
 /* Dark Ocean: deep blue-teal palette. */
@@ -54,6 +57,9 @@
   --glass-border: rgba(255, 255, 255, 0.09);
   --glass-shadow: 0 18px 54px -22px rgba(0, 0, 0, 0.7);
   --glass-blur: 20px;
+
+  --gradient-color: #8350e8;
+  --sparkles-color: #ffffff;
 }
 
 html,

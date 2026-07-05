@@ -21,6 +21,8 @@ export interface User {
   currentBalance: number;
   userGroup: string | null;
   capitalResetDate: string | null;
+  subscriptionTier: string;
+  subscriptionExpiresAt: string | null;
   createdAt: string;
 }
 

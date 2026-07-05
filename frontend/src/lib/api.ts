@@ -52,7 +52,9 @@ const http: AxiosInstance = axios.create({
 http.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
-    config.headers = config.headers ?? {};
+    if (!config.headers) {
+      config.headers = {} as any;
+    }
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -298,6 +300,14 @@ export const walletApi = {
   update: (id: string, payload: WalletTransactionPayload) =>
     http.patch<WalletTransaction>(`/wallet/transactions/${id}`, payload).then((r) => r.data),
   remove: (id: string) => http.delete(`/wallet/transactions/${id}`).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Subscription
+// ---------------------------------------------------------------------------
+export const subscriptionApi = {
+  upgrade: (tier: string, yearly: boolean) =>
+    http.post<User>("/subscription/upgrade", { tier, yearly }).then((r) => r.data),
 };
 
 /** Build the Excel export URL with the JWT in the query string (link download). */

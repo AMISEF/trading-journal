@@ -21,6 +21,8 @@ class UserOut(CamelModel):
     current_balance: float
     user_group: str | None = None
     capital_reset_date: datetime | None = None
+    subscription_tier: str
+    subscription_expires_at: datetime | None = None
     created_at: datetime
 
 

@@ -26,6 +26,8 @@ def user_to_out(
         current_balance=balances.current_balance(user, trades, transactions),
         user_group=user.user_group,
         capital_reset_date=user.capital_reset_date,
+        subscription_tier=user.subscription_tier,
+        subscription_expires_at=user.subscription_expires_at,
         created_at=user.created_at,
     )
 

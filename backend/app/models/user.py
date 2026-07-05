@@ -52,6 +52,10 @@ class User(Base):
     ai_overall_chat: Mapped[list | None] = mapped_column(JSON, nullable=True)
     ai_report_chat: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # Subscription
+    subscription_tier: Mapped[str] = mapped_column(String(20), default="bronze")
+    subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     # All trades belonging to this user.
