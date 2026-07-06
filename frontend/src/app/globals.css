@@ -71,7 +71,8 @@ body {
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: Vazirmatn, system-ui, sans-serif;
+  /* Latin glyphs resolve to Montserrat; Persian glyphs fall through to Dana. */
+  font-family: "Montserrat", "Dana", Vazirmatn, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

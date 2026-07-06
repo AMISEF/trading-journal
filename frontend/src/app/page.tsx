@@ -75,8 +75,8 @@ const FEATURES = [
     icon: <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />,
   },
   {
-    title: "تقویم شمسی و PnL ماهانه",
-    desc: "سود و زیان روزانه، هفتگی و ماهانه — کاملاً بر پایه‌ی تقویم جلالی.",
+    title: "سود و زیان روزانه تا ماهانه",
+    desc: "PnL معاملاتت را در بازه‌های روزانه، هفتگی و ماهانه دقیق دنبال کن.",
     icon: (
       <>
         <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -262,7 +262,7 @@ export default function LandingPage() {
               variants={fadeUp}
               className="mx-auto mt-5 max-w-xl text-base leading-8 text-white/70 md:text-lg lg:mx-0"
             >
-              هر معامله را دقیق ثبت کن، عملکردت را با داشبورد و تقویم شمسی تحلیل کن، و بگذار
+              هر معامله را دقیق ثبت کن، عملکردت را با داشبورد و نمودارهای حرفه‌ای تحلیل کن، و بگذار
               هوش مصنوعی مثل یک مربی حرفه‌ای مسیر رشدت را نشانت بدهد.
             </motion.p>
 
@@ -295,7 +295,7 @@ export default function LandingPage() {
               variants={fadeUp}
               className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/60 lg:justify-start"
             >
-              {["بدون نیاز به کارت بانکی", "پلن رایگان همیشگی", "تقویم شمسی"].map((t) => (
+              {["پلن رایگان همیشگی", "تحلیل با هوش مصنوعی"].map((t) => (
                 <span key={t} className="flex items-center gap-1.5">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 6 9 17l-5-5" />
@@ -512,7 +512,7 @@ export default function LandingPage() {
           <div className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full opacity-30 blur-3xl" style={{ background: `${C.accentLight}` }} />
           <h2 className="relative text-2xl font-black md:text-4xl">همین امروز ژورنالت را بساز</h2>
           <p className="relative mx-auto mt-3 max-w-xl text-white/75">
-            رایگان شروع کن، و وقتی به امکانات بیشتر نیاز داشتی ارتقا بده. بدون ریسک، بدون کارت بانکی.
+            رایگان شروع کن، و وقتی به امکانات بیشتر نیاز داشتی ارتقا بده. ساده، سریع و بدون ریسک.
           </p>
           <Link
             href="/register"
@@ -554,11 +554,10 @@ function SectionHeading({ badge, title, subtitle }: { badge: string; title: stri
 function Footer() {
   const social = [
     { label: "Telegram", href: "https://t.me/cryptosmart_org", icon: <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" /> },
-    { label: "Bale", href: "https://ble.ir", icon: <><circle cx="12" cy="12" r="9" /><path d="M8 12h8M12 8v8" /></> },
-    { label: "YouTube", href: "https://youtube.com", icon: <><rect x="2" y="5" width="20" height="14" rx="4" /><path d="m10 9 5 3-5 3z" /></> },
-    { label: "Instagram", href: "https://instagram.com", icon: <><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" /></> },
+    { label: "Aparat", href: "https://www.aparat.com/CryptoSmart", icon: <><circle cx="12" cy="12" r="9.5" /><path d="m10 8.5 5.5 3.5-5.5 3.5z" fill="currentColor" stroke="none" /></> },
+    { label: "YouTube", href: "https://www.youtube.com/@Cryptosmart_org", icon: <><rect x="2" y="5" width="20" height="14" rx="4" /><path d="m10 9 5 3-5 3z" /></> },
+    { label: "Instagram", href: "https://www.instagram.com/cryptosmart_org/", icon: <><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" /></> },
   ];
-  const links = ["مجموعه", "ربات‌ها", "کانال‌ها", "بنیان‌گذار", "ارتباط با ما"];
 
   return (
     <footer
@@ -572,32 +571,24 @@ function Footer() {
           CRYPTO <span style={{ color: C.accent }}>SMART</span>
         </div>
         <p className="mt-2 text-sm text-white/55">شروع هوشمند، معامله هوشمند</p>
+        <p className="mt-1 text-sm font-semibold tracking-wide text-white/80" dir="ltr">
+          Start <span style={{ color: C.accent }}>Smart</span> , Trade{" "}
+          <span style={{ color: C.accent }}>Smarter</span>
+        </p>
 
-        {/* nav links */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-white/70">
-          {links.map((l) => (
-            <a key={l} href="#" className="transition-colors hover:text-white">
-              {l}
-            </a>
-          ))}
-        </div>
-
-        {/* contacts */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-white/70">
-          <span className="flex items-center gap-1.5">
+        {/* contact */}
+        <div className="mt-8 flex items-center justify-center text-sm text-white/70">
+          <a
+            href="https://t.me/cryptosmart_sup"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 transition-colors hover:text-white"
+          >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.accentLight} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" />
             </svg>
-            تلگرام: <span dir="ltr" className="font-medium">@cryptosmart_sup</span>
-          </span>
-          <span className="text-white/25">|</span>
-          <span className="flex items-center gap-1.5">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.accentLight} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M8 12h8M12 8v8" />
-            </svg>
-            بله: <span dir="ltr" className="font-medium">@cryptosmart_support</span>
-          </span>
+            پشتیبان تلگرام: <span dir="ltr" className="font-medium">@cryptosmart_sup</span>
+          </a>
         </div>
 
         {/* follow us */}
