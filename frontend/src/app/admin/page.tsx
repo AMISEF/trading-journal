@@ -27,7 +27,16 @@ type Modal =
   | { kind: "edit"; user: User }
   | { kind: "delete"; user: User }
   | { kind: "reset"; user: User }
+  | { kind: "plan"; user: User }
   | { kind: "dashboard"; user: User };
+
+// ── Plan metadata (label + "R,G,B" tint) shared by the table + set-plan modal ──
+const PLAN_META: Record<string, { label: string; tint: string }> = {
+  bronze: { label: "برنزی", tint: "251,146,60" },
+  silver: { label: "نقره‌ای", tint: "148,163,184" },
+  gold: { label: "طلایی", tint: "251,191,36" },
+  diamond: { label: "الماسی", tint: "34,211,238" },
+};
 
 function AdminUsers() {
   const router = useRouter();
@@ -114,6 +123,9 @@ function AdminUsers() {
                     <ActionBtn color="blue" onClick={() => setModal({ kind: "dashboard", user: u })}>
                       داشبورد
                     </ActionBtn>
+                    <ActionBtn color="cyan" onClick={() => setModal({ kind: "plan", user: u })}>
+                      اشتراک
+                    </ActionBtn>
                     <ActionBtn color="indigo" onClick={() => setModal({ kind: "edit", user: u })}>
                       ویرایش
                     </ActionBtn>
@@ -136,6 +148,7 @@ function AdminUsers() {
       {modal?.kind === "edit" && <EditUserModal user={modal.user} onDone={refresh} onClose={close} />}
       {modal?.kind === "delete" && <DeleteUserModal user={modal.user} onDone={refresh} onClose={close} />}
       {modal?.kind === "reset" && <ResetPasswordModal user={modal.user} onClose={close} />}
+      {modal?.kind === "plan" && <SetPlanModal user={modal.user} onDone={refresh} onClose={close} />}
       {modal?.kind === "dashboard" && <UserDashboardModal user={modal.user} onClose={close} />}
     </div>
   );
@@ -149,11 +162,12 @@ function ActionBtn({
 }: {
   children: React.ReactNode;
   onClick: () => void;
-  color: "green" | "blue" | "indigo" | "amber" | "red";
+  color: "green" | "blue" | "cyan" | "indigo" | "amber" | "red";
 }) {
   const cls = {
     green:  "border-emerald-400/40 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20",
     blue:   "border-blue-400/40 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20",
+    cyan:   "border-cyan-400/40 text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 dark:text-cyan-300",
     indigo: "border-indigo-400/40 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20",
     amber:  "border-amber-400/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20",
     red:    "border-red-400/40 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20",
@@ -435,6 +449,144 @@ function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void
         </div>
       )}
     </Modal>
+  );
+}
+
+/* ─── Set subscription plan modal ─────────────────────────────────────────── */
+const PLAN_ORDER = ["bronze", "silver", "gold", "diamond"] as const;
+const DURATIONS: { months: number | null; label: string }[] = [
+  { months: 1, label: "۱ ماهه" },
+  { months: 3, label: "۳ ماهه" },
+  { months: 6, label: "۶ ماهه" },
+  { months: 12, label: "سالانه" },
+  { months: null, label: "نامحدود" },
+];
+
+function SetPlanModal({ user, onDone, onClose }: { user: User; onDone: () => void; onClose: () => void }) {
+  const [plan, setPlan] = useState<string>(user.subscriptionTier || "bronze");
+  const [durationMonths, setDurationMonths] = useState<number | null>(1);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const tint = PLAN_META[plan]?.tint ?? PLAN_META.bronze.tint;
+  const isBronze = plan === "bronze";
+
+  const save = async () => {
+    setErr("");
+    setSaving(true);
+    try {
+      await adminApi.setPlan(user.id, plan, isBronze ? null : durationMonths);
+      onDone();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setErr(msg || "خطا در فعال‌سازی اشتراک");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="relative w-full max-w-md overflow-hidden rounded-3xl p-6 backdrop-blur-2xl"
+        style={{
+          background: `linear-gradient(155deg, rgba(${tint},0.18) 0%, rgba(${tint},0.05) 55%, var(--glass-bg) 100%)`,
+          border: `1px solid rgba(${tint},0.4)`,
+          boxShadow: `0 30px 80px -30px rgba(${tint},0.6), inset 0 1px 0 rgba(255,255,255,0.14)`,
+        }}
+      >
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-60 blur-3xl transition-all duration-300"
+          style={{ background: `rgba(${tint},0.5)` }}
+        />
+        <div className="relative mb-1 flex items-center justify-between">
+          <h2 className="text-lg font-bold">مدیریت اشتراک کاربر</h2>
+          <button type="button" onClick={onClose} className="text-muted hover:text-text text-xl leading-none">✕</button>
+        </div>
+        <p className="relative mb-5 text-sm text-muted">
+          {user.firstName} {user.lastName} · فعلی:{" "}
+          <span className="font-bold" style={{ color: `rgb(${PLAN_META[user.subscriptionTier]?.tint ?? tint})` }}>
+            {PLAN_META[user.subscriptionTier]?.label ?? user.subscriptionTier}
+          </span>
+          {user.subscriptionExpiresAt && (
+            <span className="text-xs text-muted"> · تا {formatJalaliDate(user.subscriptionExpiresAt)}</span>
+          )}
+        </p>
+
+        {/* Plan picker */}
+        <label className="tj-label">پلن</label>
+        <div className="mb-5 grid grid-cols-2 gap-2">
+          {PLAN_ORDER.map((p) => {
+            const meta = PLAN_META[p];
+            const active = plan === p;
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPlan(p)}
+                className="rounded-2xl px-3 py-3 text-sm font-bold transition-all duration-200"
+                style={{
+                  background: active ? `rgba(${meta.tint},0.22)` : "var(--glass-bg)",
+                  border: `1px solid rgba(${meta.tint},${active ? 0.6 : 0.2})`,
+                  color: active ? `rgb(${meta.tint})` : "var(--muted)",
+                  boxShadow: active ? `0 10px 26px -12px rgba(${meta.tint},0.7)` : "none",
+                }}
+              >
+                {meta.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Duration picker (hidden for bronze) */}
+        {!isBronze && (
+          <>
+            <label className="tj-label">مدت اشتراک</label>
+            <div className="mb-5 flex flex-wrap gap-2">
+              {DURATIONS.map((d) => {
+                const active = durationMonths === d.months;
+                return (
+                  <button
+                    key={String(d.months)}
+                    type="button"
+                    onClick={() => setDurationMonths(d.months)}
+                    className="rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200"
+                    style={{
+                      background: active ? `rgba(${tint},0.22)` : "var(--glass-bg)",
+                      border: `1px solid rgba(${tint},${active ? 0.6 : 0.2})`,
+                      color: active ? `rgb(${tint})` : "var(--muted)",
+                    }}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {err && <p className="mb-3 text-sm text-loss">{err}</p>}
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={save}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+            style={{ background: `linear-gradient(to right, rgb(${tint}), rgba(${tint},0.7))`, boxShadow: `0 10px 30px -10px rgba(${tint},0.6)` }}
+          >
+            {saving ? "در حال فعال‌سازی…" : "فعال‌سازی اشتراک"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-surface-2"
+          >
+            انصراف
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
