@@ -50,14 +50,14 @@ PLAN_LIMITS: dict[str, dict] = {
         "report_enabled": True,
         "report_period_days": 7,
     },
-    # نامحدود در همه‌چیز.
+    # ثبت نامحدود، مربی نامحدود، گزارش نهادی روزانه ۱ بار.
     "diamond": {
         "max_trades": None,
         "trade_analysis": True,
         "coach_enabled": True,
         "coach_period_days": None,
         "report_enabled": True,
-        "report_period_days": None,
+        "report_period_days": 1,
     },
 }
 
