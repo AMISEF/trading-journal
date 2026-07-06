@@ -48,6 +48,7 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> Toke
         username=body.username,
         first_name=body.first_name,
         last_name=body.last_name,
+        phone=body.phone,
         password_hash=hash_password(body.password),
         role="ADMIN" if is_first else "TRADER",
     )

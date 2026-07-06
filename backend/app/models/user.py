@@ -22,6 +22,10 @@ class User(Base):
     last_name: Mapped[str] = mapped_column(String(100))
     password_hash: Mapped[str] = mapped_column(String(255))
 
+    # Contact phone — Iranian mobile in the form 09xxxxxxxxx. Required at
+    # registration; nullable so pre-existing rows remain valid.
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     # Role is either "TRADER" or "ADMIN". First user ever becomes ADMIN.
     role: Mapped[str] = mapped_column(String(20), default="TRADER")
 

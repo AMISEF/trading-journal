@@ -1,10 +1,13 @@
 """Pydantic schemas for users and authentication."""
 
+import re
 from datetime import datetime
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, field_validator
 
 from app.schemas.base import CamelModel
+
+PHONE_RE = re.compile(r"^09\d{9}$")
 
 
 class UserOut(CamelModel):
@@ -16,6 +19,7 @@ class UserOut(CamelModel):
     first_name: str
     last_name: str
     role: str
+    phone: str | None = None
     wallet_margin: float
     # currentBalance = walletMargin + sum(realizedPnl of CLOSED, unlocked trades).
     current_balance: float
@@ -31,8 +35,17 @@ class RegisterIn(CamelModel):
     username: str = Field(min_length=1)
     first_name: str
     last_name: str
+    phone: str
     password: str = Field(min_length=1)
     password_confirm: str
+
+    @field_validator("phone")
+    @classmethod
+    def _validate_phone(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not PHONE_RE.match(v):
+            raise ValueError("شماره تماس باید به صورت 09121234567 و ۱۱ رقم باشد.")
+        return v
 
 
 class LoginIn(CamelModel):

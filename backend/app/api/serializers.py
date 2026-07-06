@@ -22,6 +22,7 @@ def user_to_out(
         first_name=user.first_name,
         last_name=user.last_name,
         role=user.role,
+        phone=user.phone,
         wallet_margin=user.wallet_margin,
         current_balance=balances.current_balance(user, trades, transactions),
         user_group=user.user_group,

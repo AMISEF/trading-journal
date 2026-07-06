@@ -17,6 +17,7 @@ export default function RegisterPage() {
     lastName: "",
     username: "",
     email: "",
+    phone: "",
     password: "",
     passwordConfirm: "",
   });
@@ -29,6 +30,10 @@ export default function RegisterPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (!/^09\d{9}$/.test(form.phone.trim())) {
+      setError("شماره تماس باید به صورت 09121234567 و ۱۱ رقم باشد.");
+      return;
+    }
     if (form.password !== form.passwordConfirm) {
       setError("رمز عبور و تکرار آن یکسان نیستند.");
       return;
@@ -65,6 +70,22 @@ export default function RegisterPage() {
         <div>
           <label className="tj-label">ایمیل</label>
           <input type="email" className="tj-input" dir="ltr" value={form.email} onChange={set("email")} required />
+        </div>
+        <div>
+          <label className="tj-label">شماره تماس</label>
+          <input
+            type="tel"
+            className="tj-input"
+            dir="ltr"
+            inputMode="numeric"
+            maxLength={11}
+            pattern="09[0-9]{9}"
+            placeholder="09121234567"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value.replace(/[^\d]/g, "") }))}
+            required
+          />
+          <p className="mt-1 text-xs text-muted">مثال: 09121234567</p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

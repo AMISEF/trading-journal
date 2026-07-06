@@ -17,6 +17,7 @@ export interface User {
   firstName: string;
   lastName: string;
   role: Role;
+  phone: string | null;
   walletMargin: number;
   currentBalance: number;
   userGroup: string | null;

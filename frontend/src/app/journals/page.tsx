@@ -26,6 +26,36 @@ import { formatJalaliDate, formatTime } from "@/lib/jalali";
 type SortKey = "number" | "symbol" | "pnl" | "rrExpected";
 type GroupKey = "none" | "status" | "direction" | "symbol";
 
+// ─── Glass / pastel design tokens (shared with the dashboard look) ────────────
+const TINTS = {
+  mint: "94,234,212",
+  violet: "167,139,250",
+  sky: "125,211,252",
+  rose: "244,114,182",
+} as const;
+
+/** Neutral frosted-glass surface. */
+function glassStyle(): React.CSSProperties {
+  return {
+    background: "var(--glass-bg)",
+    backdropFilter: "blur(20px) saturate(160%)",
+    WebkitBackdropFilter: "blur(20px) saturate(160%)",
+    border: "1px solid var(--glass-border)",
+    boxShadow: "0 20px 56px -24px rgba(56,189,248,0.22), inset 0 1px 0 rgba(255,255,255,0.08)",
+  };
+}
+
+/** Frosted glass with a soft pastel wash of the given "R,G,B" tint. */
+function glassTint(rgb: string): React.CSSProperties {
+  return {
+    background: `linear-gradient(150deg, rgba(${rgb},0.16) 0%, rgba(${rgb},0.05) 48%, var(--glass-bg) 100%)`,
+    border: `1px solid rgba(${rgb},0.24)`,
+    backdropFilter: "blur(18px) saturate(155%)",
+    WebkitBackdropFilter: "blur(18px) saturate(155%)",
+    boxShadow: `0 16px 48px -20px rgba(${rgb},0.4), inset 0 1px 0 rgba(255,255,255,0.10)`,
+  };
+}
+
 const TAG_BG = [
   "bg-blue-100 text-blue-700",
   "bg-green-100 text-green-700",
@@ -197,9 +227,29 @@ function JournalsInner() {
   if (!trades) return <Spinner label="در حال بارگذاری ژورنال‌ها…" />;
 
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5">
+      {/* Ambient pastel glow backdrop */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="animate-blob absolute -right-32 top-0 h-[460px] w-[460px] rounded-full blur-[120px]" style={{ background: `rgba(${TINTS.sky},0.14)` }} />
+        <div className="animate-blob-slow absolute -left-32 top-1/3 h-[420px] w-[420px] rounded-full blur-[120px]" style={{ background: `rgba(${TINTS.violet},0.12)` }} />
+        <div className="animate-blob absolute bottom-0 right-1/4 h-[380px] w-[380px] rounded-full blur-[120px]" style={{ background: `rgba(${TINTS.mint},0.10)` }} />
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">ژورنال‌ها</h1>
+        <div className="flex items-center gap-3">
+          <h1
+            className="text-3xl font-extrabold tracking-tight"
+            style={{
+              backgroundImage: `linear-gradient(120deg, rgb(${TINTS.sky}), rgb(${TINTS.mint}), rgb(${TINTS.violet}))`,
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            ژورنال‌ها
+          </h1>
+          <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
+        </div>
         <div className="flex flex-wrap gap-2">
           {selected.size > 0 && (
             <Button variant="danger" onClick={bulkDelete}>
@@ -216,7 +266,7 @@ function JournalsInner() {
       </div>
 
       {/* Toolbar */}
-      <div className="tj-card flex flex-wrap items-end gap-3 p-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-3xl p-4" style={glassStyle()}>
         <div className="min-w-[160px] flex-1">
           <label className="tj-label">جستجو</label>
           <input
@@ -284,7 +334,7 @@ function JournalsInner() {
       />
 
       {filtered.length === 0 && (
-        <div className="tj-card p-10 text-center text-muted">
+        <div className="rounded-3xl p-10 text-center text-muted" style={glassStyle()}>
           معامله‌ای یافت نشد.
         </div>
       )}
@@ -371,10 +421,10 @@ function TradeTable({
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
 
   return (
-    <div className="tj-card overflow-x-auto">
+    <div className="overflow-x-auto rounded-3xl" style={glassStyle()}>
       <table className="w-full text-sm">
         <thead className="text-muted">
-          <tr className="border-b border-border text-center">
+          <tr className="border-b border-white/10 text-center">
             <th className="p-3">
               <input
                 type="checkbox"
@@ -402,7 +452,7 @@ function TradeTable({
           {rows.map((t) => (
             <tr
               key={t.id}
-              className={`border-b border-border/60 ${t.isLocked ? "opacity-60 bg-gray-100 dark:bg-gray-800/40" : `hover:bg-surface-2 ${selected.has(t.id) ? "bg-primary-soft" : ""}`}`}
+              className={`border-b border-white/5 transition-colors ${t.isLocked ? "opacity-60 bg-gray-100 dark:bg-gray-800/40" : `hover:bg-white/5 ${selected.has(t.id) ? "bg-primary-soft" : ""}`}`}
             >
               <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                 {!t.isLocked && (
@@ -475,12 +525,27 @@ function TradeTable({
 function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: string) => void; colorMap: Map<string, number> }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {rows.map((t) => (
+      {rows.map((t) => {
+        const pnl = pnlOf(t);
+        const rgb = t.isLocked
+          ? "148,163,184"
+          : pnl != null && pnl > 0
+          ? TINTS.mint
+          : pnl != null && pnl < 0
+          ? TINTS.rose
+          : TINTS.sky;
+        return (
         <div
           key={t.id}
           onClick={() => onOpen(t.id)}
-          className={`tj-card cursor-pointer p-4 relative ${t.isLocked ? "opacity-70 bg-gray-100 dark:bg-gray-800/50" : "hover:border-primary"}`}
+          className="group relative cursor-pointer overflow-hidden rounded-3xl p-4 transition-all duration-300 hover:-translate-y-1"
+          style={t.isLocked ? { ...glassTint("148,163,184"), opacity: 0.7 } : glassTint(rgb)}
         >
+          {/* animated top sheen */}
+          <div
+            className="absolute inset-x-6 top-0 h-px animate-sheen"
+            style={{ background: `linear-gradient(90deg, transparent, rgba(${rgb},0.8), transparent)` }}
+          />
           {t.isLocked && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-gray-400/20 dark:bg-gray-700/30">
               <span className="rounded-lg bg-gray-500/80 px-3 py-1.5 text-sm font-bold text-white">
@@ -520,7 +585,8 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
