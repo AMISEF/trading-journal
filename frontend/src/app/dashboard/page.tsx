@@ -1254,6 +1254,23 @@ function BalanceCard({ data }: { data: DashboardData }) {
     .filter((d) => d.date.slice(0, 10) === todayStr)
     .reduce((s, d) => s + d.pnl, 0);
   const todayRgb = todayPnl >= 0 ? TINTS.green : TINTS.red;
+
+  // Monthly PnL — summed over the current *Jalali (Shamsi)* month, so it resets
+  // on the 1st of each Persian month rather than the Gregorian one.
+  const { monthPnl, monthLabel } = useMemo(() => {
+    const jp = getJalaliParts(todayStr);
+    if (!jp) return { monthPnl: 0, monthLabel: "" };
+    const start = jalaliToGregorianDate(jp.year, jp.month, 1);
+    const end = jalaliToGregorianDate(jp.year, jp.month, jalaliDaysInMonth(jp.year, jp.month));
+    const total = data.pnlByDay
+      .filter((d) => {
+        const day = d.date.slice(0, 10);
+        return day >= start && day <= end;
+      })
+      .reduce((s, d) => s + d.pnl, 0);
+    return { monthPnl: total, monthLabel: `${JALALI_MONTHS[jp.month - 1]} ${toPersianDigits(jp.year)}` };
+  }, [data.pnlByDay, todayStr]);
+  const monthRgb = monthPnl >= 0 ? TINTS.green : TINTS.red;
   return (
     <div
       className="group relative col-span-2 overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5 lg:col-span-1"
@@ -1291,6 +1308,19 @@ function BalanceCard({ data }: { data: DashboardData }) {
         <span className="text-[10px] font-medium text-muted">سود امروز (هر ۲۴ ساعت ریست)</span>
         <span className="text-sm font-extrabold" style={{ color: `rgb(${todayRgb})` }} dir="ltr">
           {todayPnl >= 0 ? "+" : ""}{todayPnl.toFixed(2)}
+        </span>
+      </div>
+
+      {/* Monthly PnL — resets on the 1st of each Jalali (Shamsi) month */}
+      <div
+        className="relative mt-1.5 flex items-center justify-between rounded-2xl px-3 py-1.5"
+        style={{ background: `rgba(${monthRgb},0.12)`, border: `1px solid rgba(${monthRgb},0.22)` }}
+      >
+        <span className="text-[10px] font-medium text-muted">
+          سود این ماه {monthLabel && <span className="text-muted/80">({monthLabel})</span>}
+        </span>
+        <span className="text-sm font-extrabold" style={{ color: `rgb(${monthRgb})` }} dir="ltr">
+          {monthPnl >= 0 ? "+" : ""}{monthPnl.toFixed(2)}
         </span>
       </div>
 
