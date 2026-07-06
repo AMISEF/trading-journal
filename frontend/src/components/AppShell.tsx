@@ -33,16 +33,6 @@ const NAV: NavItem[] = [
     ),
   },
   {
-    href: "/analysis",
-    label: "تحلیل معاملات",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2a5 5 0 0 0-5 5c0 1.2.5 2.3 1.3 3.1L8 12l-1 3h10l-1-3-.3-1.9A5 5 0 0 0 17 7a5 5 0 0 0-5-5z" />
-        <path d="M9 21h6M10 17.5v2M14 17.5v2" />
-      </svg>
-    ),
-  },
-  {
     href: "/journals",
     label: "ژورنال‌ها",
     icon: (
@@ -52,8 +42,18 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    href: "/analysis",
+    label: "تحلیل معاملات با هوش مصنوعی",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a5 5 0 0 0-5 5c0 1.2.5 2.3 1.3 3.1L8 12l-1 3h10l-1-3-.3-1.9A5 5 0 0 0 17 7a5 5 0 0 0-5-5z" />
+        <path d="M9 21h6M10 17.5v2M14 17.5v2" />
+      </svg>
+    ),
+  },
+  {
     href: "/subscription",
-    label: "خرید اشتراک",
+    label: "مدیریت اشتراک",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M6 3h12l3 5-9 13L3 8z" />
