@@ -80,12 +80,10 @@ export default function RegisterPage() {
             inputMode="numeric"
             maxLength={11}
             pattern="09[0-9]{9}"
-            placeholder="09121234567"
             value={form.phone}
             onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value.replace(/[^\d]/g, "") }))}
             required
           />
-          <p className="mt-1 text-xs text-muted">مثال: 09121234567</p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
