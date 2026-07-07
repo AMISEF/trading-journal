@@ -16,12 +16,12 @@ import { useAuth } from "@/store/auth";
 // (the discount rule the product owner defined):
 //   • ۳ ماهه  → قیمت ۳ ماه خط می‌خورد، فقط ۲ ماه پرداخت می‌شود
 //   • ۶ ماهه  → قیمت ۶ ماه خط می‌خورد، فقط ۴ ماه پرداخت می‌شود
-//   • سالانه  → قیمت ۱۲ ماه خط می‌خورد، فقط ۹ ماه پرداخت می‌شود
+//   • سالانه  → قیمت ۱۲ ماه خط می‌خورد، فقط ۸ ماه پرداخت می‌شود
 const PERIODS = [
   { key: "0", months: 1, paidMonths: 1, label: "ماهانه" },
   { key: "1", months: 3, paidMonths: 2, label: "۳ ماهه" },
   { key: "2", months: 6, paidMonths: 4, label: "۶ ماهه" },
-  { key: "3", months: 12, paidMonths: 9, label: "سالانه" },
+  { key: "3", months: 12, paidMonths: 8, label: "سالانه" },
 ] as const;
 
 type Period = (typeof PERIODS)[number];
