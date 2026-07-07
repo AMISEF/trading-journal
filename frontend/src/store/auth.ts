@@ -5,7 +5,7 @@
 "use client";
 
 import { create } from "zustand";
-import { authApi, getToken, setToken } from "@/lib/api";
+import { authApi, getToken, setToken, LOGIN_PATH } from "@/lib/api";
 import type { User } from "@/lib/types";
 
 interface AuthState {
@@ -52,6 +52,6 @@ export const useAuth = create<AuthState>((set) => ({
   logout: () => {
     setToken(null);
     set({ user: null });
-    if (typeof window !== "undefined") window.location.href = "/login";
+    if (typeof window !== "undefined") window.location.href = LOGIN_PATH;
   },
 }));

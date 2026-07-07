@@ -29,6 +29,14 @@ export const TOKEN_KEY = "tj_token";
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8001/api";
 
+// پیشوندِ مسیرِ اپ وقتی زیرمسیرِ یک دامنه سرو می‌شود (مثلاً "/journal").
+// برای هدایت‌های خامِ window.location لازم است، چون Next فقط <Link>/router را
+// به‌صورت خودکار با basePath می‌سازد، نه location.href را.
+export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
+/** مسیر ورود، با درنظرگرفتنِ basePath. */
+export const LOGIN_PATH = `${BASE_PATH}/login`;
+
 /** Read the JWT from localStorage (browser only). */
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -67,10 +75,10 @@ http.interceptors.response.use(
     if (
       error?.response?.status === 401 &&
       typeof window !== "undefined" &&
-      !window.location.pathname.startsWith("/login")
+      !window.location.pathname.startsWith(LOGIN_PATH)
     ) {
       setToken(null);
-      window.location.href = "/login";
+      window.location.href = LOGIN_PATH;
     }
     return Promise.reject(error);
   }

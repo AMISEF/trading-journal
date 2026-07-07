@@ -12,7 +12,15 @@ import { useAuth } from "@/store/auth";
 import { AuthGuard } from "./AuthGuard";
 import { ThemeToggle } from "./ThemeToggle";
 import { WalletModal } from "./WalletModal";
+import { HubNav } from "./HubNav";
 import { formatUsd } from "@/lib/format";
+
+// لینک‌های «هاب» به اپِ پورتفولیو (روتِ دامنه). خام <a> تا basePath اضافه نشود.
+const HUB_LINKS = [
+  { href: "/", label: "نمای بازار" },
+  { href: "/portfolio", label: "مدیریت سرمایه" },
+  { href: "/exclusive", label: "تحلیل اختصاصی" },
+];
 
 interface NavItem {
   href: string;
@@ -167,6 +175,23 @@ function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </div>
 
+      {/* هاب کریپتو اسمارت — رفتن به اپِ پورتفولیو (روتِ دامنه) */}
+      <div className="border-t border-border px-3 py-3">
+        <div className="mb-1 px-1 text-[11px] font-bold text-muted">هاب کریپتو اسمارت</div>
+        {HUB_LINKS.map((l) => (
+          <a
+            key={l.href}
+            href={l.href}
+            className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-text hover:bg-surface-2"
+          >
+            <span className="grid h-5 w-5 place-items-center rounded-md" style={{ background: "#19C3B322", color: "#128F84" }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </span>
+            {l.label}
+          </a>
+        ))}
+      </div>
+
       {/* Telegram footer */}
       <div className="border-t border-border px-4 py-3 text-center">
         <a
@@ -221,8 +246,11 @@ function Shell({ children }: { children: React.ReactNode }) {
           <ThemeToggle />
         </header>
 
-        <main className="p-4 md:p-8">{children}</main>
+        <main className="p-4 pb-24 md:p-8 md:pb-8">{children}</main>
       </div>
+
+      {/* نوار پایینیِ هاب (موبایل) */}
+      <HubNav />
     </div>
   );
 }
