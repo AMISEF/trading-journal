@@ -35,7 +35,12 @@ export function TelegramNav() {
   // یک‌بار در بوت: ready/expand + خنثی‌سازیِ لینک‌ها + گرفتنِ کلیک‌ها.
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
-    if (!tg) return;
+    // ⚠️ اسکریپتِ رسمیِ تلگرام، حتی در یک مرورگرِ معمولی (خارج از خودِ تلگرام)،
+    // window.Telegram.WebApp را با یک استاب می‌سازد -- پس صرفِ وجودِ tg کافی
+    // نیست. initData فقط داخلِ تلگرامِ واقعی غیرخالی است؛ بدونِ این چک، بازکردنِ
+    // مستقیمِ سایت در مرورگر باعث می‌شد «بازگردانیِ آخرین مسیر» اشتباهی فعال
+    // شود و کاربر را از هوم به آخرین صفحه‌ای که قبلاً باز کرده بود پرت کند.
+    if (!tg || !tg.initData) return;
     try { tg.ready(); } catch {}
     try { tg.expand(); } catch {}
     document.documentElement.classList.add("in-telegram");
@@ -141,13 +146,15 @@ export function TelegramNav() {
 
   // روی هر تغییرِ مسیر: ذخیرهٔ آخرین مسیر + نمایش/مخفی‌کردنِ دکمهٔ بازگشت.
   useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    if (!tg || !tg.initData) return; // فقط داخلِ تلگرامِ واقعی
+
     const isHome = pathname === "/";
     try {
       if (!isHome) localStorage.setItem("cs_route", `${BASE_PATH}${pathname}`);
     } catch {}
 
-    const tg = window.Telegram?.WebApp;
-    const bb = tg?.BackButton;
+    const bb = tg.BackButton;
     if (!bb) return;
 
     if (isHome) {
