@@ -21,9 +21,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { Spinner } from "@/components/ui";
-import { dashboardApi } from "@/lib/api";
+import { Button, Spinner } from "@/components/ui";
+import { dashboardApi, tradesApi } from "@/lib/api";
 import type { DashboardData } from "@/lib/types";
 import {
   faNum,
@@ -614,8 +615,10 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 function DashboardInner() {
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     dashboardApi
@@ -623,6 +626,16 @@ function DashboardInner() {
       .then(setData)
       .catch(() => setError("بارگذاری داشبورد با خطا مواجه شد."));
   }, []);
+
+  const createTrade = async () => {
+    setCreating(true);
+    try {
+      const t = await tradesApi.create();
+      router.push(`/journals/${t.id}`);
+    } catch {
+      setCreating(false);
+    }
+  };
 
   if (error) return <p className="text-loss">{error}</p>;
   if (!data) return <Spinner label="در حال بارگذاری داشبورد…" />;
@@ -654,19 +667,24 @@ function DashboardInner() {
       </div>
 
       {/* ── Title ── */}
-      <div className="flex items-center gap-3">
-        <h1
-          className="text-3xl font-extrabold tracking-tight"
-          style={{
-            backgroundImage: `linear-gradient(120deg, rgb(${TINTS.mint}), rgb(${TINTS.sky}), rgb(${TINTS.violet}))`,
-            WebkitBackgroundClip: "text",
-            backgroundClip: "text",
-            color: "transparent",
-          }}
-        >
-          داشبورد
-        </h1>
-        <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1
+            className="text-3xl font-extrabold tracking-tight"
+            style={{
+              backgroundImage: `linear-gradient(120deg, rgb(${TINTS.mint}), rgb(${TINTS.sky}), rgb(${TINTS.violet}))`,
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            داشبورد
+          </h1>
+          <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
+        </div>
+        <Button onClick={createTrade} disabled={creating}>
+          {creating ? "در حال ساخت…" : "+ ثبت معامله جدید"}
+        </Button>
       </div>
 
       {/* ── KPI cards ── */}
