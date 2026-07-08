@@ -433,6 +433,11 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                       dir="ltr"
                     >
                       {fmtUsdt(cell.pnl)}
+                      {walletMargin > 0 && cell.pnl !== 0 && (
+                        <div className="opacity-75">
+                          ({cell.pnl >= 0 ? "+" : ""}{((cell.pnl / walletMargin) * 100).toFixed(2)}٪)
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -461,8 +466,15 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                   <div>
                     <div className="text-sm font-bold">{row.jalaliLabel}</div>
                   </div>
-                  <div className="text-base font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">
-                    {row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(4)} USDT
+                  <div className="text-left">
+                    <div className="text-base font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">
+                      {row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(4)} USDT
+                    </div>
+                    {walletMargin > 0 && (
+                      <div className="text-xs font-semibold opacity-75" style={{ color: `rgb(${rgb})` }} dir="ltr">
+                        ({row.pnl >= 0 ? "+" : ""}{((row.pnl / walletMargin) * 100).toFixed(2)}٪)
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -491,8 +503,15 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                     <div className="text-sm font-bold">{row.jalaliLabel}</div>
                     <div className="text-xs text-muted" dir="ltr">{row.label}</div>
                   </div>
-                  <div className="text-base font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">
-                    {row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(4)} USDT
+                  <div className="text-left">
+                    <div className="text-base font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">
+                      {row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(4)} USDT
+                    </div>
+                    {walletMargin > 0 && (
+                      <div className="text-xs font-semibold opacity-75" style={{ color: `rgb(${rgb})` }} dir="ltr">
+                        ({row.pnl >= 0 ? "+" : ""}{((row.pnl / walletMargin) * 100).toFixed(2)}٪)
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -522,7 +541,7 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                   contentStyle={{ background: "var(--surface)", border: `1px solid ${border}`, borderRadius: 12, fontSize: 12 }}
                   cursor={{ fill: "rgba(148,163,184,0.08)" }}
                   formatter={(v: number, _: string, props: any) => [
-                    `${v.toFixed(4)} USDT`,
+                    walletMargin > 0 ? `${v.toFixed(4)} USDT (${v >= 0 ? "+" : ""}${((v / walletMargin) * 100).toFixed(2)}٪)` : `${v.toFixed(4)} USDT`,
                     props.payload?.jalaliLabel,
                   ]}
                 />
@@ -558,7 +577,7 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                   contentStyle={{ background: "var(--surface)", border: `1px solid ${border}`, borderRadius: 12, fontSize: 12 }}
                   cursor={{ fill: "rgba(148,163,184,0.08)" }}
                   formatter={(v: number, _: string, props: any) => [
-                    `${v.toFixed(4)} USDT`,
+                    walletMargin > 0 ? `${v.toFixed(4)} USDT (${v >= 0 ? "+" : ""}${((v / walletMargin) * 100).toFixed(2)}٪)` : `${v.toFixed(4)} USDT`,
                     props.payload?.day != null ? `روز ${toPersianDigits(props.payload.day)}` : "",
                   ]}
                 />
@@ -594,7 +613,7 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
                   contentStyle={{ background: "var(--surface)", border: `1px solid ${border}`, borderRadius: 12, fontSize: 12 }}
                   cursor={{ fill: "rgba(148,163,184,0.08)" }}
                   formatter={(v: number, _: string, props: any) => [
-                    `${v.toFixed(4)} USDT`,
+                    walletMargin > 0 ? `${v.toFixed(4)} USDT (${v >= 0 ? "+" : ""}${((v / walletMargin) * 100).toFixed(2)}٪)` : `${v.toFixed(4)} USDT`,
                     props.payload?.jalaliLabel,
                   ]}
                 />
@@ -1266,12 +1285,39 @@ function KpiCard({
 
 function BalanceCard({ data }: { data: DashboardData }) {
   const tint = TINTS.rose;
+  const pctOfBalance = (pnl: number) => (data.currentBalance > 0 ? (pnl / data.currentBalance) * 100 : 0);
+
   // Today's PnL — naturally resets every 24h as the calendar day rolls over.
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayPnl = data.pnlByDay
     .filter((d) => d.date.slice(0, 10) === todayStr)
     .reduce((s, d) => s + d.pnl, 0);
+  const todayPct = pctOfBalance(todayPnl);
   const todayRgb = todayPnl >= 0 ? TINTS.green : TINTS.red;
+
+  // Weekly PnL — Jalali week (Saturday start), same boundary as buildWeeklyData().
+  const { weekPnl, weekLabel } = useMemo(() => {
+    const d = new Date(`${todayStr}T00:00:00`);
+    const offset = (d.getDay() + 1) % 7; // days since last Saturday
+    const start = new Date(d);
+    start.setDate(d.getDate() - offset);
+    const startStr = start.toISOString().slice(0, 10);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const endStr = end.toISOString().slice(0, 10);
+    const total = data.pnlByDay
+      .filter((p) => {
+        const day = p.date.slice(0, 10);
+        return day >= startStr && day <= endStr;
+      })
+      .reduce((s, p) => s + p.pnl, 0);
+    const js = getJalaliParts(startStr);
+    const je = getJalaliParts(endStr);
+    const label = js && je ? `${toPersianDigits(js.day)} ${js.monthName} – ${toPersianDigits(je.day)} ${je.monthName}` : "";
+    return { weekPnl: total, weekLabel: label };
+  }, [data.pnlByDay, todayStr]);
+  const weekPct = pctOfBalance(weekPnl);
+  const weekRgb = weekPnl >= 0 ? TINTS.green : TINTS.red;
 
   // Monthly PnL — summed over the current *Jalali (Shamsi)* month, so it resets
   // on the 1st of each Persian month rather than the Gregorian one.
@@ -1288,6 +1334,7 @@ function BalanceCard({ data }: { data: DashboardData }) {
       .reduce((s, d) => s + d.pnl, 0);
     return { monthPnl: total, monthLabel: `${JALALI_MONTHS[jp.month - 1]} ${toPersianDigits(jp.year)}` };
   }, [data.pnlByDay, todayStr]);
+  const monthPct = pctOfBalance(monthPnl);
   const monthRgb = monthPnl >= 0 ? TINTS.green : TINTS.red;
   return (
     <div
@@ -1323,9 +1370,32 @@ function BalanceCard({ data }: { data: DashboardData }) {
         className="relative mt-2 flex items-center justify-between rounded-2xl px-3 py-1.5"
         style={{ background: `rgba(${todayRgb},0.12)`, border: `1px solid rgba(${todayRgb},0.22)` }}
       >
-        <span className="text-[10px] font-medium text-muted">سود امروز (هر ۲۴ ساعت ریست)</span>
-        <span className="text-sm font-extrabold" style={{ color: `rgb(${todayRgb})` }} dir="ltr">
-          {todayPnl >= 0 ? "+" : ""}{todayPnl.toFixed(2)}
+        <span className="text-[10px] font-medium text-muted">سود امروز</span>
+        <span className="flex items-baseline gap-1.5" dir="ltr">
+          <span className="text-sm font-extrabold" style={{ color: `rgb(${todayRgb})` }}>
+            {todayPnl >= 0 ? "+" : ""}{todayPnl.toFixed(2)}
+          </span>
+          <span className="text-[10px] font-semibold" style={{ color: `rgb(${todayRgb})`, opacity: 0.75 }}>
+            ({todayPct >= 0 ? "+" : ""}{todayPct.toFixed(2)}٪)
+          </span>
+        </span>
+      </div>
+
+      {/* Weekly PnL — Jalali week (Saturday start) */}
+      <div
+        className="relative mt-1.5 flex items-center justify-between rounded-2xl px-3 py-1.5"
+        style={{ background: `rgba(${weekRgb},0.12)`, border: `1px solid rgba(${weekRgb},0.22)` }}
+      >
+        <span className="text-[10px] font-medium text-muted">
+          سود این هفته {weekLabel && <span className="text-muted/80">({weekLabel})</span>}
+        </span>
+        <span className="flex items-baseline gap-1.5" dir="ltr">
+          <span className="text-sm font-extrabold" style={{ color: `rgb(${weekRgb})` }}>
+            {weekPnl >= 0 ? "+" : ""}{weekPnl.toFixed(2)}
+          </span>
+          <span className="text-[10px] font-semibold" style={{ color: `rgb(${weekRgb})`, opacity: 0.75 }}>
+            ({weekPct >= 0 ? "+" : ""}{weekPct.toFixed(2)}٪)
+          </span>
         </span>
       </div>
 
@@ -1337,8 +1407,13 @@ function BalanceCard({ data }: { data: DashboardData }) {
         <span className="text-[10px] font-medium text-muted">
           سود این ماه {monthLabel && <span className="text-muted/80">({monthLabel})</span>}
         </span>
-        <span className="text-sm font-extrabold" style={{ color: `rgb(${monthRgb})` }} dir="ltr">
-          {monthPnl >= 0 ? "+" : ""}{monthPnl.toFixed(2)}
+        <span className="flex items-baseline gap-1.5" dir="ltr">
+          <span className="text-sm font-extrabold" style={{ color: `rgb(${monthRgb})` }}>
+            {monthPnl >= 0 ? "+" : ""}{monthPnl.toFixed(2)}
+          </span>
+          <span className="text-[10px] font-semibold" style={{ color: `rgb(${monthRgb})`, opacity: 0.75 }}>
+            ({monthPct >= 0 ? "+" : ""}{monthPct.toFixed(2)}٪)
+          </span>
         </span>
       </div>
 
