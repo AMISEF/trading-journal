@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { BASE_PATH } from "@/lib/api";
+import { TelegramNav } from "@/components/TelegramNav";
 
 export const metadata: Metadata = {
-  title: "ژورنال تریدینگ | Crypto Smart",
+  title: "ژورنال تریدینگ | Algo Hub",
   description: "پنل ژورنال معاملات کریپتو",
 };
 
@@ -41,6 +42,8 @@ export default function RootLayout({
           rel="stylesheet"
         />
         <link rel="icon" href={`${BASE_PATH}/logo-icon.png`} />
+        {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
+        <script src="https://telegram.org/js/telegram-web-app.js" async></script>
         {/* Apply theme before first paint (no flash of wrong theme). */}
         <script
           dangerouslySetInnerHTML={{
@@ -49,7 +52,10 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <TelegramNav />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

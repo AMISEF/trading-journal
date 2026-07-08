@@ -100,9 +100,9 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="flex h-full flex-col">
       {/* Brand */}
       <div className="flex items-center gap-2 px-5 py-5">
-        <Image src={`${BASE_PATH}/logo-icon.png`} alt="CryptoSmart" width={36} height={36} className="rounded-xl" />
+        <Image src={`${BASE_PATH}/logo-icon.png`} alt="Algo Hub" width={36} height={36} className="rounded-xl" />
         <div>
-          <div className="text-sm font-bold leading-tight">کریپتو اسمارت</div>
+          <div className="text-sm font-bold leading-tight">Algo Hub</div>
           <div className="text-xs text-muted">ژورنال تریدینگ</div>
         </div>
       </div>
