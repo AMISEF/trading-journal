@@ -8,7 +8,11 @@ const nextConfig = {
   reactStrictMode: true,
   ...(basePath ? { basePath } : {}),
   // Allow remote images (backend uploads endpoint, etc.)
+  // unoptimized: true — Next's built-in optimizer re-fetches local /public
+  // assets internally without applying basePath, so under a sub-path
+  // (NEXT_PUBLIC_BASE_PATH=/journal) it 404s and serves images/logos broken.
   images: {
+    unoptimized: true,
     remotePatterns: [
       { protocol: "http", hostname: "localhost" },
       { protocol: "https", hostname: "**" },

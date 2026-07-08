@@ -92,7 +92,7 @@ async def _get_owned_trade(db: AsyncSession, user: User, trade_id: int) -> Trade
     return trade
 
 
-@router.get("/", response_model=list[TradeOut])
+@router.get("", response_model=list[TradeOut])
 async def list_trades(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -102,7 +102,7 @@ async def list_trades(
     return [trade_to_out(user, trades, t, transactions) for t in trades]
 
 
-@router.post("/", response_model=TradeOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TradeOut, status_code=status.HTTP_201_CREATED)
 async def create_trade(
     body: TradeIn,
     user: User = Depends(get_current_user),
