@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { BASE_PATH } from "@/lib/api";
 
 /** Shared centered card layout for auth pages. */
 export function AuthLayout({
@@ -20,7 +21,7 @@ export function AuthLayout({
         <div className="mb-6 text-center">
           <div className="mx-auto mb-4">
             <Image
-              src="/logo-icon.png"
+              src={`${BASE_PATH}/logo-icon.png`}
               alt="CryptoSmart"
               width={72}
               height={72}

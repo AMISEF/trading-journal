@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { BASE_PATH } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "ژورنال تریدینگ | Crypto Smart",
@@ -39,7 +40,7 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"
           rel="stylesheet"
         />
-        <link rel="icon" href="/logo-icon.png" />
+        <link rel="icon" href={`${BASE_PATH}/logo-icon.png`} />
         {/* Apply theme before first paint (no flash of wrong theme). */}
         <script
           dangerouslySetInnerHTML={{

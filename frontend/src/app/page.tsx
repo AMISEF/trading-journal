@@ -10,7 +10,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { getToken } from "@/lib/api";
+import { getToken, BASE_PATH } from "@/lib/api";
 
 // ── Brand palette (from the design tokens the product owner provided) ─────────
 const C = {
@@ -179,7 +179,7 @@ export default function LandingPage() {
       >
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5 md:px-8">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo-icon.png" alt="Crypto Smart" width={40} height={40} className="rounded-xl" />
+            <Image src={`${BASE_PATH}/logo-icon.png`} alt="Crypto Smart" width={40} height={40} className="rounded-xl" />
             <span className="text-lg font-extrabold tracking-tight">
               CRYPTO <span style={{ color: C.accent }}>SMART</span>
             </span>
@@ -323,7 +323,7 @@ export default function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Image src="/logo-icon.png" alt="" width={28} height={28} className="rounded-lg" />
+                  <Image src={`${BASE_PATH}/logo-icon.png`} alt="" width={28} height={28} className="rounded-lg" />
                   <span className="text-sm font-bold">داشبورد معاملات</span>
                 </div>
                 <span className="h-2.5 w-2.5 animate-pulse-dot rounded-full" style={{ background: C.accent }} />
@@ -566,7 +566,7 @@ function Footer() {
       style={{ background: "rgba(8,20,42,0.6)", backdropFilter: "blur(14px)" }}
     >
       <div className="mx-auto max-w-5xl px-5 py-14 text-center md:px-8">
-        <Image src="/logo-icon.png" alt="Crypto Smart" width={64} height={64} className="mx-auto rounded-2xl" />
+        <Image src={`${BASE_PATH}/logo-icon.png`} alt="Crypto Smart" width={64} height={64} className="mx-auto rounded-2xl" />
         <div className="mt-4 text-xl font-extrabold tracking-widest">
           CRYPTO <span style={{ color: C.accent }}>SMART</span>
         </div>
