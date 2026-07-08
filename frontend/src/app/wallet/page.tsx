@@ -6,21 +6,20 @@
  * Shows a running balance chart.
  */
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { AppShell } from "@/components/AppShell";
 import { Spinner } from "@/components/ui";
 import { walletApi } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 import type { WalletTransaction } from "@/lib/types";
 import { formatSignedUsd, formatUsd, pnlColorClass } from "@/lib/format";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+
+// recharts در باندلِ جداگانه‌ای لود می‌شود (نه در بارِ اولِ صفحه) چون فقط برای
+// نمودار لازم است، نه خلاصه/جدولِ تراکنش‌ها که باید فوری نمایش داده شوند.
+const WalletBalanceChart = dynamic(
+  () => import("@/components/WalletBalanceChart").then((m) => m.WalletBalanceChart),
+  { ssr: false, loading: () => <div className="tj-card h-[268px] animate-pulse" /> }
+);
 
 export default function WalletPage() {
   return (
@@ -100,23 +99,7 @@ function WalletInner() {
       </div>
 
       {/* Chart */}
-      {chartData.length > 0 && (
-        <div className="tj-card p-5">
-          <h3 className="mb-4 text-sm font-bold">تاریخچه موجودی</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartData}>
-              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-              <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-              <YAxis stroke="var(--muted)" fontSize={11} width={60} tickFormatter={(v) => `$${v}`} />
-              <Tooltip
-                contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)", fontSize: 12 }}
-                formatter={(v: number) => [`$${v.toFixed(0)}`, "موجودی"]}
-              />
-              <Area type="monotone" dataKey="balance" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.15} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+      {chartData.length > 0 && <WalletBalanceChart data={chartData} />}
 
       {/* Transaction list */}
       <div className="tj-card overflow-x-auto">
