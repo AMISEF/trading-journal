@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getToken, BASE_PATH } from "@/lib/api";
+import { HubNav } from "@/components/HubNav";
 
 // ── Brand palette (from the design tokens the product owner provided) ─────────
 const C = {
@@ -146,7 +147,7 @@ export default function LandingPage() {
   return (
     <div
       dir="rtl"
-      className="relative min-h-screen overflow-x-hidden text-white"
+      className="relative min-h-screen overflow-x-hidden pb-20 text-white md:pb-0"
       style={{
         background: `radial-gradient(1200px 700px at 80% -10%, ${C.brand800} 0%, transparent 55%), radial-gradient(1000px 600px at 0% 10%, ${C.accentDark}33 0%, transparent 50%), linear-gradient(180deg, ${C.deep} 0%, #081733 60%, ${C.deep} 100%)`,
       }}
@@ -179,9 +180,9 @@ export default function LandingPage() {
       >
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5 md:px-8">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src={`${BASE_PATH}/logo-icon.png`} alt="Crypto Smart" width={40} height={40} className="rounded-xl" />
+            <Image src={`${BASE_PATH}/logo-icon.png`} alt="Algo Hub" width={40} height={40} className="rounded-xl" />
             <span className="text-lg font-extrabold tracking-tight">
-              CRYPTO <span style={{ color: C.accent }}>SMART</span>
+              ALGO <span style={{ color: C.accent }}>HUB</span>
             </span>
           </Link>
 
@@ -526,6 +527,7 @@ export default function LandingPage() {
 
       {/* ── Footer ── */}
       <Footer />
+      <HubNav />
     </div>
   );
 }
