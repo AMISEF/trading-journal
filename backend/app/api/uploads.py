@@ -17,6 +17,10 @@ router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 _ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
+# Cap upload size so a single request can't exhaust server memory (the file is
+# read fully into RAM before writing). 8 MB is generous for a chart screenshot.
+_MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+
 
 @router.post("/")
 @router.post("", include_in_schema=False)
@@ -31,11 +35,14 @@ async def upload_image(
     if ext not in _ALLOWED_EXT:
         ext = ".png"  # safe default when only the MIME type was trustworthy
 
+    contents = await file.read()
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="حجم تصویر بیش از حد مجاز است (حداکثر ۸ مگابایت).")
+
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     name = f"{uuid.uuid4().hex}{ext}"
     path = os.path.join(settings.UPLOAD_DIR, name)
 
-    contents = await file.read()
     with open(path, "wb") as f:
         f.write(contents)
 

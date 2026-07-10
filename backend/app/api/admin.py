@@ -29,6 +29,16 @@ from app.services.sessions import session_for
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
+# The only roles the app recognises. Reject anything else so an admin can't
+# accidentally (or a compromised admin session can't) set an arbitrary role
+# string that silently bypasses the ADMIN/TRADER checks elsewhere.
+_VALID_ROLES = {"ADMIN", "TRADER"}
+
+
+def _validate_role(role: str | None) -> None:
+    if role is not None and role not in _VALID_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
 
 # ---------------------------------------------------------------------------
 # Inline request schemas
@@ -120,6 +130,8 @@ async def admin_get_trade(
     if trade is None:
         raise HTTPException(status_code=404, detail="Trade not found")
     owner = await db.get(User, trade.user_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="Trade owner not found")
     trades = await crud.load_user_trades(db, owner.id)
     transactions = await crud.load_user_transactions(db, owner.id)
     # Find the freshly loaded version (with take_profits) to serialize.
@@ -138,6 +150,7 @@ async def create_user(
     _admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
+    _validate_role(body.role)
     # Duplicate email check
     existing_email = await db.execute(select(User).where(User.email == body.email))
     if existing_email.scalars().first() is not None:
@@ -175,6 +188,7 @@ async def update_user(
     _admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
+    _validate_role(body.role)
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
