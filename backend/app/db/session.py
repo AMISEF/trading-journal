@@ -67,3 +67,22 @@ async def init_db() -> None:
         ]
         for stmt in migrations:
             await conn.execute(text(stmt))
+
+        # Recover orphaned AI jobs. Analyses run as fire-and-forget in-process
+        # background tasks, so any row still marked PENDING at startup belongs to
+        # a job that died when the previous process stopped (restart/crash/OOM)
+        # and will never finish. Left as-is it sticks the UI on "analysing…"
+        # forever. Flip these to ERROR so the user can simply retry.
+        _stale = (
+            "تحلیل قبلی به‌دلیل راه‌اندازی مجددِ سرور ناتمام ماند. لطفاً دوباره تلاش کنید."
+        )
+        recovery = [
+            ("UPDATE users SET ai_overall_status='ERROR', ai_overall_error=:m "
+             "WHERE ai_overall_status='PENDING'"),
+            ("UPDATE users SET ai_report_status='ERROR', ai_report_error=:m "
+             "WHERE ai_report_status='PENDING'"),
+            ("UPDATE trades SET ai_analysis_status='ERROR', ai_analysis_error=:m "
+             "WHERE ai_analysis_status='PENDING'"),
+        ]
+        for stmt in recovery:
+            await conn.execute(text(stmt), {"m": _stale})
