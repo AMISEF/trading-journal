@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.core import crypto
 from app.models.trade import Trade
 from app.models.user import User
 from app.models.wallet_transaction import WalletTransaction
@@ -30,6 +31,8 @@ def user_to_out(
         subscription_tier=user.subscription_tier,
         subscription_expires_at=user.subscription_expires_at,
         created_at=user.created_at,
+        has_toobit_api_key=bool(user.toobit_api_key_enc),
+        toobit_api_key_masked=crypto.mask(crypto.decrypt(user.toobit_api_key_enc)),
     )
 
 

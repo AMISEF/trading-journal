@@ -24,6 +24,7 @@ from app.api import (
     dashboard,
     export,
     market,
+    settings as settings_router,
     templates,
     trades,
     uploads,
@@ -77,3 +78,4 @@ app.include_router(dashboard.router)
 app.include_router(uploads.router)
 app.include_router(wallet.router)
 app.include_router(ai.router)
+app.include_router(settings_router.router)

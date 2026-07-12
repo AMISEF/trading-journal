@@ -25,6 +25,10 @@ export interface User {
   subscriptionTier: string;
   subscriptionExpiresAt: string | null;
   createdAt: string;
+  /** Whether a Toobit API key is stored (the key itself is never returned). */
+  hasToobitApiKey?: boolean;
+  /** Masked preview of the stored key (last 4 chars), for confirmation. */
+  toobitApiKeyMasked?: string | null;
 }
 
 /** A single take-profit target. */

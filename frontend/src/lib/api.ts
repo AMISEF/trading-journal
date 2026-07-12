@@ -314,6 +314,18 @@ export const walletApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Settings (Toobit API key, …)
+// ---------------------------------------------------------------------------
+export const settingsApi = {
+  saveToobitKey: (accessApiKey: string) =>
+    http
+      .put<User>("/settings/toobit-api-key", { accessApiKey })
+      .then((r) => r.data),
+  deleteToobitKey: () =>
+    http.delete<User>("/settings/toobit-api-key").then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
 // Subscription
 // ---------------------------------------------------------------------------
 export const subscriptionApi = {
