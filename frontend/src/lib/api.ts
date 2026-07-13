@@ -323,6 +323,8 @@ export const settingsApi = {
       .then((r) => r.data),
   deleteToobitKey: () =>
     http.delete<User>("/settings/toobit-api-key").then((r) => r.data),
+  syncToobitNow: () =>
+    http.post<User>("/settings/toobit-sync", {}).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------

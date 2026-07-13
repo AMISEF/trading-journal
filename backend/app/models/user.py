@@ -64,6 +64,8 @@ class User(Base):
     toobit_secret_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Cursor for the incremental futures sync: last fill/trade time already imported.
     toobit_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Last sync error (surfaced in settings so the user can fix bad/expired keys).
+    toobit_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Subscription
     subscription_tier: Mapped[str] = mapped_column(String(20), default="bronze")

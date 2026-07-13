@@ -66,6 +66,7 @@ async def init_db() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_api_key_enc TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_secret_key_enc TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_synced_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_sync_error TEXT",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'manual'",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS toobit_position_id VARCHAR(80)",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS synced_at TIMESTAMP WITH TIME ZONE",

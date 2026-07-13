@@ -55,6 +55,18 @@ class Settings(BaseSettings):
     # The institutional due-diligence report is much longer (19 sections).
     AI_REPORT_MAX_TOKENS: int = 8000
 
+    # --- Toobit futures auto-import ---
+    # Base REST host, poll cadence, and a master on/off switch. The per-user API
+    # key + secret are stored (encrypted) on the user, not here.
+    TOOBIT_BASE_URL: str = "https://api.toobit.com"
+    TOOBIT_SYNC_ENABLED: bool = True
+    TOOBIT_SYNC_INTERVAL: int = 60          # seconds between polls
+    TOOBIT_RECV_WINDOW: int = 5000
+    # How far back to look for fills the first time a user connects (days).
+    TOOBIT_LOOKBACK_DAYS: int = 30
+    # Candle interval used for the entry/exit chart images.
+    TOOBIT_CHART_INTERVAL: str = "15m"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

@@ -34,6 +34,8 @@ def user_to_out(
         has_toobit_api_key=bool(user.toobit_api_key_enc),
         toobit_api_key_masked=crypto.mask(crypto.decrypt(user.toobit_api_key_enc)),
         has_toobit_secret_key=bool(user.toobit_secret_key_enc),
+        toobit_synced_at=user.toobit_synced_at,
+        toobit_sync_error=user.toobit_sync_error,
     )
 
 
