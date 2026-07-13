@@ -56,10 +56,14 @@ class User(Base):
     ai_overall_chat: Mapped[list | None] = mapped_column(JSON, nullable=True)
     ai_report_chat: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
-    # Toobit exchange API key, encrypted at rest (see app.core.crypto). The
-    # plaintext never leaves the server; the API only exposes whether a key is
-    # set and a masked preview. Used later to talk to Toobit on the user's behalf.
+    # Toobit exchange API credentials, encrypted at rest (see app.core.crypto).
+    # The plaintext never leaves the server; the API only exposes whether a key is
+    # set and a masked preview. The secret is required to sign private requests
+    # (positions / fills) when auto-importing the user's futures trades.
     toobit_api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    toobit_secret_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cursor for the incremental futures sync: last fill/trade time already imported.
+    toobit_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Subscription
     subscription_tier: Mapped[str] = mapped_column(String(20), default="bronze")

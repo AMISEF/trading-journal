@@ -32,6 +32,14 @@ class Trade(Base):
     number: Mapped[int] = mapped_column(Integer)
     trade_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Where this trade came from: "manual" (entered by the user) or "toobit"
+    # (auto-imported from the user's Toobit futures account). Toobit trades get
+    # distinct styling + a blue tag in the journal. toobit_position_id ties a
+    # journal row to one Toobit position so repeated syncs update it in place.
+    source: Mapped[str] = mapped_column(String(20), default="manual", index=True)
+    toobit_position_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # --- Core trade fields ---
     symbol: Mapped[str | None] = mapped_column(String(50), nullable=True)
     direction: Mapped[str] = mapped_column(String(10), default="LONG")  # LONG | SHORT

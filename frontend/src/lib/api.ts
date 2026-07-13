@@ -317,9 +317,9 @@ export const walletApi = {
 // Settings (Toobit API key, …)
 // ---------------------------------------------------------------------------
 export const settingsApi = {
-  saveToobitKey: (accessApiKey: string) =>
+  saveToobitKey: (accessApiKey: string, secretApiKey?: string) =>
     http
-      .put<User>("/settings/toobit-api-key", { accessApiKey })
+      .put<User>("/settings/toobit-api-key", { accessApiKey, secretApiKey })
       .then((r) => r.data),
   deleteToobitKey: () =>
     http.delete<User>("/settings/toobit-api-key").then((r) => r.data),

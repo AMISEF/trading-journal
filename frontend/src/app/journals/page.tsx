@@ -452,7 +452,15 @@ function TradeTable({
           {rows.map((t) => (
             <tr
               key={t.id}
-              className={`border-b border-white/5 transition-colors ${t.isLocked ? "opacity-60 bg-gray-100 dark:bg-gray-800/40" : `hover:bg-white/5 ${selected.has(t.id) ? "bg-primary-soft" : ""}`}`}
+              className={`border-b border-white/5 transition-colors ${
+                t.isLocked
+                  ? "opacity-60 bg-gray-100 dark:bg-gray-800/40"
+                  : selected.has(t.id)
+                    ? "bg-primary-soft"
+                    : t.source === "toobit"
+                      ? "bg-sky-400/10 hover:bg-sky-400/20 backdrop-blur-sm"
+                      : "hover:bg-white/5"
+              }`}
             >
               <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                 {!t.isLocked && (
@@ -477,6 +485,11 @@ function TradeTable({
               </td>
               <td className="cursor-pointer p-3 text-center font-medium" dir="ltr" onClick={() => onOpen(t.id)}>
                 {t.symbol || "—"}
+                {t.source === "toobit" && (
+                  <span className="ml-1 inline-block rounded-md border border-sky-400/40 bg-sky-400/15 px-1.5 py-0.5 align-middle text-[9px] font-bold text-sky-500">
+                    toobit
+                  </span>
+                )}
               </td>
               <td className="cursor-pointer p-3 text-center" onClick={() => onOpen(t.id)}>
                 <DirCell dir={t.direction} />
@@ -557,6 +570,11 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
             <div className="flex items-center gap-2">
               <StatusDot status={t.status} pnl={pnlOf(t)} exitType={t.exitType} />
               <span className="font-bold" dir="ltr">{t.symbol || "—"}</span>
+              {t.source === "toobit" && (
+                <span className="rounded-md border border-sky-400/40 bg-sky-400/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-500">
+                  toobit
+                </span>
+              )}
               <span className="text-xs text-muted">#{faNum(t.number)}</span>
               {t.tradeNumber != null && (
                 <span className="text-xs font-medium text-primary" dir="ltr">ش.{faNum(t.tradeNumber)}</span>

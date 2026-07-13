@@ -100,6 +100,7 @@ class TradeOut(CamelModel):
     user_id: int
     number: int
     trade_number: int | None = None
+    source: str = "manual"          # "manual" | "toobit"
     symbol: str | None = None
     direction: str
     status: str

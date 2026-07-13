@@ -32,8 +32,10 @@ async def save_toobit_api_key(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
-    """Store (encrypted) the user's Toobit Access API Key."""
+    """Store (encrypted) the user's Toobit Access API Key and Secret Key."""
     user.toobit_api_key_enc = crypto.encrypt(body.access_api_key)
+    if body.secret_api_key:
+        user.toobit_secret_key_enc = crypto.encrypt(body.secret_api_key)
     await db.commit()
     await db.refresh(user)
     return await _user_out(db, user)
@@ -44,8 +46,9 @@ async def delete_toobit_api_key(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
-    """Remove the stored Toobit API key."""
+    """Remove the stored Toobit API credentials."""
     user.toobit_api_key_enc = None
+    user.toobit_secret_key_enc = None
     await db.commit()
     await db.refresh(user)
     return await _user_out(db, user)

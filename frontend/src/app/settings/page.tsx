@@ -68,21 +68,28 @@ function ToobitTab() {
   const setUser = useAuth((s) => s.setUser);
 
   const [value, setValue] = useState("");
+  const [secret, setSecret] = useState("");
   const [show, setShow] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const hasKey = !!user?.hasToobitApiKey;
+  const hasSecret = !!user?.hasToobitSecretKey;
 
   async function save() {
     setError("");
     if (!value.trim()) {
-      setError("لطفاً کلید API را وارد کنید.");
+      setError("لطفاً Access API Key را وارد کنید.");
+      return;
+    }
+    if (!secret.trim() && !hasSecret) {
+      setError("برای دریافتِ خودکارِ معاملاتِ فیوچرز، Secret Key هم لازم است.");
       return;
     }
     setSaving(true);
     try {
-      const updated = await settingsApi.saveToobitKey(value.trim());
+      const updated = await settingsApi.saveToobitKey(value.trim(), secret.trim() || undefined);
       setUser(updated);
       // ذخیره شد → بازگشت به داشبورد
       router.push("/dashboard");
@@ -160,6 +167,37 @@ function ToobitTab() {
             {show ? "پنهان" : "نمایش"}
           </button>
         </div>
+      </div>
+
+      <div>
+        <label className="tj-label" htmlFor="toobitSecret">
+          Secret Key
+        </label>
+        <div className="relative">
+          <input
+            id="toobitSecret"
+            dir="ltr"
+            type={showSecret ? "text" : "password"}
+            autoComplete="off"
+            spellCheck={false}
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder={hasSecret ? "ثبت‌شده — برای تغییر، Secret جدید را وارد کنید" : "Secret Key"}
+            className="tj-input pr-16 font-mono"
+          />
+          <button
+            type="button"
+            onClick={() => setShowSecret((s) => !s)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-muted hover:text-primary"
+          >
+            {showSecret ? "پنهان" : "نمایش"}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Secret Key برای دریافتِ خودکارِ معاملاتِ فیوچرزِ شما لازم است. هنگامِ
+          ساختِ کلید در توبیت، دسترسیِ <b>Read</b> روی بخشِ Futures کافی است
+          (دسترسیِ برداشت/Withdraw لازم نیست و نباید فعال شود).
+        </p>
       </div>
 
       {error && <p className="text-sm text-loss">{error}</p>}

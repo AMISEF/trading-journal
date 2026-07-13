@@ -29,6 +29,8 @@ export interface User {
   hasToobitApiKey?: boolean;
   /** Masked preview of the stored key (last 4 chars), for confirmation. */
   toobitApiKeyMasked?: string | null;
+  /** Whether the Toobit secret key is stored (needed for futures auto-import). */
+  hasToobitSecretKey?: boolean;
 }
 
 /** A single take-profit target. */
@@ -79,6 +81,8 @@ export interface Trade {
   userId: string;
   number: number;
   tradeNumber: number | null;
+  /** "manual" (user-entered) or "toobit" (auto-imported from Toobit futures). */
+  source?: string;
   symbol: string;
   direction: Direction;
   status: TradeStatus;
