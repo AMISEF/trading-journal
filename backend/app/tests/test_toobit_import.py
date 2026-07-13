@@ -2,7 +2,12 @@
 
 from datetime import datetime, timedelta, timezone
 
-from app.services.toobit_import import Fill, build_trade_from_fills
+from app.services.toobit_import import (
+    Fill,
+    ToobitFill,
+    build_trade_from_fills,
+    build_trades_from_toobit_fills,
+)
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -118,3 +123,36 @@ def test_never_closes_more_than_opened():
 
 def test_no_fills_returns_none():
     assert build_trade_from_fills("ARB", []) is None
+
+
+# --- Toobit grouping (explicit BUY_OPEN/SELL_CLOSE roles) ---------------------
+def test_toobit_two_separate_positions_are_split():
+    fills = [
+        # position 1: long, opened and fully closed in profit
+        ToobitFill(_t(0), "BUY_OPEN", 0.09, 100),
+        ToobitFill(_t(1), "SELL_CLOSE", 0.10, 100),
+        # position 2: short, still open
+        ToobitFill(_t(2), "SELL_OPEN", 0.11, 50),
+    ]
+    trades = build_trades_from_toobit_fills("ARB", fills, leverage=10)
+    assert len(trades) == 2
+    assert trades[0]["direction"] == "LONG" and trades[0]["status"] == "CLOSED"
+    assert trades[1]["direction"] == "SHORT" and trades[1]["status"] == "OPEN"
+    # stable, distinct ids per instance
+    assert trades[0]["toobit_position_id"] != trades[1]["toobit_position_id"]
+    assert all(t["toobit_position_id"].startswith("ARB|") for t in trades)
+
+
+def test_toobit_partial_then_risk_free_single_position():
+    fills = [
+        ToobitFill(_t(0), "BUY_OPEN", 0.09, 100),
+        ToobitFill(_t(1), "SELL_CLOSE", 0.095, 50),   # take profit on half
+        ToobitFill(_t(2), "SELL_CLOSE", 0.09, 50),    # close rest at entry
+    ]
+    trades = build_trades_from_toobit_fills("ARB", fills, leverage=5)
+    assert len(trades) == 1
+    t = trades[0]
+    assert t["status"] == "CLOSED"
+    assert t["is_risk_free_mgmt"] is True
+    assert t["leverage"] == 5
+    assert len(t["take_profits"]) == 1 and t["take_profits"][0]["save_percent"] == 50.0

@@ -46,6 +46,88 @@ class Fill:
     qty: float
 
 
+# --- Toobit-specific grouping -------------------------------------------------
+# Toobit's futures userTrades feed tags each fill with an explicit role:
+#   BUY_OPEN / SELL_OPEN   -> increases the position
+#   BUY_CLOSE / SELL_CLOSE -> reduces the position
+# so we can split a symbol's fill stream into distinct position instances at the
+# flat (size == 0) boundaries instead of guessing.
+
+
+@dataclass(frozen=True)
+class ToobitFill:
+    """A raw Toobit futures fill (from GET /api/v1/futures/userTrades)."""
+
+    ts: datetime
+    side_raw: str            # BUY_OPEN | SELL_OPEN | BUY_CLOSE | SELL_CLOSE
+    price: float
+    qty: float
+
+    @property
+    def is_open(self) -> bool:
+        return self.side_raw.upper().endswith("_OPEN")
+
+    @property
+    def plain_side(self) -> str:
+        return "BUY" if self.side_raw.upper().startswith("BUY") else "SELL"
+
+
+def _group_toobit_positions(fills: list[ToobitFill]) -> list[list[ToobitFill]]:
+    """Split a chronological fill stream into position instances.
+
+    A new instance starts on an opening fill while flat, and ends once closing
+    fills bring the size back to (about) zero. Leftover open fills form a final
+    still-open instance.
+    """
+    groups: list[list[ToobitFill]] = []
+    current: list[ToobitFill] = []
+    size = 0.0
+    for f in fills:
+        if not current and not f.is_open:
+            continue  # a stray close with no open (already-closed history) — skip
+        current.append(f)
+        size += f.qty if f.is_open else -f.qty
+        if size <= 1e-12 and current:
+            groups.append(current)
+            current = []
+            size = 0.0
+    if current:
+        groups.append(current)
+    return groups
+
+
+def build_trades_from_toobit_fills(
+    symbol: str,
+    fills: list[ToobitFill],
+    *,
+    leverage: float | None = None,
+    planned_targets: list[float] | None = None,
+    planned_stop: float | None = None,
+) -> list[dict]:
+    """Turn a symbol's Toobit fills into one trade dict per position instance.
+
+    Each result carries a stable ``toobit_position_id`` (symbol + the opening
+    time of that instance) so repeated syncs update the same journal row.
+    """
+    fills = sorted((f for f in fills if f.qty > 0 and f.price > 0), key=lambda f: f.ts)
+    out: list[dict] = []
+    for group in _group_toobit_positions(fills):
+        opens = [f for f in group if f.is_open]
+        if not opens:
+            continue
+        plain = [Fill(f.ts, f.plain_side, f.price, f.qty) for f in group]
+        trade = build_trade_from_fills(
+            symbol, plain, leverage=leverage,
+            planned_targets=planned_targets, planned_stop=planned_stop,
+        )
+        if trade is None:
+            continue
+        open_ms = int(opens[0].ts.timestamp() * 1000)
+        trade["toobit_position_id"] = f"{symbol}|{open_ms}"
+        out.append(trade)
+    return out
+
+
 def _dir_from_first(fills: Sequence[Fill]) -> str:
     """LONG if the position was opened by buying, SHORT if opened by selling."""
     first = fills[0]

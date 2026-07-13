@@ -73,9 +73,26 @@ function ToobitTab() {
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
 
   const hasKey = !!user?.hasToobitApiKey;
   const hasSecret = !!user?.hasToobitSecretKey;
+  const connected = hasKey && hasSecret;
+
+  async function syncNow() {
+    setSyncMsg("");
+    setSyncing(true);
+    try {
+      const updated = await settingsApi.syncToobitNow();
+      setUser(updated);
+      setSyncMsg("همگام‌سازی انجام شد. معاملاتِ فیوچرزِ شما در ژورنال به‌روزرسانی شد.");
+    } catch (e: any) {
+      setSyncMsg(e?.response?.data?.detail || "همگام‌سازی ناموفق بود.");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function save() {
     setError("");
@@ -140,6 +157,35 @@ function ToobitTab() {
             {user?.toobitApiKeyMasked || "••••••••"}
           </span>
           <span className="text-muted"> — با ثبتِ کلیدِ جدید جایگزین می‌شود.</span>
+        </div>
+      )}
+
+      {connected && (
+        <div className="rounded-lg border border-sky-400/40 bg-sky-400/10 p-4 text-sm">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="font-bold text-sky-500">اتصال به توبیت فعال است</span>
+            <button
+              type="button"
+              onClick={syncNow}
+              disabled={syncing}
+              className="rounded-lg border border-sky-400/50 bg-sky-400/15 px-3 py-1.5 text-xs font-bold text-sky-600 transition hover:bg-sky-400/25 disabled:opacity-50"
+            >
+              {syncing ? "در حال همگام‌سازی…" : "همگام‌سازیِ الان"}
+            </button>
+          </div>
+          <p className="text-muted">
+            معاملاتِ فیوچرزِ شما هر ۶۰ ثانیه به‌صورتِ خودکار در ژورنال ثبت می‌شوند
+            (با برچسبِ آبیِ <span dir="ltr">toobit</span>).
+          </p>
+          {user?.toobitSyncedAt && (
+            <p className="mt-1 text-xs text-muted">
+              آخرین همگام‌سازی: {new Date(user.toobitSyncedAt).toLocaleString("fa-IR")}
+            </p>
+          )}
+          {user?.toobitSyncError && (
+            <p className="mt-1 text-xs text-loss">خطای آخرین همگام‌سازی: {user.toobitSyncError}</p>
+          )}
+          {syncMsg && <p className="mt-2 text-xs text-sky-600">{syncMsg}</p>}
         </div>
       )}
 

@@ -31,6 +31,9 @@ export interface User {
   toobitApiKeyMasked?: string | null;
   /** Whether the Toobit secret key is stored (needed for futures auto-import). */
   hasToobitSecretKey?: boolean;
+  /** Last successful Toobit sync time (ISO), and last sync error if any. */
+  toobitSyncedAt?: string | null;
+  toobitSyncError?: string | null;
 }
 
 /** A single take-profit target. */
