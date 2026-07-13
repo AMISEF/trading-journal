@@ -80,36 +80,50 @@ class ToobitClient:
             raise ToobitError(f"api error {data.get('code')}: {data.get('msg')}")
         return data
 
+    @staticmethod
+    def _as_list(data: Any) -> list[dict]:
+        """Normalise a response to a list of rows.
+
+        Toobit endpoints return a bare JSON array in the docs, but some deploys
+        wrap it as ``{"data": [...]}`` or ``{"data": {"list": [...]}}``. Accept
+        all of these so a wrapper doesn't silently look empty.
+        """
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            inner = data.get("data", data.get("rows", data.get("list")))
+            if isinstance(inner, list):
+                return inner
+            if isinstance(inner, dict) and isinstance(inner.get("list"), list):
+                return inner["list"]
+        return []
+
     # --- endpoints -------------------------------------------------------------
     async def positions(self) -> list[dict]:
         """Open positions — GET /api/v1/futures/positions (signed)."""
-        data = await self._get("/api/v1/futures/positions", {}, signed=True)
-        return data if isinstance(data, list) else []
+        return self._as_list(await self._get("/api/v1/futures/positions", {}, signed=True))
 
     async def history_positions(self, *, start_ms: int | None = None, limit: int = 200) -> list[dict]:
         """Closed positions — GET /api/v1/futures/historyPositions (signed)."""
-        data = await self._get(
+        return self._as_list(await self._get(
             "/api/v1/futures/historyPositions",
             {"startTime": start_ms, "limit": limit},
             signed=True,
-        )
-        return data if isinstance(data, list) else []
+        ))
 
     async def user_trades(self, symbol: str, *, start_ms: int | None = None, limit: int = 1000) -> list[dict]:
         """Fills for one symbol — GET /api/v1/futures/userTrades (signed)."""
-        data = await self._get(
+        return self._as_list(await self._get(
             "/api/v1/futures/userTrades",
             {"symbol": symbol, "startTime": start_ms, "limit": limit},
             signed=True,
-        )
-        return data if isinstance(data, list) else []
+        ))
 
     async def open_orders(self, symbol: str | None = None) -> list[dict]:
         """Open orders (user-set TP/SL) — GET /api/v1/futures/openOrders (signed)."""
-        data = await self._get(
+        return self._as_list(await self._get(
             "/api/v1/futures/openOrders", {"symbol": symbol}, signed=True
-        )
-        return data if isinstance(data, list) else []
+        ))
 
     async def klines(
         self, symbol: str, interval: str, *, start_ms: int | None = None,

@@ -7,14 +7,16 @@ UserOut serializer.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
 from app.api.serializers import user_to_out
 from app.core import crypto
+from app.core.config import settings
 from app.core.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.user import ToobitApiKeyIn, UserOut
@@ -56,6 +58,49 @@ async def delete_toobit_api_key(
     await db.commit()
     await db.refresh(user)
     return await _user_out(db, user)
+
+
+@router.get("/toobit-debug")
+async def toobit_debug(
+    user: User = Depends(get_current_user),
+    _db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Self-serve diagnostics: show the *raw* Toobit responses so a mismatch in
+    shape/auth/paths is visible without server logs. Only the caller's own data.
+    """
+    client = toobit_sync.client_for(user)
+    if client is None:
+        raise HTTPException(status_code=400, detail="ابتدا Access API Key و Secret Key را ذخیره کنید.")
+
+    since_ms = int((datetime.now(timezone.utc) - timedelta(days=settings.TOOBIT_LOOKBACK_DAYS)).timestamp() * 1000)
+    out: dict = {"base_url": settings.TOOBIT_BASE_URL, "lookback_days": settings.TOOBIT_LOOKBACK_DAYS}
+
+    async def probe(name: str, coro):
+        try:
+            raw = await coro
+            out[name] = {"ok": True, "type": type(raw).__name__,
+                         "sample": raw[:2] if isinstance(raw, list) else raw}
+        except Exception as exc:  # noqa: BLE001 - surface the exact failure
+            out[name] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    # Raw (un-normalised) calls so wrappers/errors are visible as-is.
+    await probe("positions_raw", client._get("/api/v1/futures/positions", {}, signed=True))
+    await probe("historyPositions_raw",
+                client._get("/api/v1/futures/historyPositions", {"startTime": since_ms, "limit": 5}, signed=True))
+    # Discover a symbol to probe userTrades.
+    symbol = None
+    for key in ("positions_raw", "historyPositions_raw"):
+        rows = client._as_list(out.get(key, {}).get("sample"))
+        for r in rows:
+            if isinstance(r, dict) and r.get("symbol"):
+                symbol = r["symbol"]; break
+        if symbol:
+            break
+    out["discovered_symbol"] = symbol
+    if symbol:
+        await probe("userTrades_raw",
+                    client._get("/api/v1/futures/userTrades", {"symbol": symbol, "startTime": since_ms, "limit": 5}, signed=True))
+    return JSONResponse(out)
 
 
 @router.post("/toobit-sync", response_model=UserOut)
