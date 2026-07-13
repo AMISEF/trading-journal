@@ -64,6 +64,16 @@ async def init_db() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_tier VARCHAR(20) NOT NULL DEFAULT 'bronze'",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP WITH TIME ZONE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_api_key_enc TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_secret_key_enc TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_synced_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'manual'",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS toobit_position_id VARCHAR(80)",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS synced_at TIMESTAMP WITH TIME ZONE",
+            # One journal row per Toobit position (per user); repeated syncs update
+            # it instead of inserting duplicates. Partial index so manual trades
+            # (NULL position id) are unaffected.
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_toobit_position "
+            "ON trades (user_id, toobit_position_id) WHERE toobit_position_id IS NOT NULL",
         ]
         for stmt in migrations:
             await conn.execute(text(stmt))

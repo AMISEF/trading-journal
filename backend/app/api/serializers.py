@@ -33,6 +33,7 @@ def user_to_out(
         created_at=user.created_at,
         has_toobit_api_key=bool(user.toobit_api_key_enc),
         toobit_api_key_masked=crypto.mask(crypto.decrypt(user.toobit_api_key_enc)),
+        has_toobit_secret_key=bool(user.toobit_secret_key_enc),
     )
 
 
@@ -48,6 +49,7 @@ def trade_to_out(
         user_id=trade.user_id,
         number=trade.number,
         trade_number=trade.trade_number,
+        source=trade.source or "manual",
         symbol=trade.symbol,
         direction=trade.direction,
         status=trade.status,
