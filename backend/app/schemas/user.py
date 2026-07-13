@@ -33,6 +33,8 @@ class UserOut(CamelModel):
     has_toobit_api_key: bool = False
     toobit_api_key_masked: str | None = None
     has_toobit_secret_key: bool = False
+    toobit_synced_at: datetime | None = None
+    toobit_sync_error: str | None = None
 
 
 class RegisterIn(CamelModel):

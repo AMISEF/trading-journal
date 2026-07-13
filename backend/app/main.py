@@ -34,13 +34,39 @@ from app.core.config import settings
 from app.db.session import init_db
 
 
+async def _toobit_sync_loop():
+    """Background poller: import every connected user's Toobit futures trades."""
+    import asyncio
+    import logging
+
+    from app.db.session import AsyncSessionLocal
+    from app.services import toobit_sync
+
+    log = logging.getLogger("app.toobit")
+    # Small initial delay so startup (migrations) settles first.
+    await asyncio.sleep(10)
+    while True:
+        try:
+            await toobit_sync.sync_all_users(AsyncSessionLocal)
+        except Exception:  # noqa: BLE001 - the loop must never die
+            log.exception("toobit sync pass failed")
+        await asyncio.sleep(max(15, settings.TOOBIT_SYNC_INTERVAL))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Run once on startup: ensure the uploads folder and DB tables exist."""
+    """Run once on startup: ensure the uploads folder and DB tables exist, and
+    start the Toobit futures sync poller."""
+    import asyncio
+
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     await init_db()
+    task = None
+    if settings.TOOBIT_SYNC_ENABLED:
+        task = asyncio.create_task(_toobit_sync_loop())
     yield
-    # (Nothing to clean up on shutdown for Phase 1.)
+    if task is not None:
+        task.cancel()
 
 
 app = FastAPI(title="Crypto Smart Trading Journal API", lifespan=lifespan)
