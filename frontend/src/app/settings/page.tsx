@@ -75,6 +75,8 @@ function ToobitTab() {
   const [error, setError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [debug, setDebug] = useState<string>("");
+  const [busy, setBusy] = useState("");
 
   const hasKey = !!user?.hasToobitApiKey;
   const hasSecret = !!user?.hasToobitSecretKey;
@@ -91,6 +93,36 @@ function ToobitTab() {
       setSyncMsg(e?.response?.data?.detail || "همگام‌سازی ناموفق بود.");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function removeKey() {
+    if (!window.confirm("کلید API توبیت حذف شود؟ همگام‌سازیِ خودکار متوقف می‌شود.")) return;
+    setBusy("delete");
+    try {
+      const updated = await settingsApi.deleteToobitKey();
+      setUser(updated);
+      setValue("");
+      setSecret("");
+      setSyncMsg("کلید API حذف شد.");
+      setDebug("");
+    } catch {
+      setSyncMsg("حذف کلید ناموفق بود.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function runDebug() {
+    setBusy("debug");
+    setDebug("");
+    try {
+      const res = await settingsApi.debugToobit();
+      setDebug(JSON.stringify(res, null, 2));
+    } catch (e: any) {
+      setDebug("خطا: " + (e?.response?.data?.detail || e?.message || "نامشخص"));
+    } finally {
+      setBusy("");
     }
   }
 
@@ -186,6 +218,29 @@ function ToobitTab() {
             <p className="mt-1 text-xs text-loss">خطای آخرین همگام‌سازی: {user.toobitSyncError}</p>
           )}
           {syncMsg && <p className="mt-2 text-xs text-sky-600">{syncMsg}</p>}
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-sky-400/20 pt-3">
+            <button
+              type="button"
+              onClick={runDebug}
+              disabled={busy !== ""}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted transition hover:text-primary disabled:opacity-50"
+            >
+              {busy === "debug" ? "در حال بررسی…" : "تست اتصال / عیب‌یابی"}
+            </button>
+            <button
+              type="button"
+              onClick={removeKey}
+              disabled={busy !== ""}
+              className="rounded-lg border border-loss/40 bg-loss/10 px-3 py-1.5 text-xs font-bold text-loss transition hover:bg-loss/20 disabled:opacity-50"
+            >
+              {busy === "delete" ? "در حال حذف…" : "حذف کلید API"}
+            </button>
+          </div>
+          {debug && (
+            <pre dir="ltr" className="mt-3 max-h-72 overflow-auto rounded-lg bg-black/40 p-3 text-[10px] leading-relaxed text-slate-200">
+              {debug}
+            </pre>
+          )}
         </div>
       )}
 
