@@ -100,6 +100,13 @@ async def toobit_debug(
     if symbol:
         await probe("userTrades_raw",
                     client._get("/api/v1/futures/userTrades", {"symbol": symbol, "startTime": since_ms, "limit": 5}, signed=True))
+    # Also probe a *closed* symbol's fills, to confirm history fills are returned.
+    closed_rows = client._as_list(out.get("historyPositions_raw", {}).get("sample"))
+    closed_sym = next((r.get("symbol") for r in closed_rows if isinstance(r, dict) and r.get("symbol")), None)
+    out["closed_symbol"] = closed_sym
+    if closed_sym and closed_sym != symbol:
+        await probe("closed_userTrades_raw",
+                    client._get("/api/v1/futures/userTrades", {"symbol": closed_sym, "startTime": since_ms, "limit": 5}, signed=True))
     return JSONResponse(out)
 
 
