@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core import crypto
@@ -95,10 +96,12 @@ async def _upsert_trade(
 ) -> tuple[Trade, bool]:
     """Create or update the journal row for one Toobit position."""
     pos_id = fields["toobit_position_id"]
+    # selectinload is required: with async SQLAlchemy, touching take_profits on a
+    # lazily-loaded trade raises MissingGreenlet and kills the whole upsert.
     res = await db.execute(
-        select(Trade).where(
-            Trade.user_id == user.id, Trade.toobit_position_id == pos_id
-        )
+        select(Trade)
+        .where(Trade.user_id == user.id, Trade.toobit_position_id == pos_id)
+        .options(selectinload(Trade.take_profits))
     )
     trade = res.scalars().first()
     created = trade is None
@@ -206,6 +209,7 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
     # import is committed per symbol so a later failure (e.g. chart rendering)
     # can never roll back trades that were already imported.
     touched = 0
+    errors: list[str] = []
     chart_targets: list[tuple[Trade, str]] = []
     for sym in symbols:
         try:
@@ -223,10 +227,12 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
             await db.commit()
         except ToobitError as exc:
             await db.rollback()
+            errors.append(f"{sym}: {exc}")
             logger.warning("toobit userTrades failed for %s: %s", sym, exc)
             continue
-        except Exception:  # noqa: BLE001 - one symbol must not sink the rest
+        except Exception as exc:  # noqa: BLE001 - one symbol must not sink the rest
             await db.rollback()
+            errors.append(f"{sym}: {type(exc).__name__}: {exc}")
             logger.exception("toobit import failed for %s", sym)
             continue
 
@@ -241,7 +247,8 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
             logger.warning("toobit chart failed for %s (trade %s)", sym, trade.id)
 
     user.toobit_synced_at = _utcnow()
-    user.toobit_sync_error = None
+    # Surface exactly what failed in the settings panel; None when all clean.
+    user.toobit_sync_error = ("; ".join(errors))[:400] if errors else None
     await db.commit()
     return touched
 

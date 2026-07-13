@@ -121,8 +121,15 @@ async def sync_toobit_now(
     try:
         await toobit_sync.sync_user(db, user)
     except ToobitError as exc:
+        await db.rollback()
         user.toobit_sync_error = str(exc)[:400]
         await db.commit()
         raise HTTPException(status_code=502, detail=f"خطا در ارتباط با توبیت: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - surface the REAL error, never a blank 500
+        await db.rollback()
+        msg = f"{type(exc).__name__}: {exc}"
+        user.toobit_sync_error = msg[:400]
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"خطای داخلی در همگام‌سازی: {msg[:300]}") from exc
     await db.refresh(user)
     return await _user_out(db, user)
