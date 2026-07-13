@@ -152,7 +152,7 @@ async def _attach_charts(client: ToobitClient, trade: Trade, contract: str) -> N
         rows = await client.klines(
             contract, settings.TOOBIT_CHART_INTERVAL, limit=120
         )
-    except ToobitError as exc:
+    except Exception as exc:  # noqa: BLE001 - charts are optional, never fatal
         logger.warning("toobit klines failed for %s: %s", contract, exc)
         return
     candles = toobit_chart.candles_from_klines(rows)
@@ -202,24 +202,43 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
         if lev:
             leverage_by_symbol[sym] = lev
 
-    # 2) pull fills per symbol and 3) map them into trades.
+    # 2) pull fills per symbol, 3) map them into trades, and 4) upsert. The
+    # import is committed per symbol so a later failure (e.g. chart rendering)
+    # can never roll back trades that were already imported.
     touched = 0
+    chart_targets: list[tuple[Trade, str]] = []
     for sym in symbols:
         try:
             rows = await client.user_trades(sym, start_ms=since_ms)
+            fills = _parse_fills(rows).get(sym, [])
+            if not fills:
+                continue
+            trades = build_trades_from_toobit_fills(
+                sym, fills, leverage=leverage_by_symbol.get(sym)
+            )
+            for fields in trades:
+                trade, _created = await _upsert_trade(db, user, fields, leverage_by_symbol.get(sym))
+                chart_targets.append((trade, sym))
+                touched += 1
+            await db.commit()
         except ToobitError as exc:
+            await db.rollback()
             logger.warning("toobit userTrades failed for %s: %s", sym, exc)
             continue
-        fills = _parse_fills(rows).get(sym, [])
-        if not fills:
+        except Exception:  # noqa: BLE001 - one symbol must not sink the rest
+            await db.rollback()
+            logger.exception("toobit import failed for %s", sym)
             continue
-        trades = build_trades_from_toobit_fills(
-            sym, fills, leverage=leverage_by_symbol.get(sym)
-        )
-        for fields in trades:
-            trade, _created = await _upsert_trade(db, user, fields, leverage_by_symbol.get(sym))
+
+    # 5) charts: strictly best-effort, each isolated so image failures never
+    # affect the already-committed trades.
+    for trade, sym in chart_targets:
+        try:
             await _attach_charts(client, trade, sym)
-            touched += 1
+            await db.commit()
+        except Exception:  # noqa: BLE001
+            await db.rollback()
+            logger.warning("toobit chart failed for %s (trade %s)", sym, trade.id)
 
     user.toobit_synced_at = _utcnow()
     user.toobit_sync_error = None
