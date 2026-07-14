@@ -32,7 +32,7 @@ from app.models.trade import Trade
 from app.models.user import User
 from app.services import toobit_chart
 from app.services.toobit_client import ToobitClient, ToobitError
-from app.services.toobit_import import ToobitFill, build_trades_from_toobit_fills
+from app.services.toobit_import import ToobitFill  # used by _parse_fills (kept for tests)
 
 logger = logging.getLogger("app.services.toobit_sync")
 
@@ -84,6 +84,63 @@ def _parse_fills(rows: list[dict]) -> dict[str, list[ToobitFill]]:
     return by_symbol
 
 
+def _dt(ms) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _fields_from_open(p: dict) -> dict | None:
+    """Journal fields for one OPEN position (GET /futures/positions).
+
+    Uses the exchange's own units — avgPrice, positionValue and margin — so the
+    contract-vs-base quantity quirk in the fills feed never affects us.
+    """
+    sym = p.get("symbol")
+    entry = _f(p.get("avgPrice"))
+    if not sym or not entry:
+        return None
+    side = (p.get("side") or "LONG").upper()
+    lev = _f(p.get("leverage"))
+    margin = _f(p.get("margin"))
+    notional = _f(p.get("positionValue"))
+    if (margin is None or margin <= 0) and notional and lev:
+        margin = notional / lev
+    return {
+        "toobit_position_id": f"open:{sym}:{side}",
+        "symbol": sym, "direction": side, "status": "OPEN",
+        "entry_price": entry, "exit_price": None, "leverage": lev,
+        "margin": margin, "realized_pnl": _f(p.get("realizedPnL")) or 0.0,
+        "open_date": None, "close_date": None,
+    }
+
+
+def _fields_from_closed(h: dict) -> dict | None:
+    """Journal fields for one CLOSED position (GET /futures/historyPositions).
+
+    Carries the exchange's exact realized PnL (fees included) and the average
+    open/close prices, keyed by the stable historical-position id.
+    """
+    sym = h.get("symbol")
+    pid = h.get("id")
+    entry = _f(h.get("openAvgPrice"))
+    exit_ = _f(h.get("closeAvgPrice"))
+    if not sym or not pid or not entry:
+        return None
+    side = (h.get("side") or "LONG").upper()
+    lev = _f(h.get("leverage"))
+    notional = _f(h.get("closeValue")) or ((_f(h.get("maxPosition")) or 0.0) * entry)
+    margin = notional / lev if (notional and lev) else None
+    return {
+        "toobit_position_id": f"hist:{pid}",
+        "symbol": sym, "direction": side, "status": "CLOSED",
+        "entry_price": entry, "exit_price": exit_, "leverage": lev,
+        "margin": margin, "realized_pnl": _f(h.get("realizedPnL")) or 0.0,
+        "open_date": _dt(h.get("openTime")), "close_date": _dt(h.get("closeTime")),
+    }
+
+
 async def _next_trade_number(db: AsyncSession, user_id: int) -> int:
     res = await db.execute(
         select(func.coalesce(func.max(Trade.number), 0)).where(Trade.user_id == user_id)
@@ -122,34 +179,30 @@ async def _upsert_trade(
         )
         db.add(trade)
 
-    is_closed = fields["status"] == "CLOSED"
     trade.symbol = _base_symbol(fields["symbol"])
     trade.direction = fields["direction"]
     trade.status = fields["status"]
-    # Averages: entry = weighted-avg opens, exit = weighted-avg closes (only once
-    # closed; an open position has no exit yet).
-    trade.entry_price = fields["entry_price"]
-    trade.exit_price = fields.get("avg_exit") if is_closed else None
-    trade.stop_loss = None  # the avg-exit already reflects a losing close in PnL
-    trade.leverage = leverage if leverage is not None else fields.get("leverage")
-    trade.is_risk_free_mgmt = fields["is_risk_free_mgmt"]
-    trade.realized_pnl = fields["realized_pnl"]
-    trade.open_date = fields["open_date"]
-    trade.close_date = fields["close_date"]
+    trade.entry_price = fields["entry_price"]                 # avg open price
+    trade.exit_price = fields.get("exit_price")               # avg close price (closed only)
+    trade.stop_loss = None
+    trade.leverage = fields.get("leverage")
+    trade.is_risk_free_mgmt = bool(fields.get("is_risk_free_mgmt"))
+    trade.realized_pnl = fields.get("realized_pnl")           # exact PnL from the exchange
+    trade.open_date = fields.get("open_date")
+    trade.close_date = fields.get("close_date")
     trade.synced_at = _utcnow()
     if not trade.tags:
         trade.tags = ["toobit"]
 
     # Record the real margin the trader committed. The journal derives margin as
     # balance_snapshot × margin_percent/100, so pin the snapshot to the margin and
-    # the percent to 100 — then margin, position size and PnL all come out right.
+    # the percent to 100 — then margin (e.g. 24), position size (24×leverage) and
+    # PnL all come out right.
     margin = fields.get("margin")
     if margin and margin > 0:
         trade.balance_snapshot = margin
         trade.margin_percent = 100.0
 
-    # Average-exit model: a single representative exit, no synthetic partial
-    # targets (they would double-count against exit_price).
     trade.take_profits.clear()
     await db.flush()
     return trade, created
@@ -194,57 +247,72 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
     if client is None:
         return 0
 
-    # Always scan a fixed lookback window rather than only new fills: an open
-    # position started before the last poll needs its *full* fill history for a
-    # correct weighted entry. Closed trades are frozen on upsert, so re-scanning
-    # is idempotent and cheap.
-    since = _utcnow() - timedelta(days=settings.TOOBIT_LOOKBACK_DAYS)
-    since_ms = int(since.timestamp() * 1000)
+    since_ms = int((_utcnow() - timedelta(days=settings.TOOBIT_LOOKBACK_DAYS)).timestamp() * 1000)
 
-    # 1) discover symbols + leverage from open + closed positions.
-    leverage_by_symbol: dict[str, float] = {}
-    symbols: set[str] = set()
-    positions = await client.positions()
-    history = await client.history_positions(start_ms=since_ms)
-    for p in [*positions, *history]:
-        sym = p.get("symbol")
-        if not sym:
-            continue
-        symbols.add(sym)
-        lev = _f(p.get("leverage"))
-        if lev:
-            leverage_by_symbol[sym] = lev
-
-    # 2) pull fills per symbol, 3) map them into trades, and 4) upsert. The
-    # import is committed per symbol so a later failure (e.g. chart rendering)
-    # can never roll back trades that were already imported.
+    # Build straight from the authoritative endpoints (correct units + exact PnL):
+    # open positions → OPEN trades, closed history → CLOSED trades. The userTrades
+    # fills feed is intentionally NOT used for sizing (its qty is in contract units
+    # that differ from the base amount, e.g. 5933 vs 593.3).
     touched = 0
     errors: list[str] = []
     chart_targets: list[tuple[Trade, str]] = []
-    for sym in symbols:
+
+    try:
+        positions = await client.positions()
+        history = await client.history_positions(start_ms=since_ms, limit=500)
+    except ToobitError as exc:
+        user.toobit_sync_error = str(exc)[:400]
+        await db.commit()
+        raise
+
+    open_keys: set[tuple[str, str]] = set()
+    for p in positions:
+        fields = _fields_from_open(p)
+        if not fields:
+            continue
+        open_keys.add((_base_symbol(fields["symbol"]), fields["direction"]))
         try:
-            rows = await client.user_trades(sym, start_ms=since_ms)
-            fills = _parse_fills(rows).get(sym, [])
-            if not fills:
-                continue
-            trades = build_trades_from_toobit_fills(
-                sym, fills, leverage=leverage_by_symbol.get(sym)
-            )
-            for fields in trades:
-                trade, _created = await _upsert_trade(db, user, fields, leverage_by_symbol.get(sym))
-                chart_targets.append((trade, sym))
-                touched += 1
+            trade, _c = await _upsert_trade(db, user, fields, fields.get("leverage"))
+            chart_targets.append((trade, fields["symbol"]))
+            touched += 1
             await db.commit()
-        except ToobitError as exc:
+        except Exception as exc:  # noqa: BLE001
             await db.rollback()
-            errors.append(f"{sym}: {exc}")
-            logger.warning("toobit userTrades failed for %s: %s", sym, exc)
+            errors.append(f"{fields.get('symbol')}: {type(exc).__name__}: {exc}")
+            logger.exception("toobit open import failed")
+
+    for h in history:
+        fields = _fields_from_closed(h)
+        if not fields:
             continue
-        except Exception as exc:  # noqa: BLE001 - one symbol must not sink the rest
+        try:
+            trade, _c = await _upsert_trade(db, user, fields, fields.get("leverage"))
+            chart_targets.append((trade, fields["symbol"]))
+            touched += 1
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001
             await db.rollback()
-            errors.append(f"{sym}: {type(exc).__name__}: {exc}")
-            logger.exception("toobit import failed for %s", sym)
-            continue
+            errors.append(f"{fields.get('symbol')}: {type(exc).__name__}: {exc}")
+            logger.exception("toobit closed import failed")
+
+    # Remove phantom OPEN rows for positions that have since closed (they now live
+    # as a hist:* row). Skip any the user edited after the last sync.
+    try:
+        existing = (await db.execute(
+            select(Trade).where(
+                Trade.user_id == user.id, Trade.source == "toobit",
+                Trade.toobit_position_id.like("open:%"),
+            )
+        )).scalars().all()
+        for t in existing:
+            edited = (t.synced_at and t.updated_at and t.updated_at > t.synced_at + timedelta(seconds=5))
+            still_open = (t.symbol, t.direction) in open_keys
+            if not still_open and not edited:
+                await db.delete(t)
+        await db.commit()
+    except Exception:  # noqa: BLE001
+        await db.rollback()
+        logger.exception("toobit phantom-open cleanup failed")
 
     # 5) charts: strictly best-effort, each isolated so image failures never
     # affect the already-committed trades.

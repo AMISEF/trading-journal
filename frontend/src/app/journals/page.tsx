@@ -382,6 +382,9 @@ function statusLabel(s: TradeStatus) {
 }
 
 function pnlOf(t: Trade) {
+  // Imported Toobit trades carry the exchange's exact realized PnL (fees
+  // included); prefer it over the price-derived recomputation.
+  if (t.source === "toobit" && t.realizedPnl != null) return t.realizedPnl;
   return t.calc?.realizedPnl ?? t.realizedPnl ?? null;
 }
 function pctOf(t: Trade) {
