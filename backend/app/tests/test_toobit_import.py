@@ -125,6 +125,32 @@ def test_no_fills_returns_none():
     assert build_trade_from_fills("ARB", []) is None
 
 
+def test_average_exit_and_margin():
+    # Long 100 @ avg (0.09,0.10)=0.095; close 50@0.11 and 50@0.13 → avg exit 0.12.
+    r = build_trade_from_fills(
+        "ARB",
+        [
+            Fill(_t(0), "BUY", 0.09, 50),
+            Fill(_t(1), "BUY", 0.10, 50),
+            Fill(_t(2), "SELL", 0.11, 50),
+            Fill(_t(3), "SELL", 0.13, 50),
+        ],
+        leverage=10,
+    )
+    assert abs(r["entry_price"] - 0.095) < 1e-9
+    assert abs(r["avg_exit"] - 0.12) < 1e-9
+    # opening notional = 50*0.09 + 50*0.10 = 9.5; margin = 9.5 / 10 = 0.95
+    assert abs(r["margin"] - 0.95) < 1e-9
+    assert r["status"] == "CLOSED"
+
+
+def test_margin_none_without_leverage_and_avg_exit_none_while_open():
+    r = build_trade_from_fills("ARB", [Fill(_t(0), "BUY", 0.09, 100)])
+    assert r["margin"] is None        # no leverage given
+    assert r["avg_exit"] is None      # nothing closed yet
+    assert r["status"] == "OPEN"
+
+
 # --- Toobit grouping (explicit BUY_OPEN/SELL_CLOSE roles) ---------------------
 def test_toobit_two_separate_positions_are_split():
     fills = [

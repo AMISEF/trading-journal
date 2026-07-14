@@ -172,6 +172,7 @@ def build_trade_from_fills(
     # Walk the closing fills in order, recording each as an exit chunk.
     exits: list[dict] = []
     closed_qty = 0.0
+    closed_notional = 0.0          # Σ price·qty over closing fills → weighted-avg exit
     realized_pnl = 0.0
     for f in fills:
         if f.side.upper() == open_side:
@@ -180,6 +181,7 @@ def build_trade_from_fills(
         if chunk <= 0:
             continue
         closed_qty += chunk
+        closed_notional += f.price * chunk
         pnl = (f.price - avg_entry) * chunk * dir_sign
         realized_pnl += pnl
         save_percent = round(chunk / opened_qty * 100.0, 2)
@@ -227,6 +229,11 @@ def build_trade_from_fills(
     closed_at_entry = any(e["near_entry"] and not e["profit"] for e in exits)
     is_risk_free = bool(took_profit and closed_at_entry)
 
+    # Quantity-weighted average exit over all closing fills, and the margin the
+    # trader committed (opening notional / leverage).
+    avg_exit = round(closed_notional / closed_qty, 10) if closed_qty > 0 else None
+    margin = round(opened_notional / leverage, 10) if (leverage and leverage > 0) else None
+
     return {
         "symbol": symbol,
         "direction": direction,
@@ -236,6 +243,8 @@ def build_trade_from_fills(
         "take_profits": take_profits,
         "stop_loss": stop_loss,
         "exit_price": exit_price,
+        "avg_exit": avg_exit,
+        "margin": margin,
         "is_risk_free_mgmt": is_risk_free,
         "realized_pnl": round(realized_pnl, 10),
         "open_date": fills[0].ts,
