@@ -105,11 +105,13 @@ async def _upsert_trade(
     )
     trade = res.scalars().first()
     created = trade is None
-    # A closed Toobit trade is final: don't rebuild it on later polls. This both
-    # avoids clobbering any edits the user made to the closed trade and keeps the
-    # import idempotent when we re-scan the lookback window.
-    if trade is not None and trade.status == "CLOSED":
-        return trade, False
+    # Preserve the user's own edits, but keep everything else in sync with the
+    # exchange. We only freeze a row once the user has edited it *after* the last
+    # sync (updated_at noticeably later than synced_at). Untouched rows — including
+    # ones imported by an older version — are refreshed so fixes reach them.
+    if trade is not None and trade.synced_at is not None and trade.updated_at is not None:
+        if trade.updated_at > trade.synced_at + timedelta(seconds=5):
+            return trade, False
     if trade is None:
         trade = Trade(
             user_id=user.id,
