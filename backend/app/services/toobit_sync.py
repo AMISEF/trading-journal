@@ -28,7 +28,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core import crypto
-from app.models.trade import TakeProfit, Trade
+from app.models.trade import Trade
 from app.models.user import User
 from app.services import toobit_chart
 from app.services.toobit_client import ToobitClient, ToobitError
@@ -120,13 +120,16 @@ async def _upsert_trade(
         )
         db.add(trade)
 
+    is_closed = fields["status"] == "CLOSED"
     trade.symbol = _base_symbol(fields["symbol"])
     trade.direction = fields["direction"]
     trade.status = fields["status"]
+    # Averages: entry = weighted-avg opens, exit = weighted-avg closes (only once
+    # closed; an open position has no exit yet).
     trade.entry_price = fields["entry_price"]
+    trade.exit_price = fields.get("avg_exit") if is_closed else None
+    trade.stop_loss = None  # the avg-exit already reflects a losing close in PnL
     trade.leverage = leverage if leverage is not None else fields.get("leverage")
-    trade.stop_loss = fields["stop_loss"]
-    trade.exit_price = fields["exit_price"]
     trade.is_risk_free_mgmt = fields["is_risk_free_mgmt"]
     trade.realized_pnl = fields["realized_pnl"]
     trade.open_date = fields["open_date"]
@@ -135,12 +138,17 @@ async def _upsert_trade(
     if not trade.tags:
         trade.tags = ["toobit"]
 
-    # Replace take-profits with the freshly computed set.
+    # Record the real margin the trader committed. The journal derives margin as
+    # balance_snapshot × margin_percent/100, so pin the snapshot to the margin and
+    # the percent to 100 — then margin, position size and PnL all come out right.
+    margin = fields.get("margin")
+    if margin and margin > 0:
+        trade.balance_snapshot = margin
+        trade.margin_percent = 100.0
+
+    # Average-exit model: a single representative exit, no synthetic partial
+    # targets (they would double-count against exit_price).
     trade.take_profits.clear()
-    for tp in fields["take_profits"]:
-        trade.take_profits.append(
-            TakeProfit(order=tp["order"], price=tp["price"], save_percent=tp["save_percent"])
-        )
     await db.flush()
     return trade, created
 
