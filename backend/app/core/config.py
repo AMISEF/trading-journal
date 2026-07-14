@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     # Candle interval used for the entry/exit chart images.
     TOOBIT_CHART_INTERVAL: str = "15m"
 
+    # --- Email (Resend) for password-reset / change codes ---
+    # Same provider as the portfolio app. Key only from .env; never in code.
+    RESEND_API_KEY: str = ""
+    RESEND_API_URL: str = "https://api.resend.com/emails"
+    MAIL_FROM_EMAIL: str = "cryptosmart@cryptosmart.site"
+    MAIL_FROM_NAME: str = "کریپتو اسمارت"
+    AUTH_CODE_TTL: int = 600            # code lifetime (seconds) = 10 min
+    AUTH_CODE_COOLDOWN: int = 60        # min seconds between code sends
+    AUTH_CODE_MAX_ATTEMPTS: int = 5     # wrong tries before a code is burned
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

@@ -107,6 +107,21 @@ export const authApi = {
   me: () => http.get<User>("/auth/me").then((r) => r.data),
   setWallet: (walletMargin: number) =>
     http.patch<User>("/auth/wallet", { walletMargin }).then((r) => r.data),
+  // Forgot password (login page): email a code, then reset with it.
+  forgotPassword: (email: string) =>
+    http.post("/auth/forgot-password", { email }).then((r) => r.data),
+  resetPassword: (email: string, code: string, newPassword: string) =>
+    http.post("/auth/reset-password", { email, code, newPassword }).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// Password change (settings, logged in)
+// ---------------------------------------------------------------------------
+export const passwordApi = {
+  requestChangeCode: () =>
+    http.post<{ ok: boolean; email: string }>("/settings/password/request-code", {}).then((r) => r.data),
+  change: (code: string, newPassword: string) =>
+    http.post("/settings/password/change", { code, newPassword }).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------
