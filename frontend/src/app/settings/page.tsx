@@ -10,13 +10,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui";
-import { settingsApi } from "@/lib/api";
+import { settingsApi, passwordApi } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 
-type TabKey = "toobit";
+type TabKey = "toobit" | "password";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "toobit", label: "مدیریت API توبیت" },
+  { key: "password", label: "تغییر رمز ورود" },
 ];
 
 export default function SettingsPage() {
@@ -58,6 +59,7 @@ function SettingsInner() {
       </div>
 
       {tab === "toobit" && <ToobitTab />}
+      {tab === "password" && <PasswordTab />}
     </div>
   );
 }
@@ -308,6 +310,104 @@ function ToobitTab() {
           {saving ? "در حال ذخیره…" : "ذخیره"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function PasswordTab() {
+  const user = useAuth((s) => s.user);
+  const [step, setStep] = useState<"request" | "verify">("request");
+  const [code, setCode] = useState("");
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  async function requestCode() {
+    setError("");
+    setMsg("");
+    setBusy(true);
+    try {
+      const r = await passwordApi.requestChangeCode();
+      setStep("verify");
+      setMsg(`کد تأیید به ایمیلِ ${r.email} ارسال شد.`);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || "ارسال کد ناموفق بود.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit() {
+    setError("");
+    if (!code.trim()) return setError("کد تأیید را وارد کنید.");
+    if (pw.length < 6) return setError("رمز عبور باید حداقل ۶ کاراکتر باشد.");
+    if (pw !== pw2) return setError("رمز عبور و تکرارِ آن یکسان نیستند.");
+    setBusy(true);
+    try {
+      await passwordApi.change(code.trim(), pw);
+      setMsg("رمز عبور با موفقیت تغییر کرد.");
+      setStep("request");
+      setCode("");
+      setPw("");
+      setPw2("");
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || "تغییر رمز ناموفق بود.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="tj-card space-y-5 p-5">
+      <div>
+        <h2 className="text-base font-bold">تغییر رمز ورود</h2>
+        <p className="mt-1 text-sm text-muted">
+          برای تغییرِ رمز، ابتدا یک کدِ تأیید به ایمیلِ حسابِ شما
+          {user?.email ? ` (${user.email})` : ""} ارسال می‌شود؛ سپس با واردکردنِ کد،
+          رمز جدید را تنظیم کنید.
+        </p>
+      </div>
+
+      {step === "request" ? (
+        <div className="flex justify-end">
+          <Button onClick={requestCode} disabled={busy}>
+            {busy ? "در حال ارسال…" : "ارسالِ کدِ تأیید به ایمیل"}
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div>
+            <label className="tj-label" htmlFor="pwCode">کد تأیید</label>
+            <input id="pwCode" dir="ltr" inputMode="numeric" value={code}
+              onChange={(e) => setCode(e.target.value)} placeholder="------"
+              className="tj-input text-center font-mono tracking-widest" />
+          </div>
+          <div>
+            <label className="tj-label" htmlFor="pwNew">رمز عبور جدید</label>
+            <input id="pwNew" type="password" autoComplete="new-password" value={pw}
+              onChange={(e) => setPw(e.target.value)} className="tj-input" />
+          </div>
+          <div>
+            <label className="tj-label" htmlFor="pwNew2">تکرارِ رمز عبور جدید</label>
+            <input id="pwNew2" type="password" autoComplete="new-password" value={pw2}
+              onChange={(e) => setPw2(e.target.value)} className="tj-input" />
+          </div>
+          <div className="flex items-center justify-between">
+            <button type="button" onClick={requestCode} disabled={busy}
+              className="text-xs text-muted hover:text-primary">
+              ارسالِ دوبارهٔ کد
+            </button>
+            <Button onClick={submit} disabled={busy}>
+              {busy ? "در حال ثبت…" : "تغییرِ رمز"}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {msg && <p className="text-sm text-primary">{msg}</p>}
+      {error && <p className="text-sm text-loss">{error}</p>}
     </div>
   );
 }

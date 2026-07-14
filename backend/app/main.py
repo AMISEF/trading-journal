@@ -24,6 +24,7 @@ from app.api import (
     dashboard,
     export,
     market,
+    password,
     settings as settings_router,
     templates,
     trades,
@@ -105,3 +106,5 @@ app.include_router(uploads.router)
 app.include_router(wallet.router)
 app.include_router(ai.router)
 app.include_router(settings_router.router)
+app.include_router(password.auth_router)
+app.include_router(password.settings_router)
