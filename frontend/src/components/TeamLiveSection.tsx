@@ -11,7 +11,7 @@
  * Reading is public; generating the AI analyses is admin-only (the analyze
  * button only appears for a logged-in admin, and disappears once generated).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Area,
@@ -36,8 +36,12 @@ import type { DashboardData, Trade } from "@/lib/types";
 import { faNum, formatPct, formatRatio, formatSignedUsd, formatUsd, pnlColorClass } from "@/lib/format";
 import { formatJalaliDate, formatJalaliDateTime, getJalaliParts, toPersianDigits } from "@/lib/jalali";
 import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
+import { useLiveRefresh } from "@/lib/hooks";
 import { Markdown } from "@/components/Markdown";
 import { DailyPnLCalendar, type DayTradeItem } from "@/components/DailyPnLCalendar";
+
+/** How often public team dashboards/journals re-fetch. Toobit sync is ~60s; 15s keeps UI snappy. */
+const LIVE_POLL_MS = 15_000;
 
 const T = {
   accent: "25,195,179",
@@ -102,28 +106,51 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
   const [hidden, setHidden] = useState(false);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const visibleTabs = useMemo(
     () => (showAiTab ? TABS : TABS.filter((t) => t.key !== "ai")),
     [showAiTab],
   );
 
-  useEffect(() => {
-    publicApi
-      .teamSummary()
-      .then((s) => {
-        if (s.count === 0) setHidden(true);
-        else setSummary(s);
-      })
-      .catch(() => setHidden(true));
+  const refreshSummary = useCallback(async () => {
+    try {
+      const s = await publicApi.teamSummary();
+      if (s.count === 0) {
+        setHidden(true);
+        setSummary(null);
+      } else {
+        setHidden(false);
+        setSummary(s);
+      }
+    } catch {
+      // First failure with no data yet: hide the section. Later failures keep the last snapshot.
+      setSummary((prev) => {
+        if (!prev) setHidden(true);
+        return prev;
+      });
+    }
+  }, []);
 
+  useLiveRefresh(refreshSummary, LIVE_POLL_MS);
+
+  useEffect(() => {
     // Detect admin (for the AI analyze button) without blocking the section.
     if (showAiTab && getToken()) {
       authApi.me().then((u) => setIsAdmin(u.role === "ADMIN")).catch(() => setIsAdmin(false));
     }
   }, [showAiTab]);
 
-  if (hidden || !summary) return null;
+  const onDataTick = useCallback(() => setLastUpdated(new Date()), []);
+
+  if (hidden) return null;
+  if (!summary) {
+    return (
+      <section id="live" className="relative mx-auto max-w-7xl scroll-mt-24 px-5 py-16 md:px-8 md:py-24">
+        <PanelSpinner />
+      </section>
+    );
+  }
 
   return (
     <section id="live" className="relative mx-auto max-w-7xl scroll-mt-24 px-5 py-16 md:px-8 md:py-24">
@@ -139,6 +166,20 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
           LIVE
         </span>
         <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">برایند معاملات ربات الگو اسمارت</h2>
+        <p className="mt-2 text-xs text-white/45">
+          به‌روزرسانی خودکار هر {faNum(LIVE_POLL_MS / 1000)} ثانیه
+          {lastUpdated && (
+            <>
+              {" · "}
+              آخرین به‌روزرسانی:{" "}
+              <span dir="ltr" className="tabular-nums text-white/60">
+                {toPersianDigits(
+                  lastUpdated.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+                )}
+              </span>
+            </>
+          )}
+        </p>
       </motion.div>
 
       <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">
@@ -165,9 +206,9 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
       </div>
 
       <motion.div key={tab} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="mt-8">
-        {tab === "dashboard" && <DashboardPanel summary={summary} />}
-        {tab === "journal" && <JournalPanel />}
-        {tab === "ai" && <AIPanel isAdmin={isAdmin} />}
+        {tab === "dashboard" && <DashboardPanel summary={summary} onUpdated={onDataTick} />}
+        {tab === "journal" && <JournalPanel onUpdated={onDataTick} />}
+        {tab === "ai" && <AIPanel isAdmin={isAdmin} onUpdated={onDataTick} />}
       </motion.div>
     </section>
   );
@@ -198,32 +239,40 @@ function PanelEmpty({ text }: { text: string }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Dashboard panel
 // ═══════════════════════════════════════════════════════════════════════════
-function DashboardPanel({ summary }: { summary: TeamSummary }) {
+function toDayTrades(rows: Trade[]): DayTradeItem[] {
+  return rows.map((t) => ({
+    id: t.id,
+    symbol: t.symbol || "",
+    direction: t.direction,
+    status: t.status,
+    openDate: t.openDate,
+    closeDate: t.closeDate,
+    pnl: pnlOf(t),
+    source: t.source ?? null,
+  }));
+}
+
+function DashboardPanel({ summary, onUpdated }: { summary: TeamSummary; onUpdated?: () => void }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [dayTrades, setDayTrades] = useState<DayTradeItem[] | undefined>(undefined);
   const [error, setError] = useState(false);
+  const hasData = useRef(false);
 
-  useEffect(() => {
-    publicApi.teamDashboard().then(setData).catch(() => setError(true));
-    // Load trades for day-click detail on the daily calendar (anonymous).
-    publicApi
-      .teamTrades()
-      .then((rows) => {
-        setDayTrades(
-          rows.map((t) => ({
-            id: t.id,
-            symbol: t.symbol || "",
-            direction: t.direction,
-            status: t.status,
-            openDate: t.openDate,
-            closeDate: t.closeDate,
-            pnl: pnlOf(t),
-            source: t.source ?? null,
-          })),
-        );
-      })
-      .catch(() => setDayTrades(undefined));
-  }, []);
+  const refresh = useCallback(async () => {
+    try {
+      const [dash, trades] = await Promise.all([publicApi.teamDashboard(), publicApi.teamTrades()]);
+      setData(dash);
+      setDayTrades(toDayTrades(trades));
+      setError(false);
+      hasData.current = true;
+      onUpdated?.();
+    } catch {
+      // Keep previous snapshot if we already rendered once.
+      if (!hasData.current) setError(true);
+    }
+  }, [onUpdated]);
+
+  useLiveRefresh(refresh, LIVE_POLL_MS);
 
   if (error) return <PanelEmpty text="بارگذاری داشبورد ممکن نشد." />;
   if (!data) return <PanelSpinner />;
@@ -447,15 +496,26 @@ function pnlOf(t: Trade): number | null {
 
 const PAGE_SIZE = 10;
 
-function JournalPanel() {
+function JournalPanel({ onUpdated }: { onUpdated?: () => void }) {
   const [rows, setRows] = useState<Trade[] | null>(null);
   const [error, setError] = useState(false);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
+  const hasData = useRef(false);
 
-  useEffect(() => {
-    publicApi.teamTrades().then(setRows).catch(() => setError(true));
-  }, []);
+  const refresh = useCallback(async () => {
+    try {
+      const data = await publicApi.teamTrades();
+      setRows(data);
+      setError(false);
+      hasData.current = true;
+      onUpdated?.();
+    } catch {
+      if (!hasData.current) setError(true);
+    }
+  }, [onUpdated]);
+
+  useLiveRefresh(refresh, LIVE_POLL_MS);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -568,22 +628,45 @@ function StatusPill({ status, pnl }: { status: string; pnl: number | null }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // AI panel — combined team analyses (overall + institutional)
 // ═══════════════════════════════════════════════════════════════════════════
-function AIPanel({ isAdmin }: { isAdmin: boolean }) {
+function AIPanel({ isAdmin, onUpdated }: { isAdmin: boolean; onUpdated?: () => void }) {
   const [data, setData] = useState<TeamAIData | null>(null);
   const [error, setError] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
+  const hasData = useRef(false);
 
-  const load = () => publicApi.teamAi().then((d) => { if (mounted.current) setData(d); return d; });
+  const load = useCallback(
+    () =>
+      publicApi.teamAi().then((d) => {
+        if (mounted.current) {
+          setData(d);
+          hasData.current = true;
+          setError(false);
+          onUpdated?.();
+        }
+        return d;
+      }),
+    [onUpdated],
+  );
+
+  // Steady background refresh + faster poll while an analysis is generating.
+  useLiveRefresh(
+    async () => {
+      try {
+        await load();
+      } catch {
+        if (!hasData.current) setError(true);
+      }
+    },
+    LIVE_POLL_MS,
+  );
 
   useEffect(() => {
     mounted.current = true;
-    load().catch(() => setError(true));
     return () => {
       mounted.current = false;
       if (timer.current) clearTimeout(timer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Poll while either analysis is running.
@@ -594,8 +677,7 @@ function AIPanel({ isAdmin }: { isAdmin: boolean }) {
       timer.current = setTimeout(() => load().catch(() => {}), 4000);
     }
     return () => { if (timer.current) clearTimeout(timer.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, load]);
 
   const generate = async (kind: "overall" | "report") => {
     try {
