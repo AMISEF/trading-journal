@@ -1,54 +1,86 @@
 """Public (no-auth) endpoints that power the landing-page "لایو معاملات ربات الگو
 اسمارت" showcase.
 
-They surface a *combined* view of every member tagged into the Cryptosmart Team
-group ("CRYPTOSMART_TEAM"): one merged journal list, one aggregated dashboard
-(the per-trader dashboard options summed across members), and the cached AI
-analyses so visitors can see how the AI coach reasons.
+They surface a *combined, anonymous* view of every account tagged into the
+Cryptosmart Team group ("CRYPTOSMART_TEAM") — these are algo-bot accounts, so no
+personal names are ever exposed:
 
-All of this is read-only and intentionally public — it never exposes emails,
-API keys, or anything an authenticated user endpoint wouldn't.
+  • merged journal list of all the bots' trades,
+  • one aggregated dashboard (per-bot dashboard options summed),
+  • the combined team AI analyses (overall + institutional), read-only.
+
+Every bot's capital is normalised to a $1000 starting balance so the combined
+figures are comparable and clearly labelled.
+
+Generating the AI analyses is admin-only (a POST); reading everything is public.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
 from app.api.dashboard import DashboardOut
 from app.api.serializers import trade_to_out
-from app.core.deps import get_db
+from app.core.deps import get_current_admin, get_db
+from app.db.session import AsyncSessionLocal
+from app.models.team_ai import TeamAI
+from app.models.trade import Trade
 from app.models.user import User
 from app.schemas.base import CamelModel
 from app.schemas.trade import TradeOut
-from app.services import calc as calc_engine, tabdeal
+from app.services import ai_analysis, calc as calc_engine, tabdeal
 from app.services.balances import _txn_sum
 from app.services.sessions import session_for
+
+logger = logging.getLogger("app.api.public")
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
 # The group tag assigned via the admin panel (see admin.set_user_group).
 TEAM_GROUP = "CRYPTOSMART_TEAM"
 
+# Every bot is normalised to this starting capital for the showcase.
+INITIAL_CAPITAL = 1000.0
 
-def _display_name(u: User) -> str:
-    name = " ".join(p for p in [u.first_name, u.last_name] if p).strip()
-    return name or u.username
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _ts(dt: datetime | None) -> float:
+    """Sortable timestamp that tolerates None and naive/aware mixes."""
+    if dt is None:
+        return 0.0
+    try:
+        return dt.timestamp()
+    except (ValueError, OverflowError, OSError):
+        return 0.0
 
 
 async def _team_members(db: AsyncSession) -> list[User]:
     result = await db.execute(
         select(User).where(User.user_group == TEAM_GROUP).order_by(User.id)
     )
-    return list(result.scalars().all())
+    members = list(result.scalars().all())
+    # Normalise starting capital to $1000 per bot for the public figures.
+    # Detached from the session so this never persists to the DB.
+    for u in members:
+        u.wallet_margin = INITIAL_CAPITAL
+        db.expunge(u)
+    return members
 
 
-def _pnl_of(trade, base_balance: float) -> tuple[float, float | None]:
+def _pnl_of(trade: Trade, base_balance: float) -> tuple[float, float | None]:
     """Return (realizedPnl, rrAchieved) for a closed trade, mirroring the
     dashboard computation. Prefers the exchange's exact PnL for imported trades."""
     tp_dicts = [
@@ -70,70 +102,59 @@ def _pnl_of(trade, base_balance: float) -> tuple[float, float | None]:
         exit_price=trade.exit_price,
     )
     pnl = result["realizedPnl"]
-    # Imported Toobit trades carry the exchange's exact realized PnL.
     if getattr(trade, "source", None) == "toobit" and trade.realized_pnl is not None:
         pnl = trade.realized_pnl
     return pnl, result.get("rrAchieved")
 
 
 # ── schemas ──────────────────────────────────────────────────────────────────
-class PublicTeamTrade(CamelModel):
-    trader: str
-    username: str
-    trade: TradeOut
+class TeamSummary(CamelModel):
+    count: int
+    initial_capital: float
+    total_initial_capital: float
 
 
-class PublicMemberAI(CamelModel):
-    trader: str
-    username: str
+class TeamAIOut(CamelModel):
+    enabled: bool = True
     overall: str | None = None
     overall_at: datetime | None = None
+    overall_status: str | None = None
+    overall_error: str | None = None
     report: str | None = None
     report_at: datetime | None = None
+    report_status: str | None = None
+    report_error: str | None = None
 
 
-class TeamMember(CamelModel):
-    trader: str
-    username: str
-
-
-# ── members ──────────────────────────────────────────────────────────────────
-@router.get("/team/members", response_model=list[TeamMember])
-async def team_members(db: AsyncSession = Depends(get_db)) -> list[TeamMember]:
+# ── summary (count only — no names) ──────────────────────────────────────────
+@router.get("/team/summary", response_model=TeamSummary)
+async def team_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
     members = await _team_members(db)
-    return [TeamMember(trader=_display_name(u), username=u.username) for u in members]
+    n = len(members)
+    return TeamSummary(
+        count=n,
+        initial_capital=INITIAL_CAPITAL,
+        total_initial_capital=INITIAL_CAPITAL * n,
+    )
 
 
-# ── combined journal list ────────────────────────────────────────────────────
-@router.get("/team/trades", response_model=list[PublicTeamTrade])
-async def team_trades(db: AsyncSession = Depends(get_db)) -> list[PublicTeamTrade]:
+# ── combined journal list (anonymous) ────────────────────────────────────────
+@router.get("/team/trades", response_model=list[TradeOut])
+async def team_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
     members = await _team_members(db)
-    out: list[PublicTeamTrade] = []
+    out: list[TradeOut] = []
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
         for t in trades:
             if getattr(t, "is_locked", False):
                 continue
-            out.append(
-                PublicTeamTrade(
-                    trader=_display_name(u),
-                    username=u.username,
-                    trade=trade_to_out(u, trades, t, transactions),
-                )
-            )
-    # Newest first (by open date, then close date), undated last.
-    out.sort(
-        key=lambda x: (
-            x.trade.open_date or datetime.min,
-            x.trade.close_date or datetime.min,
-        ),
-        reverse=True,
-    )
+            out.append(trade_to_out(u, trades, t, transactions))
+    out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
     return out
 
 
-# ── aggregated dashboard (sum of the per-trader dashboards) ───────────────────
+# ── aggregated dashboard (sum of the per-bot dashboards, $1000 each) ──────────
 @router.get("/team/dashboard", response_model=DashboardOut)
 async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
     members = await _team_members(db)
@@ -141,8 +162,7 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
     start_balance = 0.0
     trade_count = 0
     closed_count = 0
-    # (trade, pnl) pairs across every member, plus the rr list.
-    closed_pairs: list[tuple[object, float]] = []
+    closed_pairs: list[tuple[Trade, float]] = []
     rr_values: list[float] = []
     fractions: list[float] = []
 
@@ -151,7 +171,7 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
         transactions = await crud.load_user_transactions(db, u.id)
         unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
         closed = [t for t in unlocked if t.status == "CLOSED"]
-        base_balance = (u.wallet_margin or 0.0) + _txn_sum(transactions)
+        base_balance = INITIAL_CAPITAL + _txn_sum(transactions)
 
         start_balance += base_balance
         trade_count += len(unlocked)
@@ -169,13 +189,7 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
                 if total:
                     fractions.append(done / total)
 
-    # Order the merged closed trades by date for a combined equity curve.
-    closed_pairs.sort(
-        key=lambda p: (
-            (p[0].close_date or p[0].open_date or datetime.min),
-            p[0].number,
-        )
-    )
+    closed_pairs.sort(key=lambda p: (_ts(p[0].close_date or p[0].open_date), p[0].number))
     pnls = [pnl for _, pnl in closed_pairs]
 
     balance = start_balance
@@ -183,24 +197,20 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
     for t, pnl in closed_pairs:
         balance += pnl
         _d = t.close_date or t.open_date
-        equity_curve.append(
-            {
-                "number": len(equity_curve) + 1,
-                "balance": balance,
-                "pnl": pnl,
-                "date": _d.date().isoformat() if _d else None,
-            }
-        )
+        equity_curve.append({
+            "number": len(equity_curve) + 1,
+            "balance": balance,
+            "pnl": pnl,
+            "date": _d.date().isoformat() if _d else None,
+        })
     current_balance = balance
 
-    # --- Profit factor ---
     gross_profit = sum(p for p in pnls if p > 0)
     gross_loss = sum(-p for p in pnls if p < 0)
     profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
 
     avg_rr = (sum(rr_values) / len(rr_values)) if rr_values else None
 
-    # --- Win / loss distribution ---
     win_pnls = [p for p in pnls if p > 0]
     loss_pnls = [p for p in pnls if p < 0]
     wins = len(win_pnls)
@@ -213,7 +223,6 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
         "avgLoss": (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None,
     }
 
-    # --- PnL by day (close date) ---
     by_day: dict[str, float] = defaultdict(float)
     for t, pnl in closed_pairs:
         day = t.close_date or t.open_date
@@ -221,13 +230,11 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
         by_day[key] += pnl
     pnl_by_day = [{"date": d, "pnl": v} for d, v in sorted(by_day.items())]
 
-    # --- Direction stats ---
     direction_stats = {
         "long": sum(1 for t, _ in closed_pairs if t.direction == "LONG"),
         "short": sum(1 for t, _ in closed_pairs if t.direction == "SHORT"),
     }
 
-    # --- Session stats ---
     sess_count: dict[str, int] = defaultdict(int)
     sess_pnl: dict[str, float] = defaultdict(float)
     for t, pnl in closed_pairs:
@@ -238,7 +245,6 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
         {"session": s, "count": sess_count[s], "pnl": sess_pnl[s]} for s in sess_count
     ]
 
-    # --- Top symbols by PnL ---
     sym_pnl: dict[str, float] = defaultdict(float)
     sym_count: dict[str, int] = defaultdict(int)
     for t, pnl in closed_pairs:
@@ -273,18 +279,113 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
     )
 
 
-# ── cached AI analyses (read-only showcase) ──────────────────────────────────
-@router.get("/team/ai", response_model=list[PublicMemberAI])
-async def team_ai(db: AsyncSession = Depends(get_db)) -> list[PublicMemberAI]:
+# ── combined team AI (read public, generate admin) ───────────────────────────
+async def _get_team_ai(db: AsyncSession) -> TeamAI:
+    row = await db.get(TeamAI, 1)
+    if row is None:
+        row = TeamAI(id=1)
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+    return row
+
+
+def _team_ai_out(row: TeamAI) -> TeamAIOut:
+    return TeamAIOut(
+        enabled=ai_analysis.is_enabled(),
+        overall=row.overall,
+        overall_at=row.overall_at,
+        overall_status=row.overall_status,
+        overall_error=row.overall_error,
+        report=row.report,
+        report_at=row.report_at,
+        report_status=row.report_status,
+        report_error=row.report_error,
+    )
+
+
+@router.get("/team/ai", response_model=TeamAIOut)
+async def team_ai(db: AsyncSession = Depends(get_db)) -> TeamAIOut:
+    row = await _get_team_ai(db)
+    return _team_ai_out(row)
+
+
+def _spawn(coro) -> None:
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+async def _members_data(db: AsyncSession):
+    """Load [(user, trades, transactions)] for every bot, capital = $1000."""
     members = await _team_members(db)
-    return [
-        PublicMemberAI(
-            trader=_display_name(u),
-            username=u.username,
-            overall=u.ai_overall,
-            overall_at=u.ai_overall_at,
-            report=u.ai_report,
-            report_at=u.ai_report_at,
-        )
-        for u in members
-    ]
+    data = []
+    for u in members:
+        trades = await crud.load_user_trades(db, u.id)
+        transactions = await crud.load_user_transactions(db, u.id)
+        data.append((u, trades, transactions))
+    return data
+
+
+@router.post("/team/ai/overall", response_model=TeamAIOut)
+async def generate_team_overall(
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> TeamAIOut:
+    if not ai_analysis.is_enabled():
+        raise HTTPException(status_code=503, detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است.")
+    row = await _get_team_ai(db)
+    row.overall_status = "PENDING"
+    row.overall_error = None
+    await db.commit()
+    _spawn(_run_team_job("overall"))
+    return _team_ai_out(row)
+
+
+@router.post("/team/ai/report", response_model=TeamAIOut)
+async def generate_team_report(
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> TeamAIOut:
+    if not ai_analysis.is_enabled():
+        raise HTTPException(status_code=503, detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است.")
+    row = await _get_team_ai(db)
+    row.report_status = "PENDING"
+    row.report_error = None
+    await db.commit()
+    _spawn(_run_team_job("report"))
+    return _team_ai_out(row)
+
+
+async def _run_team_job(kind: str) -> None:
+    """Background worker: build the combined team analysis and cache it."""
+    async with AsyncSessionLocal() as db:
+        try:
+            data = await _members_data(db)
+            if kind == "overall":
+                text = await ai_analysis.analyze_team_overall(data)
+            else:
+                text = await ai_analysis.analyze_team_institutional(data)
+            row = await _get_team_ai(db)
+            if kind == "overall":
+                row.overall = text
+                row.overall_at = _utcnow()
+                row.overall_status = "DONE"
+                row.overall_error = None
+            else:
+                row.report = text
+                row.report_at = _utcnow()
+                row.report_status = "DONE"
+                row.report_error = None
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001 - record failure for the client
+            logger.exception("team AI %s failed", kind)
+            async with AsyncSessionLocal() as db2:
+                row = await _get_team_ai(db2)
+                if kind == "overall":
+                    row.overall_status = "ERROR"
+                    row.overall_error = str(exc)[:500]
+                else:
+                    row.report_status = "ERROR"
+                    row.report_error = str(exc)[:500]
+                await db2.commit()

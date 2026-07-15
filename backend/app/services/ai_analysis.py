@@ -1282,3 +1282,45 @@ async def analyze_institutional(
         analysis_type="institutional",
         dify_user=str(user.id),
     )
+
+
+# ---------------------------------------------------------------------------
+# Combined team analyses (Cryptosmart Team — all members as one book)
+# ---------------------------------------------------------------------------
+# ``members_data`` is a list of ``(user, trades, transactions)`` tuples. Each
+# member's per-user summary is built with the tested builders, then concatenated
+# so the model reasons over the whole team at once. Callers set every member's
+# ``wallet_margin`` to the standard starting capital before calling, so the
+# summaries all report the same initial capital.
+_TEAM_HEADER = (
+    "# {kind} ترکیبی کل تیم ربات الگو اسمارت\n"
+    "این کارنامه مجموعِ همه‌ی حساب‌های تیم است (سرمایه‌ی اولیه‌ی هر حساب ۱۰۰۰ دلار).\n"
+    "تحلیل را برای کلِ تیم به‌صورت یکپارچه ارائه بده و از نام اشخاص استفاده نکن؛ "
+    "به‌جای آن از عنوان «ربات الگو اسمارت» استفاده کن.\n\n"
+)
+
+
+async def analyze_team_overall(
+    members_data: list[tuple[User, list[Trade], list[WalletTransaction] | None]],
+    dify_user: str = "team-algosmart",
+) -> str:
+    parts = [build_overall_summary(u, tr, tx) for (u, tr, tx) in members_data]
+    summary = _TEAM_HEADER.format(kind="کارنامه") + "\n\n=====\n\n".join(parts)
+    return await _complete(
+        _OVERALL_SYSTEM_PROMPT, summary,
+        max_tokens=settings.AI_REPORT_MAX_TOKENS,
+        analysis_type="overall", dify_user=dify_user,
+    )
+
+
+async def analyze_team_institutional(
+    members_data: list[tuple[User, list[Trade], list[WalletTransaction] | None]],
+    dify_user: str = "team-algosmart",
+) -> str:
+    parts = [build_institutional_summary(u, tr, tx) for (u, tr, tx) in members_data]
+    summary = _TEAM_HEADER.format(kind="صورت‌حساب") + "\n\n=====\n\n".join(parts)
+    return await _complete(
+        _INSTITUTIONAL_SYSTEM_PROMPT, summary,
+        max_tokens=settings.AI_REPORT_MAX_TOKENS,
+        analysis_type="institutional", dify_user=dify_user,
+    )

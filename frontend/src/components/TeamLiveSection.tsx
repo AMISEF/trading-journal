@@ -3,21 +3,19 @@
 /**
  * لایو معاملات ربات الگو اسمارت — public landing-page showcase.
  *
- * Shows a *combined* live view of every Cryptosmart Team member:
- *   • داشبورد معاملات  — one aggregated dashboard (sum of each trader's stats)
- *   • لیست ژورنال      — one merged journal list of all members' trades
- *   • تحلیل معاملات با هوش مصنوعی — the cached AI coach analyses, read-only
+ * Shows a *combined, anonymous* live view of the algo-bot accounts:
+ *   • داشبورد معاملات  — one aggregated dashboard (each bot normalised to $1000)
+ *   • لیست ژورنال      — one merged journal list of all the bots' trades
+ *   • تحلیل معاملات با هوش مصنوعی — the two combined team AI analyses
  *
- * Everything is public (no auth) and pulled from /api/public/team/*. The look
- * mirrors the glassy/animated UI used across the app.
+ * Reading is public; generating the AI analyses is admin-only (the analyze
+ * button only appears for a logged-in admin, and disappears once generated).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
   Cell,
   Pie,
@@ -28,24 +26,18 @@ import {
   YAxis,
 } from "recharts";
 import {
+  authApi,
+  getToken,
   publicApi,
-  type PublicTeamTrade,
-  type PublicMemberAI,
-  type TeamMember,
+  type TeamAIData,
+  type TeamSummary,
 } from "@/lib/api";
 import type { DashboardData, Trade } from "@/lib/types";
-import {
-  faNum,
-  formatPct,
-  formatRatio,
-  formatSignedUsd,
-  formatUsd,
-  pnlColorClass,
-} from "@/lib/format";
+import { faNum, formatPct, formatRatio, formatSignedUsd, formatUsd, pnlColorClass } from "@/lib/format";
 import { formatJalaliDate, formatJalaliDateTime, getJalaliParts, toPersianDigits } from "@/lib/jalali";
 import { Markdown } from "@/components/Markdown";
+import { DailyPnLCalendar } from "@/components/DailyPnLCalendar";
 
-// ── palette (matches the landing + dashboard tints) ──────────────────────────
 const T = {
   accent: "25,195,179",
   mint: "94,234,212",
@@ -80,29 +72,17 @@ function glassTint(rgb: string): React.CSSProperties {
 }
 
 const tooltipStyle = {
-  contentStyle: {
-    background: CHART_BG,
-    border: `1px solid ${border}`,
-    borderRadius: 12,
-    fontSize: 12,
-    color: "#fff",
-  },
+  contentStyle: { background: CHART_BG, border: `1px solid ${border}`, borderRadius: 12, fontSize: 12, color: "#fff" },
 } as const;
 
 type Tab = "dashboard" | "journal" | "ai";
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-  {
-    key: "dashboard",
-    label: "داشبورد معاملات",
-    icon: <path d="M3 3v18h18M7 15l4-4 3 3 5-6" />,
-  },
+  { key: "dashboard", label: "داشبورد معاملات", icon: <path d="M3 3v18h18M7 15l4-4 3 3 5-6" /> },
   {
     key: "journal",
     label: "لیست ژورنال",
-    icon: (
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-    ),
+    icon: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />,
   },
   {
     key: "ai",
@@ -117,25 +97,30 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function TeamLiveSection() {
-  const [members, setMembers] = useState<TeamMember[] | null>(null);
+  const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [hidden, setHidden] = useState(false);
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     publicApi
-      .teamMembers()
-      .then((m) => {
-        if (m.length === 0) setHidden(true);
-        else setMembers(m);
+      .teamSummary()
+      .then((s) => {
+        if (s.count === 0) setHidden(true);
+        else setSummary(s);
       })
       .catch(() => setHidden(true));
+
+    // Detect admin (for the AI analyze button) without blocking the section.
+    if (getToken()) {
+      authApi.me().then((u) => setIsAdmin(u.role === "ADMIN")).catch(() => setIsAdmin(false));
+    }
   }, []);
 
-  if (hidden || !members) return null;
+  if (hidden || !summary) return null;
 
   return (
     <section id="live" className="relative mx-auto max-w-7xl scroll-mt-24 px-5 py-16 md:px-8 md:py-24">
-      {/* Heading */}
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -147,30 +132,13 @@ export function TeamLiveSection() {
           <LiveDot />
           LIVE
         </span>
-        <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">
-          لایو معاملات ربات الگو اسمارت
-        </h2>
+        <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">لایو معاملات ربات الگو اسمارت</h2>
         <p className="mt-3 text-white/65">
-          معاملات زندهٔ تیم کریپتو اسمارت را همین‌جا دنبال کن — داشبورد ترکیبی، لیست ژورنال مشترک و
-          تحلیل هوش مصنوعی، همه به‌صورت زنده.
+          معاملات زندهٔ ربات الگو اسمارت را همین‌جا دنبال کن — داشبورد ترکیبی، لیست ژورنال و تحلیل هوش مصنوعی،
+          همه به‌صورت زنده. سرمایهٔ اولیهٔ محاسبه‌شده برای هر حساب ۱۰۰۰ دلار است.
         </p>
-
-        {/* Member chips */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          {members.map((m) => (
-            <span
-              key={m.username}
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur"
-            >
-              <span className="h-1.5 w-1.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${T.accent})` }} />
-              {m.trader}
-              <span dir="ltr" className="text-white/50">@{m.username}</span>
-            </span>
-          ))}
-        </div>
       </motion.div>
 
-      {/* Tab buttons */}
       <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">
         {TABS.map((tb) => {
           const active = tab === tb.key;
@@ -181,11 +149,7 @@ export function TeamLiveSection() {
               className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5"
               style={
                 active
-                  ? {
-                      background: `linear-gradient(120deg, rgba(${T.accent},0.95), rgba(${T.sky},0.75))`,
-                      color: "#06121f",
-                      boxShadow: `0 14px 34px -14px rgba(${T.accent},0.9)`,
-                    }
+                  ? { background: `linear-gradient(120deg, rgba(${T.accent},0.95), rgba(${T.sky},0.75))`, color: "#06121f", boxShadow: `0 14px 34px -14px rgba(${T.accent},0.9)` }
                   : { ...glass(), color: "rgba(255,255,255,0.85)" }
               }
             >
@@ -198,17 +162,10 @@ export function TeamLiveSection() {
         })}
       </div>
 
-      {/* Panel */}
-      <motion.div
-        key={tab}
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="mt-8"
-      >
-        {tab === "dashboard" && <DashboardPanel />}
+      <motion.div key={tab} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="mt-8">
+        {tab === "dashboard" && <DashboardPanel summary={summary} />}
         {tab === "journal" && <JournalPanel />}
-        {tab === "ai" && <AIPanel />}
+        {tab === "ai" && <AIPanel isAdmin={isAdmin} />}
       </motion.div>
     </section>
   );
@@ -223,7 +180,6 @@ function LiveDot() {
   );
 }
 
-// ── loading / empty helpers ───────────────────────────────────────────────────
 function PanelSpinner() {
   return (
     <div className="flex items-center justify-center gap-3 rounded-3xl p-12 text-sm text-white/60" style={glass()}>
@@ -234,17 +190,13 @@ function PanelSpinner() {
 }
 
 function PanelEmpty({ text }: { text: string }) {
-  return (
-    <div className="rounded-3xl p-12 text-center text-sm text-white/60" style={glass()}>
-      {text}
-    </div>
-  );
+  return <div className="rounded-3xl p-12 text-center text-sm text-white/60" style={glass()}>{text}</div>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Dashboard panel — aggregated across the whole team
+// Dashboard panel
 // ═══════════════════════════════════════════════════════════════════════════
-function DashboardPanel() {
+function DashboardPanel({ summary }: { summary: TeamSummary }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState(false);
 
@@ -271,20 +223,33 @@ function DashboardPanel() {
 
   return (
     <div className="space-y-5">
+      {/* Initial capital banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-3.5" style={glassTint(T.accent)}>
+        <div className="flex items-center gap-2 text-sm text-white/80">
+          <span className="h-2 w-2 rounded-full" style={{ background: `rgb(${T.accent})` }} />
+          سرمایهٔ اولیه: هر حساب <b className="text-white">۱۰۰۰ دلار</b>
+          {summary.count > 1 && <span className="text-white/60">(مجموع {faNum(summary.count)} حساب: {formatUsd(summary.totalInitialCapital, 0)})</span>}
+        </div>
+        <div className="text-sm" dir="ltr">
+          <span className="text-white/60">سرمایهٔ فعلی ترکیبی: </span>
+          <b style={{ color: `rgb(${data.currentBalance >= summary.totalInitialCapital ? T.green : T.red})` }}>{formatUsd(data.currentBalance, 2)}</b>
+        </div>
+      </div>
+
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <Kpi label="تعداد معاملات" value={faNum(data.tradeCount)} sub={`${faNum(data.closedCount)} بسته‌شده`} rgb={T.sky} />
         <Kpi label="ضریب سود (PF)" value={formatRatio(data.profitFactor)} rgb={T.violet} />
         <Kpi label="میانگین R:R" value={formatRatio(data.avgRr)} rgb={T.mint} />
         <Kpi label="وین‌ریت" value={formatPct((data.winRate ?? 0) * 100)} rgb={T.amber} />
-        <Kpi label="سرمایه ترکیبی" value={formatUsd(data.currentBalance, 0)} rgb={T.accent} ltr />
+        <Kpi label="سرمایهٔ اولیه" value={formatUsd(summary.totalInitialCapital, 0)} sub={`${faNum(summary.count)} حساب × ۱۰۰۰$`} rgb={T.accent} ltr />
       </div>
 
       {/* Equity curve */}
       <div className="relative overflow-hidden rounded-3xl p-5" style={glass()}>
         <div className="mb-4 flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${T.sky})` }} />
-          <h3 className="text-sm font-bold">منحنی سرمایه ترکیبی تیم</h3>
+          <h3 className="text-sm font-bold">منحنی سرمایهٔ ترکیبی (شروع از {formatUsd(summary.totalInitialCapital, 0)})</h3>
         </div>
         <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={equity} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
@@ -305,50 +270,18 @@ function DashboardPanel() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        {/* Win / loss donut */}
         <div className="rounded-3xl p-5" style={glass()}>
           <h3 className="mb-3 text-sm font-bold">توزیع سود و زیان</h3>
           <Donut data={wlData} centerTop={formatPct((data.winRate ?? 0) * 100)} centerBottom="وین‌ریت" total={wlTotal} />
         </div>
-
-        {/* Direction donut */}
         <div className="rounded-3xl p-5" style={glass()}>
           <h3 className="mb-3 text-sm font-bold">تفکیک جهت معاملات</h3>
           <Donut data={dirData} centerTop={faNum(total)} centerBottom="معامله" total={total} />
         </div>
       </div>
 
-      {/* Daily PnL bar */}
-      <div className="rounded-3xl p-5" style={glass()}>
-        <h3 className="mb-3 text-sm font-bold">سود و زیان روزانه (ترکیبی)</h3>
-        {data.pnlByDay.length === 0 ? (
-          <p className="py-8 text-center text-sm text-white/50">داده‌ای موجود نیست</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={data.pnlByDay.map((d) => ({ ...d, label: shortDate(d.date) }))} barSize={16}>
-              <defs>
-                <linearGradient id="team-bar-up" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={`rgb(${T.mint})`} stopOpacity={0.95} />
-                  <stop offset="100%" stopColor={`rgb(${T.green})`} stopOpacity={0.5} />
-                </linearGradient>
-                <linearGradient id="team-bar-down" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={`rgb(${T.rose})`} stopOpacity={0.9} />
-                  <stop offset="100%" stopColor={`rgb(${T.red})`} stopOpacity={0.5} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
-              <XAxis dataKey="label" stroke="rgba(255,255,255,0.5)" fontSize={10} />
-              <YAxis stroke="rgba(255,255,255,0.5)" fontSize={11} tickFormatter={(v) => `${v.toFixed(0)}`} />
-              <Tooltip {...tooltipStyle} cursor={{ fill: "rgba(255,255,255,0.06)" }} formatter={(v: number) => [`${v.toFixed(4)} USDT`, "سود/زیان"]} />
-              <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                {data.pnlByDay.map((d, i) => (
-                  <Cell key={i} fill={d.pnl >= 0 ? "url(#team-bar-up)" : "url(#team-bar-down)"} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      {/* Daily PnL — Jalali calendar, identical to the dashboard */}
+      <DailyPnLCalendar pnlByDay={data.pnlByDay} walletMargin={summary.totalInitialCapital} />
 
       {/* Top symbols */}
       <div className="rounded-3xl p-5" style={glass()}>
@@ -363,23 +296,17 @@ function DashboardPanel() {
               </tr>
             </thead>
             <tbody>
-              {data.topSymbols.length === 0 && (
-                <tr><td colSpan={3} className="py-8 text-center text-white/50">داده‌ای موجود نیست</td></tr>
-              )}
+              {data.topSymbols.length === 0 && <tr><td colSpan={3} className="py-8 text-center text-white/50">داده‌ای موجود نیست</td></tr>}
               {data.topSymbols.map((s, i) => (
                 <tr key={s.symbol} className="border-b border-white/5">
                   <td className="py-3 pr-2">
                     <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-xl text-[10px] font-black" style={{ background: `rgba(${s.pnl >= 0 ? T.mint : T.rose},0.15)`, color: `rgb(${s.pnl >= 0 ? T.mint : T.rose})` }}>
-                        {i + 1}
-                      </span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded-xl text-[10px] font-black" style={{ background: `rgba(${s.pnl >= 0 ? T.mint : T.rose},0.15)`, color: `rgb(${s.pnl >= 0 ? T.mint : T.rose})` }}>{i + 1}</span>
                       <span className="font-bold" dir="ltr">{s.symbol}</span>
                     </div>
                   </td>
                   <td className="py-3 text-center text-white/60">{faNum(s.count)}</td>
-                  <td className="py-3 text-center font-semibold" style={{ color: `rgb(${s.pnl >= 0 ? T.green : T.red})` }} dir="ltr">
-                    {s.pnl >= 0 ? "+" : ""}{s.pnl.toFixed(4)}
-                  </td>
+                  <td className="py-3 text-center font-semibold" style={{ color: `rgb(${s.pnl >= 0 ? T.green : T.red})` }} dir="ltr">{s.pnl >= 0 ? "+" : ""}{s.pnl.toFixed(4)}</td>
                 </tr>
               ))}
             </tbody>
@@ -394,9 +321,7 @@ function Kpi({ label, value, sub, rgb, ltr }: { label: string; value: string; su
   return (
     <div className="relative overflow-hidden rounded-2xl p-4" style={glassTint(rgb)}>
       <div className="text-[11px] font-medium text-white/60">{label}</div>
-      <div className="mt-1.5 text-xl font-extrabold tracking-tight" style={{ color: `rgb(${rgb})` }} dir={ltr ? "ltr" : undefined}>
-        {value}
-      </div>
+      <div className="mt-1.5 text-xl font-extrabold tracking-tight" style={{ color: `rgb(${rgb})` }} dir={ltr ? "ltr" : undefined}>{value}</div>
       {sub && <div className="mt-0.5 text-[10px] text-white/50">{sub}</div>}
     </div>
   );
@@ -409,21 +334,8 @@ function Donut({ data, centerTop, centerBottom, total }: { data: { name: string;
       <div className="relative" style={{ width: 220, height: 220 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={72}
-              outerRadius={104}
-              paddingAngle={data.length > 1 ? 3 : 0}
-              cornerRadius={10}
-              startAngle={90}
-              endAngle={-270}
-              animationDuration={1000}
-            >
-              {data.map((d, i) => (
-                <Cell key={i} fill={`rgb(${d.rgb})`} stroke={`rgba(${d.rgb},0.3)`} strokeWidth={1} />
-              ))}
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius={72} outerRadius={104} paddingAngle={data.length > 1 ? 3 : 0} cornerRadius={10} startAngle={90} endAngle={-270} animationDuration={1000}>
+              {data.map((d, i) => (<Cell key={i} fill={`rgb(${d.rgb})`} stroke={`rgba(${d.rgb},0.3)`} strokeWidth={1} />))}
             </Pie>
             <Tooltip {...tooltipStyle} formatter={(v: number, n: string) => [faNum(v), n]} />
           </PieChart>
@@ -447,7 +359,7 @@ function Donut({ data, centerTop, centerBottom, total }: { data: { name: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Journal panel — merged list of all members' trades
+// Journal panel (anonymous — merged bot trades)
 // ═══════════════════════════════════════════════════════════════════════════
 function pnlOf(t: Trade): number | null {
   if (t.source === "toobit" && t.realizedPnl != null) return t.realizedPnl;
@@ -455,59 +367,29 @@ function pnlOf(t: Trade): number | null {
 }
 
 function JournalPanel() {
-  const [rows, setRows] = useState<PublicTeamTrade[] | null>(null);
+  const [rows, setRows] = useState<Trade[] | null>(null);
   const [error, setError] = useState(false);
-  const [traderFilter, setTraderFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
 
   useEffect(() => {
     publicApi.teamTrades().then(setRows).catch(() => setError(true));
   }, []);
 
-  const traders = useMemo(() => {
-    if (!rows) return [];
-    return [...new Set(rows.map((r) => r.trader))];
-  }, [rows]);
-
   const filtered = useMemo(() => {
     if (!rows) return [];
-    return rows.filter((r) => {
-      const mt = !traderFilter || r.trader === traderFilter;
-      const ms = statusFilter === "ALL" || r.trade.status === statusFilter;
-      return mt && ms;
-    });
-  }, [rows, traderFilter, statusFilter]);
+    return rows.filter((t) => statusFilter === "ALL" || t.status === statusFilter);
+  }, [rows, statusFilter]);
 
   if (error) return <PanelEmpty text="بارگذاری ژورنال‌ها ممکن نشد." />;
   if (!rows) return <PanelSpinner />;
-  if (rows.length === 0) return <PanelEmpty text="هنوز معامله‌ای برای تیم ثبت نشده است." />;
+  if (rows.length === 0) return <PanelEmpty text="هنوز معامله‌ای ثبت نشده است." />;
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 rounded-3xl p-4" style={glass()}>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-white/60">معامله‌گر:</span>
-          <select
-            value={traderFilter}
-            onChange={(e) => setTraderFilter(e.target.value)}
-            className="rounded-xl bg-white/5 px-3 py-2 text-sm text-white outline-none"
-            style={{ border: "1px solid rgba(255,255,255,0.12)" }}
-          >
-            <option value="" className="bg-[#0b1e3d]">همه</option>
-            {traders.map((t) => (
-              <option key={t} value={t} className="bg-[#0b1e3d]">{t}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
           <span className="text-xs text-white/60">وضعیت:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-xl bg-white/5 px-3 py-2 text-sm text-white outline-none"
-            style={{ border: "1px solid rgba(255,255,255,0.12)" }}
-          >
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-xl bg-white/5 px-3 py-2 text-sm text-white outline-none" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
             <option value="ALL" className="bg-[#0b1e3d]">همه</option>
             <option value="PLANNED" className="bg-[#0b1e3d]">برنامه‌ریزی‌شده</option>
             <option value="OPEN" className="bg-[#0b1e3d]">باز</option>
@@ -517,13 +399,11 @@ function JournalPanel() {
         <span className="ml-auto text-xs text-white/50">{faNum(filtered.length)} معامله</span>
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto rounded-3xl" style={glass()}>
         <table className="w-full text-sm">
           <thead className="text-white/60">
             <tr className="border-b border-white/10 text-center">
-              <th className="p-3 text-right">معامله‌گر</th>
-              <th className="p-3">نماد</th>
+              <th className="p-3 text-right">نماد</th>
               <th className="p-3">جهت</th>
               <th className="p-3">VOL</th>
               <th className="p-3">تاریخ</th>
@@ -533,50 +413,26 @@ function JournalPanel() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((r) => {
-              const t = r.trade;
+            {filtered.map((t) => {
               const pnl = pnlOf(t);
               return (
-                <tr
-                  key={t.id}
-                  className={`border-b border-white/5 transition-colors ${t.source === "toobit" ? "bg-sky-400/10" : "hover:bg-white/5"}`}
-                >
-                  <td className="p-3 text-right">
-                    <div className="flex items-center gap-2">
-                      <span className="grid h-7 w-7 place-items-center rounded-full text-[10px] font-black" style={{ background: `rgba(${T.accent},0.16)`, color: `rgb(${T.accent})` }}>
-                        {r.trader.slice(0, 1)}
-                      </span>
-                      <div className="leading-tight">
-                        <div className="font-semibold text-white/90">{r.trader}</div>
-                        <div className="text-[10px] text-white/45" dir="ltr">@{r.username}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-3 text-center font-medium" dir="ltr">
+                <tr key={t.id} className={`border-b border-white/5 transition-colors ${t.source === "toobit" ? "bg-sky-400/10" : "hover:bg-white/5"}`}>
+                  <td className="p-3 text-right font-medium" dir="ltr">
                     {t.symbol || "—"}
                     {t.source === "toobit" && (
-                      <span className="ml-1 inline-block rounded-md border border-sky-400/40 bg-sky-400/15 px-1.5 py-0.5 align-middle text-[9px] font-bold text-sky-300">
-                        toobit
-                      </span>
+                      <span className="ml-1 inline-block rounded-md border border-sky-400/40 bg-sky-400/15 px-1.5 py-0.5 align-middle text-[9px] font-bold text-sky-300">toobit</span>
                     )}
                   </td>
                   <td className="p-3 text-center">
-                    <span
-                      className="rounded-full px-2.5 py-1 text-xs font-bold"
-                      style={{ background: `rgba(${t.direction === "LONG" ? T.green : T.red},0.16)`, color: `rgb(${t.direction === "LONG" ? T.green : T.red})` }}
-                    >
+                    <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: `rgba(${t.direction === "LONG" ? T.green : T.red},0.16)`, color: `rgb(${t.direction === "LONG" ? T.green : T.red})` }}>
                       {t.direction === "LONG" ? "Long" : "Short"}
                     </span>
                   </td>
                   <td className="p-3 text-center text-white/80" dir="ltr">{formatUsd(t.calc?.positionSize, 0)}</td>
                   <td className="p-3 text-center text-white/70">{formatJalaliDate(t.openDate)}</td>
                   <td className="p-3 text-center text-white/80" dir="ltr">{formatRatio(t.calc?.rrAchieved ?? t.rrAchieved)}</td>
-                  <td className="p-3 text-center" dir="ltr">
-                    <span className={pnlColorClass(pnl)}>{formatSignedUsd(pnl)}</span>
-                  </td>
-                  <td className="p-3 text-center">
-                    <StatusPill status={t.status} pnl={pnl} />
-                  </td>
+                  <td className="p-3 text-center" dir="ltr"><span className={pnlColorClass(pnl)}>{formatSignedUsd(pnl)}</span></td>
+                  <td className="p-3 text-center"><StatusPill status={t.status} pnl={pnl} /></td>
                 </tr>
               );
             })}
@@ -591,91 +447,151 @@ function StatusPill({ status, pnl }: { status: string; pnl: number | null }) {
   if (status === "CLOSED") {
     const win = (pnl ?? 0) >= 0;
     const rgb = win ? T.green : T.red;
-    return (
-      <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: `rgba(${rgb},0.16)`, color: `rgb(${rgb})` }}>
-        بسته‌شده
-      </span>
-    );
+    return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: `rgba(${rgb},0.16)`, color: `rgb(${rgb})` }}>بسته‌شده</span>;
   }
   const label = status === "OPEN" ? "باز" : "برنامه‌ریزی";
   const rgb = status === "OPEN" ? T.sky : T.violet;
-  return (
-    <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: `rgba(${rgb},0.16)`, color: `rgb(${rgb})` }}>
-      {label}
-    </span>
-  );
+  return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: `rgba(${rgb},0.16)`, color: `rgb(${rgb})` }}>{label}</span>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// AI panel — cached coach analyses (read-only), both overall + institutional
+// AI panel — combined team analyses (overall + institutional)
 // ═══════════════════════════════════════════════════════════════════════════
-function AIPanel() {
-  const [members, setMembers] = useState<PublicMemberAI[] | null>(null);
+function AIPanel({ isAdmin }: { isAdmin: boolean }) {
+  const [data, setData] = useState<TeamAIData | null>(null);
   const [error, setError] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
+
+  const load = () => publicApi.teamAi().then((d) => { if (mounted.current) setData(d); return d; });
 
   useEffect(() => {
-    publicApi.teamAi().then(setMembers).catch(() => setError(true));
+    mounted.current = true;
+    load().catch(() => setError(true));
+    return () => {
+      mounted.current = false;
+      if (timer.current) clearTimeout(timer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (error) return <PanelEmpty text="بارگذاری تحلیل‌ها ممکن نشد." />;
-  if (!members) return <PanelSpinner />;
+  // Poll while either analysis is running.
+  useEffect(() => {
+    if (!data) return;
+    const pending = data.overallStatus === "PENDING" || data.reportStatus === "PENDING";
+    if (pending) {
+      timer.current = setTimeout(() => load().catch(() => {}), 4000);
+    }
+    return () => { if (timer.current) clearTimeout(timer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
-  const hasAny = members.some((m) => m.overall || m.report);
-  if (!hasAny) {
-    return <PanelEmpty text="هنوز تحلیل هوش مصنوعی‌ای برای تیم منتشر نشده است. به‌زودی…" />;
+  const generate = async (kind: "overall" | "report") => {
+    try {
+      const res = kind === "overall" ? await publicApi.generateTeamOverall() : await publicApi.generateTeamReport();
+      if (mounted.current) setData(res);
+    } catch (e: any) {
+      if (mounted.current) setData((prev) => prev ? { ...prev, [`${kind}Error`]: e?.response?.data?.detail ?? "خطا در شروع تحلیل" } as TeamAIData : prev);
+    }
+  };
+
+  if (error) return <PanelEmpty text="بارگذاری تحلیل‌ها ممکن نشد." />;
+  if (!data) return <PanelSpinner />;
+
+  const nothing = !data.overall && !data.report && data.overallStatus !== "PENDING" && data.reportStatus !== "PENDING";
+  if (nothing && !isAdmin) {
+    return <PanelEmpty text="تحلیل هوش مصنوعیِ ترکیبی به‌زودی منتشر می‌شود." />;
   }
 
   return (
     <div className="space-y-5">
       <p className="text-center text-sm text-white/60">
-        این تحلیل‌ها را هوش مصنوعیِ مربیِ کریپتو اسمارت روی معاملات واقعی اعضای تیم تولید کرده است.
+        تحلیل هوش مصنوعیِ مربیِ الگو اسمارت روی مجموعِ معاملات واقعیِ کل تیم (سرمایهٔ اولیهٔ هر حساب ۱۰۰۰ دلار).
       </p>
-      {members.map((m) => {
-        if (!m.overall && !m.report) return null;
-        return (
-          <div key={m.username} className="space-y-4 rounded-3xl p-5" style={glass()}>
-            <div className="flex items-center gap-2.5">
-              <span className="grid h-9 w-9 place-items-center rounded-xl text-lg" style={{ background: `rgba(${T.violet},0.18)` }}>🤖</span>
-              <div>
-                <h3 className="text-base font-bold">{m.trader}</h3>
-                <p className="text-xs text-white/50" dir="ltr">@{m.username}</p>
-              </div>
-            </div>
 
-            {m.overall && (
-              <AIBlock
-                title="تحلیل کلی معاملات با هوش مصنوعی"
-                rgb={T.violet}
-                content={m.overall}
-                at={m.overallAt}
-              />
-            )}
-            {m.report && (
-              <AIBlock
-                title="گزارش نهادی (Institutional)"
-                rgb={T.sky}
-                content={m.report}
-                at={m.reportAt}
-              />
-            )}
-          </div>
-        );
-      })}
+      {isAdmin && !data.enabled && (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-300">
+          تحلیل هوش مصنوعی روی سرور فعال نشده است (کلید API تنظیم نشده).
+        </div>
+      )}
+
+      <AISection
+        title="تحلیل کلی معاملات با هوش مصنوعی"
+        rgb={T.violet}
+        content={data.overall}
+        at={data.overallAt}
+        status={data.overallStatus}
+        errorMsg={data.overallError}
+        isAdmin={isAdmin}
+        enabled={data.enabled}
+        onGenerate={() => generate("overall")}
+      />
+      <AISection
+        title="گزارش نهادی (Institutional) با هوش مصنوعی"
+        rgb={T.sky}
+        content={data.report}
+        at={data.reportAt}
+        status={data.reportStatus}
+        errorMsg={data.reportError}
+        isAdmin={isAdmin}
+        enabled={data.enabled}
+        onGenerate={() => generate("report")}
+      />
     </div>
   );
 }
 
-function AIBlock({ title, rgb, content, at }: { title: string; rgb: string; content: string; at: string | null }) {
+function AISection({
+  title, rgb, content, at, status, errorMsg, isAdmin, enabled, onGenerate,
+}: {
+  title: string; rgb: string; content: string | null; at: string | null;
+  status: string | null; errorMsg: string | null; isAdmin: boolean; enabled: boolean; onGenerate: () => void;
+}) {
+  const pending = status === "PENDING";
+  // The analyze button only appears for an admin, and only until an analysis
+  // exists — once generated it is removed for everyone.
+  const showButton = isAdmin && !content && !pending;
+
   return (
-    <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid rgba(${rgb},0.2)` }}>
-      <div className="mb-2 flex items-center gap-2 text-sm font-bold" style={{ color: `rgb(${rgb})` }}>
-        <span className="h-2 w-2 rounded-full" style={{ background: `rgb(${rgb})` }} />
-        {title}
+    <div className="space-y-3 rounded-3xl p-5" style={glass()}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-9 w-9 place-items-center rounded-xl text-lg" style={{ background: `rgba(${rgb},0.18)` }}>🤖</span>
+          <h3 className="text-base font-bold" style={{ color: `rgb(${rgb})` }}>{title}</h3>
+        </div>
+        {showButton && (
+          <button
+            onClick={onGenerate}
+            disabled={!enabled}
+            className="rounded-xl px-4 py-2 text-sm font-bold text-[#06121f] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: `linear-gradient(120deg, rgba(${rgb},0.95), rgba(${T.accent},0.8))`, boxShadow: `0 12px 30px -12px rgba(${rgb},0.8)` }}
+          >
+            تحلیل کن
+          </button>
+        )}
       </div>
-      <div className="max-h-[26rem] overflow-y-auto pr-1 text-white/90">
-        <Markdown content={content} />
-      </div>
-      {at && <p className="pt-2 text-xs text-white/45">آخرین تحلیل: {formatJalaliDateTime(at)}</p>}
+
+      {pending && (
+        <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-transparent" />
+          در حال تحلیلِ کلِ تیم… نتیجه به‌صورت خودکار نمایش داده می‌شود (ممکن است تا یک دقیقه طول بکشد).
+        </div>
+      )}
+
+      {status === "ERROR" && errorMsg && !content && (
+        <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{errorMsg}</div>
+      )}
+
+      {content ? (
+        <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid rgba(${rgb},0.2)` }}>
+          <div className="max-h-[26rem] overflow-y-auto pr-1 text-white/90">
+            <Markdown content={content} />
+          </div>
+          {at && <p className="pt-2 text-xs text-white/45">آخرین تحلیل: {formatJalaliDateTime(at)}</p>}
+        </div>
+      ) : (
+        !pending && <p className="text-sm text-white/50">{isAdmin ? "برای تولید تحلیلِ کل تیم، روی «تحلیل کن» بزنید." : "به‌زودی…"}</p>
+      )}
     </div>
   );
 }

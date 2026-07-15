@@ -298,31 +298,32 @@ export const aiApi = {
 // ---------------------------------------------------------------------------
 // Public (no-auth) — Cryptosmart Team live showcase for the landing page
 // ---------------------------------------------------------------------------
-export interface PublicTeamTrade {
-  trader: string;
-  username: string;
-  trade: Trade;
+export interface TeamSummary {
+  count: number;
+  initialCapital: number;
+  totalInitialCapital: number;
 }
 
-export interface PublicMemberAI {
-  trader: string;
-  username: string;
+export interface TeamAIData {
+  enabled: boolean;
   overall: string | null;
   overallAt: string | null;
+  overallStatus: string | null;
+  overallError: string | null;
   report: string | null;
   reportAt: string | null;
-}
-
-export interface TeamMember {
-  trader: string;
-  username: string;
+  reportStatus: string | null;
+  reportError: string | null;
 }
 
 export const publicApi = {
-  teamMembers: () => http.get<TeamMember[]>("/public/team/members").then((r) => r.data),
+  teamSummary: () => http.get<TeamSummary>("/public/team/summary").then((r) => r.data),
   teamDashboard: () => http.get<DashboardData>("/public/team/dashboard").then((r) => r.data),
-  teamTrades: () => http.get<PublicTeamTrade[]>("/public/team/trades").then((r) => r.data),
-  teamAi: () => http.get<PublicMemberAI[]>("/public/team/ai").then((r) => r.data),
+  teamTrades: () => http.get<Trade[]>("/public/team/trades").then((r) => r.data),
+  teamAi: () => http.get<TeamAIData>("/public/team/ai").then((r) => r.data),
+  // Admin-only: kick off combined team analyses.
+  generateTeamOverall: () => http.post<TeamAIData>("/public/team/ai/overall", {}).then((r) => r.data),
+  generateTeamReport: () => http.post<TeamAIData>("/public/team/ai/report", {}).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------
