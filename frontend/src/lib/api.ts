@@ -296,6 +296,36 @@ export const aiApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Public (no-auth) — Cryptosmart Team live showcase for the landing page
+// ---------------------------------------------------------------------------
+export interface PublicTeamTrade {
+  trader: string;
+  username: string;
+  trade: Trade;
+}
+
+export interface PublicMemberAI {
+  trader: string;
+  username: string;
+  overall: string | null;
+  overallAt: string | null;
+  report: string | null;
+  reportAt: string | null;
+}
+
+export interface TeamMember {
+  trader: string;
+  username: string;
+}
+
+export const publicApi = {
+  teamMembers: () => http.get<TeamMember[]>("/public/team/members").then((r) => r.data),
+  teamDashboard: () => http.get<DashboardData>("/public/team/dashboard").then((r) => r.data),
+  teamTrades: () => http.get<PublicTeamTrade[]>("/public/team/trades").then((r) => r.data),
+  teamAi: () => http.get<PublicMemberAI[]>("/public/team/ai").then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
 // Uploads
 // ---------------------------------------------------------------------------
 export const uploadsApi = {

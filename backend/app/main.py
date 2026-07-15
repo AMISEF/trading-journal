@@ -25,6 +25,7 @@ from app.api import (
     export,
     market,
     password,
+    public,
     settings as settings_router,
     templates,
     trades,
@@ -108,3 +109,4 @@ app.include_router(ai.router)
 app.include_router(settings_router.router)
 app.include_router(password.auth_router)
 app.include_router(password.settings_router)
+app.include_router(public.router)
