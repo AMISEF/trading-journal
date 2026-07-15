@@ -135,7 +135,7 @@ const PLANS = [
 ];
 
 const NAV_LINKS = [
-  { href: "#live", label: "لایو معاملات" },
+  { href: "#live", label: "برایند معاملات" },
   { href: "#features", label: "امکانات" },
   { href: "#plans", label: "پلن‌ها" },
   { href: "#footer", label: "ارتباط با ما" },
@@ -392,7 +392,7 @@ function MarketingLanding() {
         </div>
       </section>
 
-      {/* ── لایو معاملات ربات الگو اسمارت ── */}
+      {/* ── برایند معاملات ربات الگو اسمارت ── */}
       <TeamLiveSection />
 
       {/* ── Features ── */}

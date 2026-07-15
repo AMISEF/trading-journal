@@ -65,7 +65,7 @@ export function PnlStandalonePage() {
           </a>
           <div className="flex items-center gap-3 text-sm text-white/70">
             <a href="#live" className="hidden font-medium transition-colors hover:text-white sm:inline">
-              لایو معاملات
+              برایند معاملات
             </a>
             <a href="#footer" className="font-medium transition-colors hover:text-white">
               ارتباط با ما

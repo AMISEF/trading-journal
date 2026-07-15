@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * لایو معاملات ربات الگو اسمارت — public landing-page showcase.
+ * برایند معاملات ربات الگو اسمارت — public landing-page showcase.
  *
  * Shows a *combined, anonymous* live view of the algo-bot accounts:
  *   • داشبورد معاملات  — one aggregated dashboard (each bot normalised to $1000)
@@ -138,7 +138,7 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
           <LiveDot />
           LIVE
         </span>
-        <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">لایو معاملات ربات الگو اسمارت</h2>
+        <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">برایند معاملات ربات الگو اسمارت</h2>
       </motion.div>
 
       <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">
