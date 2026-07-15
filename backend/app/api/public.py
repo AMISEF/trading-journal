@@ -47,7 +47,8 @@ router = APIRouter(prefix="/api/public", tags=["public"])
 # The group tag assigned via the admin panel (see admin.set_user_group).
 TEAM_GROUP = "CRYPTOSMART_TEAM"
 
-# Every bot is normalised to this starting capital for the showcase.
+# The whole showcase (all bots combined) starts from this single capital, so the
+# growth figures are read relative to a flat $1000 — not $1000 per bot.
 INITIAL_CAPITAL = 1000.0
 
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
@@ -72,10 +73,12 @@ async def _team_members(db: AsyncSession) -> list[User]:
         select(User).where(User.user_group == TEAM_GROUP).order_by(User.id)
     )
     members = list(result.scalars().all())
-    # Normalise starting capital to $1000 per bot for the public figures.
-    # Detached from the session so this never persists to the DB.
+    # Split the single $1000 starting capital evenly across the bots so the
+    # combined figures sum to a flat $1000. Detached from the session so this
+    # never persists to the DB.
+    per = INITIAL_CAPITAL / (len(members) or 1)
     for u in members:
-        u.wallet_margin = INITIAL_CAPITAL
+        u.wallet_margin = per
         db.expunge(u)
     return members
 
@@ -134,7 +137,7 @@ async def team_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
     return TeamSummary(
         count=n,
         initial_capital=INITIAL_CAPITAL,
-        total_initial_capital=INITIAL_CAPITAL * n,
+        total_initial_capital=INITIAL_CAPITAL,
     )
 
 
@@ -171,7 +174,7 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
         transactions = await crud.load_user_transactions(db, u.id)
         unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
         closed = [t for t in unlocked if t.status == "CLOSED"]
-        base_balance = INITIAL_CAPITAL + _txn_sum(transactions)
+        base_balance = (u.wallet_margin or 0.0) + _txn_sum(transactions)
 
         start_balance += base_balance
         trade_count += len(unlocked)
