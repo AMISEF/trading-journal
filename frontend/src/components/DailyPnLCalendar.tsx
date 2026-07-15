@@ -67,10 +67,28 @@ function buildJalaliMonthGrid(jy: number, jm: number, pnlMap: Map<string, number
   return cells;
 }
 
-function fmtUsdt(v: number): string {
+/** Compact PnL for narrow calendar cells (mobile-first). Avoids "12.345678 USDT" overflow. */
+function fmtCompactPnl(v: number): string {
   if (v === 0) return "0";
-  return `${v.toFixed(6)} USDT`;
+  const abs = Math.abs(v);
+  let body: string;
+  if (abs >= 100) body = abs.toFixed(0);
+  else if (abs >= 10) body = abs.toFixed(1);
+  else if (abs >= 1) body = abs.toFixed(2);
+  else body = abs.toFixed(2);
+  return `${v < 0 ? "-" : "+"}${body}`;
 }
+
+function fmtPctCompact(v: number, base: number): string {
+  if (base <= 0 || v === 0) return "";
+  const pct = (v / base) * 100;
+  const abs = Math.abs(pct);
+  const body = abs >= 10 ? abs.toFixed(0) : abs >= 1 ? abs.toFixed(1) : abs.toFixed(2);
+  return `${pct >= 0 ? "+" : "-"}${body}٪`;
+}
+
+const WEEKDAYS_SHORT = ["د", "س", "چ", "پ", "ج", "ش", "ی"] as const;
+const WEEKDAYS_FULL = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"] as const;
 
 /** Day key used for PnL attribution (close date, else open date) — matches backend. */
 function tradeDayKey(t: DayTradeItem): string | null {
@@ -196,23 +214,27 @@ export function DailyPnLCalendar({
         </div>
       </div>
 
-      {/* Calendar view (daily) */}
+      {/* Calendar view (daily) — mobile-first: compact numbers, no overflow */}
       {chartType === "calendar" && profitView === "daily" && (
-        <div className="p-5">
-          <div className="mb-2 grid grid-cols-7 gap-1.5">
-            {["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"].map((d) => (
-              <div key={d} className="py-1 text-center text-[10px] font-medium text-white/55">{d}</div>
+        <div className="p-2 sm:p-4 md:p-5">
+          <div className="mb-1.5 grid grid-cols-7 gap-0.5 sm:mb-2 sm:gap-1.5">
+            {WEEKDAYS_FULL.map((d, idx) => (
+              <div key={d} className="min-w-0 py-1 text-center text-[9px] font-medium text-white/55 sm:text-[10px]">
+                <span className="sm:hidden">{WEEKDAYS_SHORT[idx]}</span>
+                <span className="hidden sm:inline">{d}</span>
+              </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-7 gap-0.5 sm:gap-1.5">
             {calendarCells.map((cell, i) => {
-              if (!cell.day) return <div key={i} />;
+              if (!cell.day) return <div key={i} className="min-w-0" />;
               const rgb = cell.pnl > 0 ? TINTS.green : cell.pnl < 0 ? TINTS.red : null;
               const isSelected = selectedDate === cell.date;
               const clickable = !!trades;
               const cellStyle: React.CSSProperties = rgb
                 ? { background: `linear-gradient(150deg, rgba(${rgb},0.22), rgba(${rgb},0.06))`, border: `1px solid rgba(${rgb},${isSelected ? 0.7 : 0.3})` }
                 : { background: GLASS_BG, border: `1px solid ${isSelected ? `rgba(${TINTS.mint},0.7)` : GLASS_BORDER}` };
+              const pctLabel = walletMargin > 0 && cell.pnl !== 0 ? fmtPctCompact(cell.pnl, walletMargin) : "";
               return (
                 <div
                   key={i}
@@ -225,21 +247,39 @@ export function DailyPnLCalendar({
                       onDayClick(cell.date);
                     }
                   }}
-                  className={`flex min-h-[78px] flex-col rounded-2xl p-2 transition-all duration-300 hover:-translate-y-0.5 ${clickable ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-offset-0" : ""}`}
+                  title={cell.pnl !== 0 ? `${cell.pnl >= 0 ? "+" : ""}${cell.pnl.toFixed(4)} USDT${pctLabel ? ` (${pctLabel})` : ""}` : undefined}
+                  className={`flex min-h-[58px] min-w-0 flex-col overflow-hidden rounded-lg p-1 transition-all duration-300 sm:min-h-[72px] sm:rounded-2xl sm:p-1.5 md:min-h-[78px] md:p-2 ${clickable ? "cursor-pointer hover:-translate-y-0.5" : ""} ${isSelected ? "ring-2 ring-offset-0" : ""}`}
                   style={{
                     ...cellStyle,
-                    ...(cell.isToday && !isSelected ? { boxShadow: `0 0 0 2px rgb(${TINTS.mint}), 0 10px 24px -10px rgba(${TINTS.mint},0.6)` } : {}),
+                    ...(cell.isToday && !isSelected ? { boxShadow: `0 0 0 1.5px rgb(${TINTS.mint}), 0 8px 18px -10px rgba(${TINTS.mint},0.6)` } : {}),
                     ...(isSelected ? { boxShadow: `0 0 0 2px rgb(${TINTS.violet}), 0 12px 28px -10px rgba(${TINTS.violet},0.7)` } : {}),
                   }}
                 >
-                  <div className="flex items-start justify-between">
-                    <span className="text-sm font-bold leading-none text-white">{cell.day !== null ? toPersianDigits(cell.day) : ""}</span>
-                    {cell.jalaliDay && <span className="text-[9px] leading-none text-white/45">{cell.jalaliDay}</span>}
+                  <div className="flex shrink-0 items-start justify-between gap-0.5">
+                    <span className="text-[11px] font-bold leading-none text-white sm:text-sm">
+                      {cell.day !== null ? toPersianDigits(cell.day) : ""}
+                    </span>
+                    {cell.jalaliDay != null && (
+                      <span className="hidden text-[9px] leading-none text-white/45 sm:inline">{cell.jalaliDay}</span>
+                    )}
                   </div>
-                  <div className="mt-auto text-[9px] font-semibold leading-tight" style={{ color: rgb ? `rgb(${rgb})` : "rgba(255,255,255,0.5)" }} dir="ltr">
-                    {fmtUsdt(cell.pnl)}
-                    {walletMargin > 0 && cell.pnl !== 0 && (
-                      <div className="opacity-75">({cell.pnl >= 0 ? "+" : ""}{((cell.pnl / walletMargin) * 100).toFixed(2)}٪)</div>
+                  <div
+                    className="mt-auto min-w-0 w-full overflow-hidden pt-0.5"
+                    style={{ color: rgb ? `rgb(${rgb})` : "rgba(255,255,255,0.5)" }}
+                  >
+                    <div
+                      className="truncate text-center text-[8px] font-bold leading-tight tabular-nums sm:text-[9px] md:text-[10px]"
+                      dir="ltr"
+                    >
+                      {fmtCompactPnl(cell.pnl)}
+                    </div>
+                    {pctLabel && (
+                      <div
+                        className="truncate text-center text-[7px] font-semibold leading-tight opacity-75 tabular-nums sm:text-[8px] md:text-[9px]"
+                        dir="ltr"
+                      >
+                        {pctLabel}
+                      </div>
                     )}
                   </div>
                 </div>
