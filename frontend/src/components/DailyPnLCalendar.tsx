@@ -4,11 +4,15 @@
  * Combined daily P&L calendar (Jalali) — the same calendar/bar view used on the
  * authenticated dashboard, styled for the dark landing showcase. Takes a
  * pnlByDay series and a base capital (for the % figures).
+ *
+ * Optional `trades` enables day-click detail: tapping a day shows that day's
+ * trades with per-trade and total PnL.
  */
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { JALALI_MONTHS, getJalaliParts, jalaliDaysInMonth, jalaliToGregorianDate, toPersianDigits } from "@/lib/jalali";
+import { JALALI_MONTHS, formatJalaliDate, getJalaliParts, jalaliDaysInMonth, jalaliToGregorianDate, toPersianDigits } from "@/lib/jalali";
 import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
+import { formatSignedUsd, pnlColorClass } from "@/lib/format";
 
 const TINTS = {
   mint: "94,234,212",
@@ -29,6 +33,18 @@ interface CalCell {
   pnl: number;
   jalaliDay: number | null;
   isToday: boolean;
+}
+
+/** Minimal trade shape for day-detail panel (anonymous public journal). */
+export interface DayTradeItem {
+  id: string;
+  symbol: string;
+  direction: string;
+  status: string;
+  openDate: string | null;
+  closeDate: string | null;
+  pnl: number | null;
+  source?: string | null;
 }
 
 function buildJalaliMonthGrid(jy: number, jm: number, pnlMap: Map<string, number>): CalCell[] {
@@ -56,13 +72,28 @@ function fmtUsdt(v: number): string {
   return `${v.toFixed(6)} USDT`;
 }
 
-export function DailyPnLCalendar({ pnlByDay, walletMargin }: { pnlByDay: { date: string; pnl: number }[]; walletMargin: number }) {
+/** Day key used for PnL attribution (close date, else open date) — matches backend. */
+function tradeDayKey(t: DayTradeItem): string | null {
+  const raw = t.closeDate || t.openDate;
+  return raw ? raw.slice(0, 10) : null;
+}
+
+export function DailyPnLCalendar({
+  pnlByDay,
+  walletMargin,
+  trades,
+}: {
+  pnlByDay: { date: string; pnl: number }[];
+  walletMargin: number;
+  trades?: DayTradeItem[];
+}) {
   const today = new Date();
   const todayJp = getJalaliParts(today.toISOString().slice(0, 10));
   const [jViewYear, setJViewYear] = useState(todayJp?.year ?? 1404);
   const [jViewMonth, setJViewMonth] = useState(todayJp?.month ?? 1);
   const [chartType, setChartType] = useState<"calendar" | "bar">("calendar");
   const [profitView, setProfitView] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const pnlMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -77,13 +108,25 @@ export function DailyPnLCalendar({ pnlByDay, walletMargin }: { pnlByDay: { date:
   const monthlyData = useMemo(() => buildMonthlyData(pnlByDay), [pnlByDay]);
   const weeklyData = useMemo(() => buildWeeklyData(pnlByDay), [pnlByDay]);
 
+  const dayTrades = useMemo(() => {
+    if (!selectedDate || !trades) return [];
+    return trades.filter((t) => tradeDayKey(t) === selectedDate);
+  }, [selectedDate, trades]);
+
+  const dayTradesPnl = useMemo(
+    () => dayTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0),
+    [dayTrades],
+  );
+
   const prevMonth = () => {
     if (jViewMonth === 1) { setJViewYear((y) => y - 1); setJViewMonth(12); }
     else setJViewMonth((m) => m - 1);
+    setSelectedDate(null);
   };
   const nextMonth = () => {
     if (jViewMonth === 12) { setJViewYear((y) => y + 1); setJViewMonth(1); }
     else setJViewMonth((m) => m + 1);
+    setSelectedDate(null);
   };
 
   const dailyBarData = calendarCells.filter((c) => c.day !== null).map((c) => ({ day: c.day, jalaliDay: c.jalaliDay, pnl: c.pnl }));
@@ -100,6 +143,15 @@ export function DailyPnLCalendar({ pnlByDay, walletMargin }: { pnlByDay: { date:
 
   const tooltipContent = { background: CHART_BG, border: `1px solid ${border}`, borderRadius: 12, fontSize: 12, color: "#fff" };
 
+  const onDayClick = (date: string | null) => {
+    if (!trades || !date) return;
+    setSelectedDate((prev) => (prev === date ? null : date));
+  };
+
+  const selectedJp = selectedDate ? getJalaliParts(selectedDate) : null;
+  const selectedDayPnl = selectedDate ? (pnlMap.get(selectedDate) ?? dayTradesPnl) : 0;
+  const selectedRgb = selectedDayPnl > 0 ? TINTS.green : selectedDayPnl < 0 ? TINTS.red : TINTS.sky;
+
   return (
     <div className="overflow-hidden rounded-3xl" style={{ background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` }}>
       {/* Card header */}
@@ -107,12 +159,15 @@ export function DailyPnLCalendar({ pnlByDay, walletMargin }: { pnlByDay: { date:
         <div>
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
-            <span className="text-base font-bold">سود و زیان روزانه (ترکیبی)</span>
+            <span className="text-base font-bold">سود و زیان روزانه</span>
           </div>
           {todayPnl !== null && (
             <div className="mt-1 text-sm font-semibold" style={{ color: `rgb(${todayPnl >= 0 ? TINTS.green : TINTS.red})` }} dir="ltr">
               Today: {todayPnl >= 0 ? "+" : ""}{todayPnl.toFixed(4)} USDT
             </div>
+          )}
+          {trades && chartType === "calendar" && profitView === "daily" && (
+            <p className="mt-1 text-[11px] text-white/45">برای دیدن معاملات هر روز، روی آن روز کلیک کنید</p>
           )}
         </div>
         <div className="flex gap-1.5">
@@ -153,14 +208,29 @@ export function DailyPnLCalendar({ pnlByDay, walletMargin }: { pnlByDay: { date:
             {calendarCells.map((cell, i) => {
               if (!cell.day) return <div key={i} />;
               const rgb = cell.pnl > 0 ? TINTS.green : cell.pnl < 0 ? TINTS.red : null;
+              const isSelected = selectedDate === cell.date;
+              const clickable = !!trades;
               const cellStyle: React.CSSProperties = rgb
-                ? { background: `linear-gradient(150deg, rgba(${rgb},0.22), rgba(${rgb},0.06))`, border: `1px solid rgba(${rgb},0.3)` }
-                : { background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` };
+                ? { background: `linear-gradient(150deg, rgba(${rgb},0.22), rgba(${rgb},0.06))`, border: `1px solid rgba(${rgb},${isSelected ? 0.7 : 0.3})` }
+                : { background: GLASS_BG, border: `1px solid ${isSelected ? `rgba(${TINTS.mint},0.7)` : GLASS_BORDER}` };
               return (
                 <div
                   key={i}
-                  className="flex min-h-[78px] flex-col rounded-2xl p-2 transition-all duration-300 hover:-translate-y-0.5"
-                  style={{ ...cellStyle, ...(cell.isToday ? { boxShadow: `0 0 0 2px rgb(${TINTS.mint}), 0 10px 24px -10px rgba(${TINTS.mint},0.6)` } : {}) }}
+                  role={clickable ? "button" : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onClick={() => onDayClick(cell.date)}
+                  onKeyDown={(e) => {
+                    if (clickable && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onDayClick(cell.date);
+                    }
+                  }}
+                  className={`flex min-h-[78px] flex-col rounded-2xl p-2 transition-all duration-300 hover:-translate-y-0.5 ${clickable ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-offset-0" : ""}`}
+                  style={{
+                    ...cellStyle,
+                    ...(cell.isToday && !isSelected ? { boxShadow: `0 0 0 2px rgb(${TINTS.mint}), 0 10px 24px -10px rgba(${TINTS.mint},0.6)` } : {}),
+                    ...(isSelected ? { boxShadow: `0 0 0 2px rgb(${TINTS.violet}), 0 12px 28px -10px rgba(${TINTS.violet},0.7)` } : {}),
+                  }}
                 >
                   <div className="flex items-start justify-between">
                     <span className="text-sm font-bold leading-none text-white">{cell.day !== null ? toPersianDigits(cell.day) : ""}</span>
@@ -176,6 +246,98 @@ export function DailyPnLCalendar({ pnlByDay, walletMargin }: { pnlByDay: { date:
               );
             })}
           </div>
+
+          {/* Day detail panel */}
+          {selectedDate && trades && (
+            <div
+              className="mt-5 overflow-hidden rounded-2xl"
+              style={{
+                background: `linear-gradient(150deg, rgba(${selectedRgb},0.12), rgba(255,255,255,0.03))`,
+                border: `1px solid rgba(${selectedRgb},0.28)`,
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                <div>
+                  <div className="text-sm font-bold">
+                    معاملات{" "}
+                    {selectedJp
+                      ? `${toPersianDigits(selectedJp.day)} ${selectedJp.monthName} ${toPersianDigits(selectedJp.year)}`
+                      : formatJalaliDate(selectedDate)}
+                  </div>
+                  <div className="mt-0.5 text-xs text-white/50" dir="ltr">{selectedDate}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-left">
+                    <div className="text-[11px] text-white/55">مجموع روز</div>
+                    <div className="text-base font-extrabold" style={{ color: `rgb(${selectedRgb})` }} dir="ltr">
+                      {selectedDayPnl >= 0 ? "+" : ""}{selectedDayPnl.toFixed(4)} USDT
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedDate(null)}
+                    className="rounded-xl px-3 py-1.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
+                    style={{ border: `1px solid ${GLASS_BORDER}` }}
+                  >
+                    بستن
+                  </button>
+                </div>
+              </div>
+
+              {dayTrades.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-white/50">معامله‌ای برای این روز ثبت نشده است.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-white/55">
+                      <tr className="border-b border-white/10 text-center">
+                        <th className="p-3 text-right text-xs font-semibold">نماد</th>
+                        <th className="p-3 text-xs font-semibold">جهت</th>
+                        <th className="p-3 text-xs font-semibold">تاریخ</th>
+                        <th className="p-3 text-xs font-semibold">نتیجه</th>
+                        <th className="p-3 text-xs font-semibold">وضعیت</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayTrades.map((t) => {
+                        const up = (t.pnl ?? 0) >= 0;
+                        const drgb = t.direction === "LONG" ? TINTS.green : TINTS.red;
+                        return (
+                          <tr key={t.id} className="border-b border-white/5">
+                            <td className="p-3 text-right font-medium" dir="ltr">
+                              {t.symbol || "—"}
+                              {t.source === "toobit" && (
+                                <span className="ml-1 inline-block rounded-md border border-sky-400/40 bg-sky-400/15 px-1.5 py-0.5 align-middle text-[9px] font-bold text-sky-300">toobit</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: `rgba(${drgb},0.16)`, color: `rgb(${drgb})` }}>
+                                {t.direction === "LONG" ? "Long" : "Short"}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center text-white/70">{formatJalaliDate(t.closeDate || t.openDate)}</td>
+                            <td className="p-3 text-center" dir="ltr">
+                              <span className={pnlColorClass(t.pnl)}>{formatSignedUsd(t.pnl)}</span>
+                            </td>
+                            <td className="p-3 text-center">
+                              <span
+                                className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                                style={{
+                                  background: `rgba(${t.status === "CLOSED" ? (up ? TINTS.green : TINTS.red) : TINTS.sky},0.16)`,
+                                  color: `rgb(${t.status === "CLOSED" ? (up ? TINTS.green : TINTS.red) : TINTS.sky})`,
+                                }}
+                              >
+                                {t.status === "CLOSED" ? "بسته‌شده" : t.status === "OPEN" ? "باز" : "برنامه‌ریزی"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -37,7 +37,7 @@ import { faNum, formatPct, formatRatio, formatSignedUsd, formatUsd, pnlColorClas
 import { formatJalaliDate, formatJalaliDateTime, getJalaliParts, toPersianDigits } from "@/lib/jalali";
 import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
 import { Markdown } from "@/components/Markdown";
-import { DailyPnLCalendar } from "@/components/DailyPnLCalendar";
+import { DailyPnLCalendar, type DayTradeItem } from "@/components/DailyPnLCalendar";
 
 const T = {
   accent: "25,195,179",
@@ -97,11 +97,16 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
-export function TeamLiveSection() {
+export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = {}) {
   const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [hidden, setHidden] = useState(false);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [isAdmin, setIsAdmin] = useState(false);
+
+  const visibleTabs = useMemo(
+    () => (showAiTab ? TABS : TABS.filter((t) => t.key !== "ai")),
+    [showAiTab],
+  );
 
   useEffect(() => {
     publicApi
@@ -113,10 +118,10 @@ export function TeamLiveSection() {
       .catch(() => setHidden(true));
 
     // Detect admin (for the AI analyze button) without blocking the section.
-    if (getToken()) {
+    if (showAiTab && getToken()) {
       authApi.me().then((u) => setIsAdmin(u.role === "ADMIN")).catch(() => setIsAdmin(false));
     }
-  }, []);
+  }, [showAiTab]);
 
   if (hidden || !summary) return null;
 
@@ -137,7 +142,7 @@ export function TeamLiveSection() {
       </motion.div>
 
       <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">
-        {TABS.map((tb) => {
+        {visibleTabs.map((tb) => {
           const active = tab === tb.key;
           return (
             <button
@@ -195,10 +200,29 @@ function PanelEmpty({ text }: { text: string }) {
 // ═══════════════════════════════════════════════════════════════════════════
 function DashboardPanel({ summary }: { summary: TeamSummary }) {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [dayTrades, setDayTrades] = useState<DayTradeItem[] | undefined>(undefined);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     publicApi.teamDashboard().then(setData).catch(() => setError(true));
+    // Load trades for day-click detail on the daily calendar (anonymous).
+    publicApi
+      .teamTrades()
+      .then((rows) => {
+        setDayTrades(
+          rows.map((t) => ({
+            id: t.id,
+            symbol: t.symbol || "",
+            direction: t.direction,
+            status: t.status,
+            openDate: t.openDate,
+            closeDate: t.closeDate,
+            pnl: pnlOf(t),
+            source: t.source ?? null,
+          })),
+        );
+      })
+      .catch(() => setDayTrades(undefined));
   }, []);
 
   if (error) return <PanelEmpty text="بارگذاری داشبورد ممکن نشد." />;
@@ -274,8 +298,12 @@ function DashboardPanel({ summary }: { summary: TeamSummary }) {
         </div>
       </div>
 
-      {/* Daily PnL — Jalali calendar, identical to the dashboard */}
-      <DailyPnLCalendar pnlByDay={data.pnlByDay} walletMargin={summary.totalInitialCapital} />
+      {/* Daily PnL — Jalali calendar; day-click shows that day's trades */}
+      <DailyPnLCalendar
+        pnlByDay={data.pnlByDay}
+        walletMargin={summary.totalInitialCapital}
+        trades={dayTrades}
+      />
 
       {/* Top symbols */}
       <div className="rounded-3xl p-5" style={glass()}>

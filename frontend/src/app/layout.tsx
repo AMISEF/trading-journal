@@ -4,9 +4,13 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { BASE_PATH } from "@/lib/api";
 import { TelegramNav } from "@/components/TelegramNav";
 
+const isPnlSite = process.env.NEXT_PUBLIC_SITE_MODE === "pnl";
+
 export const metadata: Metadata = {
-  title: "ژورنال تریدینگ | Algo Hub",
-  description: "پنل ژورنال معاملات کریپتو",
+  title: isPnlSite ? "برایند الگو اسمارت | Crypto Smart" : "ژورنال تریدینگ | Algo Hub",
+  description: isPnlSite
+    ? "لایو معاملات و برایند سود و زیان ربات الگو اسمارت"
+    : "پنل ژورنال معاملات کریپتو",
 };
 
 /**
