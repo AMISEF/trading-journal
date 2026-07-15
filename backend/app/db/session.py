@@ -31,7 +31,7 @@ async def init_db() -> None:
     from sqlalchemy import text
 
     # Import models so they register with Base.metadata.
-    from app.models import user, trade, template, wallet_transaction, auth_code  # noqa: F401
+    from app.models import user, trade, template, wallet_transaction, auth_code, team_ai  # noqa: F401
     from app.db.base import Base
 
     async with engine.begin() as conn:
@@ -94,6 +94,10 @@ async def init_db() -> None:
              "WHERE ai_report_status='PENDING'"),
             ("UPDATE trades SET ai_analysis_status='ERROR', ai_analysis_error=:m "
              "WHERE ai_analysis_status='PENDING'"),
+            ("UPDATE team_ai SET overall_status='ERROR', overall_error=:m "
+             "WHERE overall_status='PENDING'"),
+            ("UPDATE team_ai SET report_status='ERROR', report_error=:m "
+             "WHERE report_status='PENDING'"),
         ]
         for stmt in recovery:
             await conn.execute(text(stmt), {"m": _stale})
