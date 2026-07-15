@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getToken, BASE_PATH } from "@/lib/api";
 import { HubNav } from "@/components/HubNav";
+import { TeamLiveSection } from "@/components/TeamLiveSection";
 
 // ── Brand palette (from the design tokens the product owner provided) ─────────
 const C = {
@@ -127,6 +128,7 @@ const PLANS = [
 ];
 
 const NAV_LINKS = [
+  { href: "#live", label: "لایو معاملات" },
   { href: "#features", label: "امکانات" },
   { href: "#plans", label: "پلن‌ها" },
   { href: "#footer", label: "ارتباط با ما" },
@@ -374,6 +376,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
+
+      {/* ── لایو معاملات ربات الگو اسمارت ── */}
+      <TeamLiveSection />
 
       {/* ── Features ── */}
       <section id="features" className="relative mx-auto max-w-7xl scroll-mt-24 px-5 py-16 md:px-8 md:py-24">
