@@ -35,6 +35,7 @@ import {
 import type { DashboardData, Trade } from "@/lib/types";
 import { faNum, formatPct, formatRatio, formatSignedUsd, formatUsd, pnlColorClass } from "@/lib/format";
 import { formatJalaliDate, formatJalaliDateTime, getJalaliParts, toPersianDigits } from "@/lib/jalali";
+import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
 import { Markdown } from "@/components/Markdown";
 import { DailyPnLCalendar } from "@/components/DailyPnLCalendar";
 
@@ -133,10 +134,6 @@ export function TeamLiveSection() {
           LIVE
         </span>
         <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">لایو معاملات ربات الگو اسمارت</h2>
-        <p className="mt-3 text-white/65">
-          معاملات زندهٔ ربات الگو اسمارت را همین‌جا دنبال کن — داشبورد ترکیبی، لیست ژورنال و تحلیل هوش مصنوعی،
-          همه به‌صورت زنده. سرمایهٔ اولیهٔ محاسبه‌شده برای هر حساب ۱۰۰۰ دلار است.
-        </p>
       </motion.div>
 
       <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">
@@ -221,28 +218,25 @@ function DashboardPanel({ summary }: { summary: TeamSummary }) {
     { name: "سربه‌سر", value: wl.breakeven, rgb: T.sky },
   ].filter((d) => d.value > 0);
 
+  const base = summary.totalInitialCapital || 1000;
+  const growth = data.currentBalance - base;
+  const growthPct = base > 0 ? (growth / base) * 100 : 0;
+  const monthly = buildMonthlyData(data.pnlByDay);
+  const weekly = buildWeeklyData(data.pnlByDay);
+  const curMonth = monthly.length ? monthly[monthly.length - 1] : null;
+  const curWeek = weekly.length ? weekly[weekly.length - 1] : null;
+
   return (
     <div className="space-y-5">
-      {/* Initial capital banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-3.5" style={glassTint(T.accent)}>
-        <div className="flex items-center gap-2 text-sm text-white/80">
-          <span className="h-2 w-2 rounded-full" style={{ background: `rgb(${T.accent})` }} />
-          سرمایهٔ اولیه: هر حساب <b className="text-white">۱۰۰۰ دلار</b>
-          {summary.count > 1 && <span className="text-white/60">(مجموع {faNum(summary.count)} حساب: {formatUsd(summary.totalInitialCapital, 0)})</span>}
-        </div>
-        <div className="text-sm" dir="ltr">
-          <span className="text-white/60">سرمایهٔ فعلی ترکیبی: </span>
-          <b style={{ color: `rgb(${data.currentBalance >= summary.totalInitialCapital ? T.green : T.red})` }}>{formatUsd(data.currentBalance, 2)}</b>
-        </div>
-      </div>
+      {/* Combined capital / growth box */}
+      <CapitalBox base={base} current={data.currentBalance} growth={growth} growthPct={growthPct} weekPnl={curWeek?.pnl ?? null} monthPnl={curMonth?.pnl ?? null} />
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi label="تعداد معاملات" value={faNum(data.tradeCount)} sub={`${faNum(data.closedCount)} بسته‌شده`} rgb={T.sky} />
         <Kpi label="ضریب سود (PF)" value={formatRatio(data.profitFactor)} rgb={T.violet} />
         <Kpi label="میانگین R:R" value={formatRatio(data.avgRr)} rgb={T.mint} />
         <Kpi label="وین‌ریت" value={formatPct((data.winRate ?? 0) * 100)} rgb={T.amber} />
-        <Kpi label="سرمایهٔ اولیه" value={formatUsd(summary.totalInitialCapital, 0)} sub={`${faNum(summary.count)} حساب × ۱۰۰۰$`} rgb={T.accent} ltr />
       </div>
 
       {/* Equity curve */}
@@ -317,6 +311,63 @@ function DashboardPanel({ summary }: { summary: TeamSummary }) {
   );
 }
 
+function CapitalBox({
+  base, current, growth, growthPct, weekPnl, monthPnl,
+}: {
+  base: number; current: number; growth: number; growthPct: number; weekPnl: number | null; monthPnl: number | null;
+}) {
+  const up = growth >= 0;
+  const mainRgb = up ? T.green : T.red;
+  return (
+    <div className="relative overflow-hidden rounded-3xl p-6" style={glassTint(T.accent)}>
+      <div className="pointer-events-none absolute -left-10 -top-10 h-40 w-40 rounded-full opacity-40 blur-3xl" style={{ background: `rgba(${mainRgb},0.4)` }} />
+      <div className="relative flex flex-wrap items-start justify-between gap-5">
+        {/* Growth headline */}
+        <div>
+          <div className="text-xs font-medium text-white/60">سرمایهٔ فعلی (رشد نسبت به ۱۰۰۰ دلار)</div>
+          <div className="mt-1 flex items-baseline gap-2" dir="ltr">
+            <span className="text-4xl font-black tracking-tight" style={{ color: `rgb(${mainRgb})` }}>{formatUsd(current, 2)}</span>
+            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold" style={{ background: `rgba(${mainRgb},0.16)`, color: `rgb(${mainRgb})` }}>
+              {up ? "+" : ""}{growthPct.toFixed(2)}%
+            </span>
+          </div>
+          <div className="mt-1.5 text-sm text-white/70" dir="ltr">
+            سرمایه اولیه: <b className="text-white">$1000</b>
+            <span className="mx-2 text-white/30">|</span>
+            <span style={{ color: `rgb(${mainRgb})` }}>{up ? "+" : ""}{formatUsd(growth, 2)} رشد</span>
+          </div>
+        </div>
+
+        {/* Weekly / monthly PnL */}
+        <div className="flex gap-3">
+          <PnlChip label="PnL هفتگی" pnl={weekPnl} base={base} />
+          <PnlChip label="PnL ماهانه (شمسی)" pnl={monthPnl} base={base} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PnlChip({ label, pnl, base }: { label: string; pnl: number | null; base: number }) {
+  const has = pnl != null;
+  const up = (pnl ?? 0) >= 0;
+  const rgb = up ? T.green : T.red;
+  const pct = has && base > 0 ? (pnl! / base) * 100 : 0;
+  return (
+    <div className="min-w-[130px] rounded-2xl px-4 py-3 text-center" style={{ background: `rgba(${has ? rgb : "148,163,184"},0.1)`, border: `1px solid rgba(${has ? rgb : "148,163,184"},0.24)` }}>
+      <div className="text-[11px] font-medium text-white/60">{label}</div>
+      {has ? (
+        <>
+          <div className="mt-1 text-lg font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">{up ? "+" : ""}{pnl!.toFixed(2)} <span className="text-xs font-medium">USDT</span></div>
+          <div className="text-xs font-semibold" style={{ color: `rgb(${rgb})` }} dir="ltr">({up ? "+" : ""}{pct.toFixed(2)}%)</div>
+        </>
+      ) : (
+        <div className="mt-1 text-sm text-white/50">—</div>
+      )}
+    </div>
+  );
+}
+
 function Kpi({ label, value, sub, rgb, ltr }: { label: string; value: string; sub?: string; rgb: string; ltr?: boolean }) {
   return (
     <div className="relative overflow-hidden rounded-2xl p-4" style={glassTint(rgb)}>
@@ -366,10 +417,13 @@ function pnlOf(t: Trade): number | null {
   return t.calc?.realizedPnl ?? t.realizedPnl ?? null;
 }
 
+const PAGE_SIZE = 10;
+
 function JournalPanel() {
   const [rows, setRows] = useState<Trade[] | null>(null);
   const [error, setError] = useState(false);
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     publicApi.teamTrades().then(setRows).catch(() => setError(true));
@@ -379,6 +433,13 @@ function JournalPanel() {
     if (!rows) return [];
     return rows.filter((t) => statusFilter === "ALL" || t.status === statusFilter);
   }, [rows, statusFilter]);
+
+  // Reset to the first page whenever the filter changes.
+  useEffect(() => { setPage(1); }, [statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   if (error) return <PanelEmpty text="بارگذاری ژورنال‌ها ممکن نشد." />;
   if (!rows) return <PanelSpinner />;
@@ -413,7 +474,7 @@ function JournalPanel() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((t) => {
+            {pageRows.map((t) => {
               const pnl = pnlOf(t);
               return (
                 <tr key={t.id} className={`border-b border-white/5 transition-colors ${t.source === "toobit" ? "bg-sky-400/10" : "hover:bg-white/5"}`}>
@@ -439,6 +500,28 @@ function JournalPanel() {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ ...glass(), color: "rgba(255,255,255,0.85)" }}
+          >
+            قبلی
+          </button>
+          <span className="px-2 text-sm text-white/70">صفحهٔ {faNum(safePage)} از {faNum(totalPages)}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ ...glass(), color: "rgba(255,255,255,0.85)" }}
+          >
+            بعدی
+          </button>
+        </div>
+      )}
     </div>
   );
 }
