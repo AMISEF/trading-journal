@@ -87,13 +87,17 @@ function ManageableMultiSelect({
     setEditIdx(null);
   };
 
+  // Read-only viewers just show the trade's saved selections (the localStorage
+  // catalog isn't available for a public trade), so custom values still appear.
+  const list = readOnly ? selected : options;
+
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {options.length === 0 && (
-          <span className="text-sm text-muted">موردی تعریف نشده است.</span>
+        {list.length === 0 && (
+          <span className="text-sm text-muted">موردی ثبت نشده است.</span>
         )}
-        {options.map((opt, i) => {
+        {list.map((opt, i) => {
           const on = selected.includes(opt);
           if (editIdx === i) {
             return (
@@ -154,10 +158,15 @@ export function EmotionsTab({ readOnly = false }: { readOnly?: boolean }) {
   const user = useAuth((s) => s.user);
   const [sub, setSub] = useState<"before" | "after">("before");
 
-  if (!trade || !user) return null;
+  if (!trade) return null;
+  // A public read-only viewer has no logged-in user. In that mode the manageable
+  // option lists only display the trade's saved values, so a placeholder key is
+  // fine (the localStorage catalog is never surfaced).
+  if (!user && !readOnly) return null;
 
-  const mKey = motivationKey(user.id);
-  const msKey = mistakesKey(user.id);
+  const uid = user?.id ?? "public";
+  const mKey = motivationKey(uid);
+  const msKey = mistakesKey(uid);
 
   const e = (trade.emotions || {}) as Record<string, any>;
   const setE = (key: string, val: unknown) => {

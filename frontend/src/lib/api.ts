@@ -319,6 +319,8 @@ export interface TeamAIData {
 
 export const publicApi = {
   teamSummary: () => http.get<TeamSummary>("/public/team/summary").then((r) => r.data),
+  teamChecklists: (userId: string) =>
+    http.get<ChecklistTemplate[]>(`/public/checklists/${userId}`).then((r) => r.data),
   teamDashboard: () => http.get<DashboardData>("/public/team/dashboard").then((r) => r.data),
   teamTrades: () => http.get<Trade[]>("/public/team/trades").then((r) => r.data),
   teamAi: () => http.get<TeamAIData>("/public/team/ai").then((r) => r.data),

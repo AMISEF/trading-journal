@@ -32,7 +32,7 @@ import {
   type TeamAIData,
   type TeamSummary,
 } from "@/lib/api";
-import type { DashboardData, Trade } from "@/lib/types";
+import type { ChecklistTemplate, DashboardData, Trade } from "@/lib/types";
 import { faNum, formatPct, formatRatio, formatSignedUsd, formatUsd, pnlColorClass } from "@/lib/format";
 import { formatJalaliDate, formatJalaliDateTime, getJalaliParts, toPersianDigits } from "@/lib/jalali";
 import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
@@ -617,11 +617,18 @@ function JournalPanel({ onUpdated }: { onUpdated?: () => void }) {
 function PublicTradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => void }) {
   const setTrade = useTrade((s) => s.setTrade);
   const reset = useTrade((s) => s.reset);
+  // Empty array (not undefined) keeps ChecklistTab from calling the authed
+  // endpoint; the fetched owner templates let it render the ticked items.
+  const [checklists, setChecklists] = useState<ChecklistTemplate[]>([]);
 
   useEffect(() => {
     setTrade(trade);
     return () => reset();
   }, [trade, setTrade, reset]);
+
+  useEffect(() => {
+    publicApi.teamChecklists(trade.userId).then(setChecklists).catch(() => setChecklists([]));
+  }, [trade.userId]);
 
   const pnl = pnlOf(trade);
 
@@ -648,7 +655,7 @@ function PublicTradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () 
             بستن ✕
           </button>
         </div>
-        <TradeTabs readOnly checklistTemplates={[]} />
+        <TradeTabs readOnly checklistTemplates={checklists} />
       </div>
     </div>
   );
