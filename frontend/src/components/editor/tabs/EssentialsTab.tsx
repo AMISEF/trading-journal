@@ -176,7 +176,7 @@ export function EssentialsTab({ readOnly = false }: { readOnly?: boolean }) {
   // recording time) so it never changes as the wallet balance moves. New trades
   // without a snapshot fall back to the current wallet balance.
   const balance = trade?.balanceSnapshot ?? user?.currentBalance ?? 1000;
-  const calc = useCalcPreview(trade, balance);
+  const calc = useCalcPreview(trade, balance, readOnly);
 
   if (!trade) return null;
 

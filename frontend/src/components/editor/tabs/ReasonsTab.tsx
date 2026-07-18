@@ -20,9 +20,12 @@ export function ReasonsTab({ readOnly = false }: { readOnly?: boolean }) {
   const [exitOpts, setExitOpts] = useState<ReasonTemplate[]>([]);
 
   useEffect(() => {
+    // Read-only viewers (public showcase) render the trade's saved reasons only —
+    // never hit the authed reasons endpoints.
+    if (readOnly) return;
     reasonsApi.list("entry").then(setEntryOpts).catch(() => {});
     reasonsApi.list("exit").then(setExitOpts).catch(() => {});
-  }, []);
+  }, [readOnly]);
 
   if (!trade) return null;
 

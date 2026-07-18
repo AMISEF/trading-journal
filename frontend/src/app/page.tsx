@@ -383,8 +383,8 @@ function MarketingLanding() {
         </div>
       </section>
 
-      {/* ── برایند معاملات ربات الگو اسمارت ── */}
-      <TeamLiveSection />
+      {/* ── برایند معاملات ربات الگو اسمارت (بدون تب تحلیل هوش مصنوعی) ── */}
+      <TeamLiveSection showAiTab={false} />
 
       {/* ── Features ── */}
       <section id="features" className="relative mx-auto max-w-7xl scroll-mt-24 px-5 py-16 md:px-8 md:py-24">

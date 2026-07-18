@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useTrade } from "@/store/trade";
 import { useAuth } from "@/store/auth";
+import { tradesApi } from "@/lib/api";
 import { Field } from "../fields";
 
 const TAG_COLORS = [
@@ -58,8 +59,32 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
   const [draft, setDraft] = useState("");
   const [colorIdx, setColorIdx] = useState(0);
 
+  // Build the reusable tag list from BOTH the saved catalog and every tag the
+  // user has ever put on any of their trades, so a tag added once always stays
+  // available for selection later (self-healing even if localStorage was lost).
   useEffect(() => {
-    if (user && !readOnly) setGlobalTags(loadGlobalTags(user.id));
+    if (!user || readOnly) return;
+    const stored = loadGlobalTags(user.id);
+    setGlobalTags(stored);
+    tradesApi
+      .list()
+      .then((all) => {
+        const seen = new Set(stored.map((g) => g.name));
+        const merged = [...stored];
+        for (const tr of all) {
+          for (const name of tr.tags ?? []) {
+            if (name && !seen.has(name)) {
+              seen.add(name);
+              merged.push({ name, colorIdx: colorIdxFor(name) });
+            }
+          }
+        }
+        if (merged.length !== stored.length) {
+          saveGlobalTags(user.id, merged);
+          setGlobalTags(merged);
+        }
+      })
+      .catch(() => {});
   }, [user?.id, readOnly]);
 
   if (!trade) return null;

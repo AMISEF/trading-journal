@@ -75,6 +75,7 @@ http.interceptors.response.use(
     if (
       error?.response?.status === 401 &&
       typeof window !== "undefined" &&
+      getToken() && // only bounce a logged-in user; public pages calling authed endpoints stay put
       !window.location.pathname.startsWith(LOGIN_PATH)
     ) {
       setToken(null);

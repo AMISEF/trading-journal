@@ -10,7 +10,7 @@ import { calcApi } from "@/lib/api";
 import { useDebounced } from "@/lib/hooks";
 import type { Calc, Trade } from "@/lib/types";
 
-export function useCalcPreview(trade: Trade | null, walletBalance: number) {
+export function useCalcPreview(trade: Trade | null, walletBalance: number, skip = false) {
   const [calc, setCalc] = useState<Calc | null>(trade?.calc ?? null);
 
   // Count entry levels that are active (level 1 always + levels 2+ unless deactivated).
@@ -38,6 +38,12 @@ export function useCalcPreview(trade: Trade | null, walletBalance: number) {
   const debouncedSig = useDebounced(sig, 500);
 
   useEffect(() => {
+    // Read-only viewers (e.g. the public showcase) must never hit the authed
+    // /calc/preview endpoint — just show the server-computed calc on the trade.
+    if (skip) {
+      setCalc(trade?.calc ?? null);
+      return;
+    }
     if (!trade) return;
     if (trade.entryPrice == null || trade.leverage == null || trade.marginPercent == null) {
       return;
@@ -64,7 +70,7 @@ export function useCalcPreview(trade: Trade | null, walletBalance: number) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSig]);
+  }, [debouncedSig, skip]);
 
   return calc;
 }
