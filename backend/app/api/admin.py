@@ -73,7 +73,7 @@ class AdminSetGroup(CamelModel):
 
 
 class AdminSetPlan(CamelModel):
-    plan: str  # bronze | silver | gold | diamond
+    plan: str  # bronze | silver | gold
     # Convenience: set duration in months from *now* instead of an exact date.
     # 0/None = no expiry (until manually changed). Ignored for bronze.
     duration_months: float | None = None

@@ -65,7 +65,6 @@ const plans = [
       "ثبت تا ۱۰۰ معامله با تمام جزئیات",
       "تحلیل هوش مصنوعی روی تک‌تک معاملات",
       "مربی هوش مصنوعی، هفته‌ای ۱ بار",
-      "همه‌ی امکانات پلن برنزی",
     ],
   },
   {
@@ -73,7 +72,7 @@ const plans = [
     name: "طلایی",
     tint: "251,191,36", // amber
     description: "انتخاب اکثر تریدرهای فعال — تحلیل روزانه، بدون سقف معامله",
-    monthlyPrice: 790000,
+    monthlyPrice: 999000,
     buttonText: "ارتقا به طلایی",
     popular: true,
     includes: [
@@ -81,23 +80,6 @@ const plans = [
       "تحلیل هوش مصنوعی روی تک‌تک معاملات",
       "مربی هوش مصنوعی، هر روز ۱ بار",
       "گزارش و تحلیل نهادی (Institutional) ژورنال، هفته‌ای ۱ بار",
-      "همه‌ی امکانات پلن نقره‌ای",
-    ],
-  },
-  {
-    tier: "diamond",
-    name: "الماسی",
-    tint: "34,211,238", // cyan
-    description: "بدون هیچ سقفی — دسترسی کامل + ربات الگو آنالایزر هدیه",
-    monthlyPrice: 2690000,
-    buttonText: "ارتقا به الماسی",
-    popular: false,
-    includes: [
-      "ثبت نامحدود معامله",
-      "مربی هوش مصنوعی نامحدود",
-      "گزارش و تحلیل نهادی ژورنال، روزانه ۱ بار",
-      "۱ ماه اشتراک نامحدود ربات الگو آنالایزر، هدیه‌ی ویژه‌ی پلن الماسی",
-      "همه‌ی امکانات پلن طلایی",
     ],
   },
 ] as const;
@@ -106,13 +88,11 @@ const TIER_LABEL: Record<string, string> = {
   bronze: "برنزی",
   silver: "نقره‌ای",
   gold: "طلایی",
-  diamond: "الماسی",
 };
 const TIER_TINT: Record<string, string> = {
   bronze: "251,146,60",
   silver: "148,163,184",
   gold: "251,191,36",
-  diamond: "34,211,238",
 };
 
 // ── Billing-period switch ─────────────────────────────────────────────────────
@@ -368,7 +348,7 @@ function SubscriptionInner() {
         }}
       />
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 max-w-[1200px] gap-6 py-12 mx-auto px-4 sm:px-6 relative z-10">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 max-w-[1000px] gap-6 py-12 mx-auto px-4 sm:px-6 relative z-10">
         {plans.map((plan, index) => {
           const isFree = plan.monthlyPrice === 0;
           const full = round1000(fullPrice(plan.monthlyPrice, period));

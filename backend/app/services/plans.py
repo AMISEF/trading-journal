@@ -18,9 +18,9 @@ from fastapi import HTTPException
 
 from app.models.user import User
 
-PLAN_ORDER = ["bronze", "silver", "gold", "diamond"]
+PLAN_ORDER = ["bronze", "silver", "gold"]
 
-PLAN_LABELS = {"bronze": "برنزی (رایگان)", "silver": "نقره‌ای", "gold": "طلایی", "diamond": "الماسی"}
+PLAN_LABELS = {"bronze": "برنزی (رایگان)", "silver": "نقره‌ای", "gold": "طلایی"}
 
 PLAN_LIMITS: dict[str, dict] = {
     # ثبت ۵۰ معامله با تمام جزئیات. بدون تحلیل هوش مصنوعی.
@@ -50,21 +50,15 @@ PLAN_LIMITS: dict[str, dict] = {
         "report_enabled": True,
         "report_period_days": 7,
     },
-    # ثبت نامحدود، مربی نامحدود، گزارش نهادی روزانه ۱ بار.
-    "diamond": {
-        "max_trades": None,
-        "trade_analysis": True,
-        "coach_enabled": True,
-        "coach_period_days": None,
-        "report_enabled": True,
-        "report_period_days": 1,
-    },
 }
 
 
 def effective_plan(user: User) -> str:
     """The tier actually in effect right now (falls back to bronze if expired)."""
     tier = (user.subscription_tier or "bronze").lower()
+    # The diamond tier was retired; anyone still on it keeps top-tier (gold) access.
+    if tier == "diamond":
+        tier = "gold"
     if tier not in PLAN_LIMITS:
         tier = "bronze"
     if tier != "bronze" and user.subscription_expires_at is not None:

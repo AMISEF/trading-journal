@@ -116,21 +116,12 @@ const PLANS = [
   },
   {
     name: "طلایی",
-    price: "۷۹۰٬۰۰۰",
+    price: "۹۹۹٬۰۰۰",
     unit: "تومان / ماه",
     tint: C.accentLight,
     popular: true,
     cta: "انتخاب طلایی",
     features: ["ثبت نامحدود معامله", "مربی هوش مصنوعی روزانه", "گزارش نهادی هفتگی"],
-  },
-  {
-    name: "الماسی",
-    price: "۲٬۶۹۰٬۰۰۰",
-    unit: "تومان / ماه",
-    tint: C.accent,
-    popular: false,
-    cta: "انتخاب الماسی",
-    features: ["همه‌چیز نامحدود", "گزارش نهادی روزانه", "۱ ماه ربات الگو آنالایزر هدیه"],
   },
 ];
 
@@ -444,7 +435,7 @@ function MarketingLanding() {
           title="سطح مناسب خودت را انتخاب کن"
           subtitle="از پلن رایگان همیشگی تا دسترسی کامل و گزارش نهادی روزانه."
         />
-        <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {PLANS.map((p, i) => (
             <motion.div
               key={p.name}

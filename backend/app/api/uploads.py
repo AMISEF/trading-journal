@@ -18,8 +18,8 @@ _ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 # Cap upload size so a single request can't exhaust server memory (the file is
-# read fully into RAM before writing). 8 MB is generous for a chart screenshot.
-_MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+# read fully into RAM before writing). 3 MB per image.
+_MAX_UPLOAD_BYTES = 3 * 1024 * 1024
 
 
 @router.post("/")
@@ -37,7 +37,7 @@ async def upload_image(
 
     contents = await file.read()
     if len(contents) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="حجم تصویر بیش از حد مجاز است (حداکثر ۸ مگابایت).")
+        raise HTTPException(status_code=413, detail="حجم تصویر بیش از حد مجاز است (حداکثر ۳ مگابایت).")
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     name = f"{uuid.uuid4().hex}{ext}"
