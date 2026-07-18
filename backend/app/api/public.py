@@ -183,6 +183,9 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
         for t in closed:
             pnl, rr = _pnl_of(t, base_balance)
             closed_pairs.append((t, pnl))
+            # Toobit trades carry a margin-based achieved-R computed at import.
+            if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
+                rr = t.rr_achieved
             if rr is not None:
                 rr_values.append(rr)
             ticks = t.checklist_ticks or {}

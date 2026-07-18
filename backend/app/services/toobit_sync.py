@@ -303,6 +303,16 @@ async def _upsert_trade(
         trade.balance_snapshot = margin
         trade.margin_percent = 100.0
 
+    # Achieved R for imported trades. Toobit doesn't expose the bot's intended
+    # stop (there's no reliable per-trade SL for a winner), so we express the
+    # realised PnL as a multiple of the committed margin — a consistent, always
+    # defined risk unit. Only meaningful once the position has closed.
+    realized = fields.get("realized_pnl")
+    if fields["status"] == "CLOSED" and margin and margin > 0 and realized is not None:
+        trade.rr_achieved = round(realized / margin, 4)
+    else:
+        trade.rr_achieved = None
+
     # Rebuild the take-profit ladder from the reconstructed partial closes.
     trade.take_profits.clear()
     await db.flush()

@@ -449,6 +449,8 @@ async def user_dashboard(
         )
         pnl = result["realizedPnl"]
         rr = result.get("rrAchieved")
+        if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
+            rr = t.rr_achieved
         if rr is not None:
             rr_values.append(rr)
         balance += pnl
