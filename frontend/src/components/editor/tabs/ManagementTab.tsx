@@ -36,7 +36,7 @@ export function ManagementTab({ readOnly = false }: { readOnly?: boolean }) {
   // admin's balance to leak in, so we use trade.calc which the backend already
   // computed from the owner's snapshot.
   const previewBalance = trade?.balanceSnapshot ?? user?.currentBalance ?? 1000;
-  const liveCalc = useCalcPreview(trade, readOnly ? 0 : previewBalance);
+  const liveCalc = useCalcPreview(trade, readOnly ? 0 : previewBalance, readOnly);
   const calc = readOnly ? (trade?.calc ?? null) : liveCalc;
 
   if (!trade) return null;
