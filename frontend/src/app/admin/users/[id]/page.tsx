@@ -240,13 +240,12 @@ function Inner() {
           {user && (
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                user.subscriptionTier === "diamond" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
-                : user.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                user.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                 : user.subscriptionTier === "silver" ? "bg-slate-200 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
                 : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
               }`}
             >
-              {{ bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[user.subscriptionTier] ?? user.subscriptionTier}
+              {{ bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی" }[user.subscriptionTier] ?? user.subscriptionTier}
             </span>
           )}
           {user?.subscriptionExpiresAt && (
@@ -269,7 +268,7 @@ function Inner() {
             <option value={12}>۱۲</option>
           </select>
 
-          {(["bronze", "silver", "gold", "diamond"] as const).map((p) => (
+          {(["bronze", "silver", "gold"] as const).map((p) => (
             <button
               key={p}
               type="button"
@@ -277,7 +276,7 @@ function Inner() {
               onClick={() => handleSetPlan(p)}
               className="rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary-soft disabled:opacity-40"
             >
-              {planBusy ? "…" : { bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[p]}
+              {planBusy ? "…" : { bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی" }[p]}
             </button>
           ))}
         </div>

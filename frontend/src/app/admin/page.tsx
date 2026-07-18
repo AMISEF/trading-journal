@@ -35,7 +35,6 @@ const PLAN_META: Record<string, { label: string; tint: string }> = {
   bronze: { label: "برنزی", tint: "251,146,60" },
   silver: { label: "نقره‌ای", tint: "148,163,184" },
   gold: { label: "طلایی", tint: "251,191,36" },
-  diamond: { label: "الماسی", tint: "34,211,238" },
 };
 
 function AdminUsers() {
@@ -104,13 +103,12 @@ function AdminUsers() {
                 <td className="p-3">
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      u.subscriptionTier === "diamond" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
-                      : u.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                      u.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                       : u.subscriptionTier === "silver" ? "bg-slate-200 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
                       : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                     }`}
                   >
-                    {{ bronze: "برنزی", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[u.subscriptionTier] ?? u.subscriptionTier}
+                    {{ bronze: "برنزی", silver: "نقره‌ای", gold: "طلایی" }[u.subscriptionTier] ?? u.subscriptionTier}
                   </span>
                 </td>
                 <td className="p-3" dir="ltr">{formatUsd(u.currentBalance)}</td>
@@ -453,7 +451,7 @@ function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void
 }
 
 /* ─── Set subscription plan modal ─────────────────────────────────────────── */
-const PLAN_ORDER = ["bronze", "silver", "gold", "diamond"] as const;
+const PLAN_ORDER = ["bronze", "silver", "gold"] as const;
 const DURATIONS: { months: number | null; label: string }[] = [
   { months: 1, label: "۱ ماهه" },
   { months: 3, label: "۳ ماهه" },

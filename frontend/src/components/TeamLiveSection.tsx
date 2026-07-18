@@ -166,20 +166,6 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
           LIVE
         </span>
         <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">برایند معاملات ربات الگو اسمارت</h2>
-        <p className="mt-2 text-xs text-white/45">
-          به‌روزرسانی خودکار هر {faNum(LIVE_POLL_MS / 1000)} ثانیه
-          {lastUpdated && (
-            <>
-              {" · "}
-              آخرین به‌روزرسانی:{" "}
-              <span dir="ltr" className="tabular-nums text-white/60">
-                {toPersianDigits(
-                  lastUpdated.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-                )}
-              </span>
-            </>
-          )}
-        </p>
       </motion.div>
 
       <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">

@@ -62,6 +62,9 @@ class User(Base):
     # (positions / fills) when auto-importing the user's futures trades.
     toobit_api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     toobit_secret_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # When the user (re)saved their Toobit key. Only positions opened at/after this
+    # time are imported — historical trades from before connecting are ignored.
+    toobit_key_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Cursor for the incremental futures sync: last fill/trade time already imported.
     toobit_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Last sync error (surfaced in settings so the user can fix bad/expired keys).

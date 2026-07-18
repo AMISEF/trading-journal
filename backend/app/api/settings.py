@@ -38,10 +38,19 @@ async def save_toobit_api_key(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
-    """Store (encrypted) the user's Toobit Access API Key and Secret Key."""
+    """Store (encrypted) the user's Toobit Access API Key and Secret Key.
+
+    Records the registration time so the importer only brings in trades opened
+    from now on — anything the user did before connecting is left out.
+    """
+    first_time = not user.toobit_api_key_enc
     user.toobit_api_key_enc = crypto.encrypt(body.access_api_key)
     if body.secret_api_key:
         user.toobit_secret_key_enc = crypto.encrypt(body.secret_api_key)
+    # Set/refresh the "only import from here on" floor when the key is first added
+    # (or re-added after removal).
+    if first_time or user.toobit_key_at is None:
+        user.toobit_key_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(user)
     return await _user_out(db, user)
@@ -55,6 +64,7 @@ async def delete_toobit_api_key(
     """Remove the stored Toobit API credentials."""
     user.toobit_api_key_enc = None
     user.toobit_secret_key_enc = None
+    user.toobit_key_at = None
     await db.commit()
     await db.refresh(user)
     return await _user_out(db, user)
