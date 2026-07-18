@@ -32,9 +32,11 @@ from app.api.serializers import trade_to_out
 from app.core.deps import get_current_admin, get_db
 from app.db.session import AsyncSessionLocal
 from app.models.team_ai import TeamAI
+from app.models.template import ChecklistTemplate
 from app.models.trade import Trade
 from app.models.user import User
 from app.schemas.base import CamelModel
+from app.schemas.template import ChecklistOut
 from app.schemas.trade import TradeOut
 from app.services import ai_analysis, calc as calc_engine, tabdeal
 from app.services.balances import _txn_sum
@@ -139,6 +141,21 @@ async def team_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
         initial_capital=INITIAL_CAPITAL,
         total_initial_capital=INITIAL_CAPITAL,
     )
+
+
+# ── a team member's checklist templates (for the read-only detail view) ──────
+@router.get("/checklists/{user_id}", response_model=list[ChecklistOut])
+async def team_user_checklists(
+    user_id: int, db: AsyncSession = Depends(get_db)
+) -> list[ChecklistOut]:
+    # Only expose checklists that belong to a team (bot) account.
+    u = await db.get(User, user_id)
+    if u is None or u.user_group != TEAM_GROUP:
+        return []
+    result = await db.execute(
+        select(ChecklistTemplate).where(ChecklistTemplate.user_id == user_id)
+    )
+    return [ChecklistOut.model_validate(c) for c in result.scalars().all()]
 
 
 # ── combined journal list (anonymous) ────────────────────────────────────────
