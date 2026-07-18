@@ -46,6 +46,11 @@ def trade_to_out(
     transactions: list[WalletTransaction] | None = None,
 ) -> TradeOut:
     calc = balances.compute_for_trade(user, all_trades, trade, transactions)
+    # Imported Toobit trades carry a margin-based achieved-R computed at import
+    # time (no exchange-provided stop to derive it from) — surface it so the
+    # journal/dashboard show a value instead of a dash.
+    if (trade.source or "manual") == "toobit" and trade.rr_achieved is not None:
+        calc["rrAchieved"] = trade.rr_achieved
     return TradeOut(
         id=trade.id,
         user_id=trade.user_id,

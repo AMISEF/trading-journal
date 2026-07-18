@@ -131,6 +131,9 @@ async def dashboard(
         )
         pnl = result["realizedPnl"]
         rr = result.get("rrAchieved")
+        # Toobit trades carry their own margin-based achieved-R (no exchange stop).
+        if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
+            rr = t.rr_achieved
         if rr is not None:
             rr_values.append(rr)
         balance += pnl
