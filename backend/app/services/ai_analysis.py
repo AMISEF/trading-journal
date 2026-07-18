@@ -348,6 +348,11 @@ def build_trade_summary(
     return "\n".join(lines)
 
 
+# Cap how many recent closed trades feed the coach / institutional summaries.
+# Older trades are dropped entirely so the AI token spend stays bounded.
+AI_SUMMARY_MAX_TRADES = 50
+
+
 def build_overall_summary(
     user: User,
     trades: list[Trade],
@@ -358,6 +363,8 @@ def build_overall_summary(
         if t.status == "CLOSED" and not getattr(t, "is_locked", False)
     ]
     closed.sort(key=lambda t: t.number)
+    # Only feed the most recent trades to the model (bounds token usage).
+    closed = closed[-AI_SUMMARY_MAX_TRADES:]
 
     pnls: list[float] = []
     rrs: list[float] = []
@@ -621,6 +628,8 @@ def build_institutional_summary(
         if t.status == "CLOSED" and not getattr(t, "is_locked", False)
     ]
     closed.sort(key=lambda t: t.number)
+    # Only feed the most recent trades to the model (bounds token usage).
+    closed = closed[-AI_SUMMARY_MAX_TRADES:]
 
     start_equity = user.wallet_margin or 0.0
     equity = start_equity
