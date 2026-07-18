@@ -24,8 +24,11 @@ jobs:
             echo "▶ Moving to project directory..."
             cd /var/www/trading-journal
 
-            echo "▶ Pulling latest..."
-            git pull origin main
+            echo "▶ Syncing to origin/main (hard reset so stray on-server edits never block the deploy)..."
+            git fetch origin main
+            git reset --hard origin/main
+            # NOTE: only tracked files are reset — untracked files like backend/.env
+            # and the uploads/ folder are left untouched (no git clean here).
             echo "▶ Last commit:"
             git log -1 --oneline
 
