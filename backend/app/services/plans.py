@@ -133,6 +133,19 @@ def assert_can_generate_coach(user: User) -> None:
     )
 
 
+def can_use_toobit(user: User) -> bool:
+    """Toobit exchange connection is a gold-only feature."""
+    return effective_plan(user) == "gold"
+
+
+def assert_can_use_toobit(user: User) -> None:
+    if not can_use_toobit(user):
+        raise HTTPException(
+            status_code=403,
+            detail="اتصال پنل به صرافی توبیت فقط برای پلن طلایی فعال است. برای استفاده، اشتراکت رو به طلایی ارتقا بده.",
+        )
+
+
 def assert_can_generate_report(user: User) -> None:
     lim = limits_for(user)
     _assert_cooldown(
