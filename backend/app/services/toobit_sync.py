@@ -461,10 +461,16 @@ async def sync_all_users(session_factory) -> None:
                                User.toobit_secret_key_enc.is_not(None))
         )
         users = list(res.scalars().all())
+    from app.services import plans
+
     for user in users:
         async with session_factory() as db:
             fresh = await db.get(User, user.id)
             if fresh is None:
+                continue
+            # Toobit sync is a gold-only feature — skip users who aren't on gold
+            # (e.g. downgraded/expired) so their import quietly stops.
+            if not plans.can_use_toobit(fresh):
                 continue
             try:
                 await sync_user(db, fresh)

@@ -16,7 +16,7 @@ import { useAuth } from "@/store/auth";
 type TabKey = "toobit" | "password";
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "toobit", label: "مدیریت API توبیت" },
+  { key: "toobit", label: "اتصال به صرافی توبیت" },
   { key: "password", label: "تغییر رمز ورود" },
 ];
 
@@ -77,12 +77,17 @@ function ToobitTab() {
   const [error, setError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
-  const [debug, setDebug] = useState<string>("");
   const [busy, setBusy] = useState("");
 
   const hasKey = !!user?.hasToobitApiKey;
   const hasSecret = !!user?.hasToobitSecretKey;
   const connected = hasKey && hasSecret;
+
+  // Toobit connection is a gold-only feature.
+  const tier = (user?.subscriptionTier ?? "bronze").toLowerCase();
+  const isGold =
+    tier === "gold" &&
+    (!user?.subscriptionExpiresAt || new Date(user.subscriptionExpiresAt) > new Date());
 
   async function syncNow() {
     setSyncMsg("");
@@ -107,22 +112,8 @@ function ToobitTab() {
       setValue("");
       setSecret("");
       setSyncMsg("کلید API حذف شد.");
-      setDebug("");
     } catch {
       setSyncMsg("حذف کلید ناموفق بود.");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function runDebug() {
-    setBusy("debug");
-    setDebug("");
-    try {
-      const res = await settingsApi.debugToobit();
-      setDebug(JSON.stringify(res, null, 2));
-    } catch (e: any) {
-      setDebug("خطا: " + (e?.response?.data?.detail || e?.message || "نامشخص"));
     } finally {
       setBusy("");
     }
@@ -153,10 +144,28 @@ function ToobitTab() {
     }
   }
 
+  if (!isGold) {
+    return (
+      <div className="tj-card space-y-4 p-5">
+        <h2 className="text-base font-bold">اتصال پنل به صرافی توبیت</h2>
+        <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-4 text-sm leading-7 text-amber-700 dark:text-amber-300">
+          <div className="mb-1 font-bold">این قابلیت مخصوصِ پلن طلایی است</div>
+          <p>
+            اتصالِ پنل به صرافیِ توبیت و ثبتِ خودکارِ معاملاتِ فیوچرز فقط برای کاربرانِ
+            پلنِ <b>طلایی</b> فعال است. برای استفاده، اشتراکِ خود را به طلایی ارتقا دهید.
+          </p>
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={() => router.push("/subscription")}>ارتقا به طلایی</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="tj-card space-y-5 p-5">
       <div>
-        <h2 className="text-base font-bold">مدیریت API توبیت</h2>
+        <h2 className="text-base font-bold">اتصال پنل به صرافی توبیت</h2>
         <p className="mt-1 text-sm text-muted">
           کلید <span dir="ltr" className="font-mono">Access API Key</span> اکانتِ
           صرافیِ توبیتِ خود را که از توبیت دریافت کرده‌اید، در کادرِ زیر وارد کنید و
@@ -223,14 +232,6 @@ function ToobitTab() {
           <div className="mt-3 flex flex-wrap gap-2 border-t border-sky-400/20 pt-3">
             <button
               type="button"
-              onClick={runDebug}
-              disabled={busy !== ""}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted transition hover:text-primary disabled:opacity-50"
-            >
-              {busy === "debug" ? "در حال بررسی…" : "تست اتصال / عیب‌یابی"}
-            </button>
-            <button
-              type="button"
               onClick={removeKey}
               disabled={busy !== ""}
               className="rounded-lg border border-loss/40 bg-loss/10 px-3 py-1.5 text-xs font-bold text-loss transition hover:bg-loss/20 disabled:opacity-50"
@@ -238,11 +239,6 @@ function ToobitTab() {
               {busy === "delete" ? "در حال حذف…" : "حذف کلید API"}
             </button>
           </div>
-          {debug && (
-            <pre dir="ltr" className="mt-3 max-h-72 overflow-auto rounded-lg bg-black/40 p-3 text-[10px] leading-relaxed text-slate-200">
-              {debug}
-            </pre>
-          )}
         </div>
       )}
 
