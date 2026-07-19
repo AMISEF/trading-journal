@@ -182,7 +182,14 @@ export interface DashboardData {
   currentBalance: number;
   equityCurve: { number: number; balance: number; pnl: number; date: string | null }[];
   pnlByDay: { date: string; pnl: number }[];
-  directionStats: { long: number; short: number };
+  directionStats: {
+    long: number;
+    short: number;
+    longWins?: number;
+    shortWins?: number;
+    longWinRate?: number | null;
+    shortWinRate?: number | null;
+  };
   sessionStats: { session: string; count: number; pnl: number }[];
   winLoss: {
     win: number;
@@ -191,9 +198,22 @@ export interface DashboardData {
     avgWin: number | null;
     avgLoss: number | null;
   };
-  topSymbols: { symbol: string; pnl: number; count: number }[];
+  topSymbols: SymbolStat[];
   checklistDiscipline: number;
   usdtIrt: number;
+  /** Extra analytics. */
+  worstSymbols?: SymbolStat[];
+  maxDrawdown?: { amount: number; percent: number } | null;
+  winStreak?: { count: number; pnl: number } | null;
+  lossStreak?: { count: number; pnl: number } | null;
+}
+
+export interface SymbolStat {
+  symbol: string;
+  pnl: number;
+  count: number;
+  wins?: number;
+  winRate?: number | null;
 }
 
 export interface AuthResponse {

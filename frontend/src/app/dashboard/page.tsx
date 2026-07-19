@@ -752,6 +752,9 @@ function DashboardInner() {
         <BalanceCard data={data} />
       </div>
 
+      {/* ── Drawdown + consecutive streaks ── */}
+      <StreaksDrawdown data={data} />
+
       {/* ── Equity curve (date-based) + MA(5) ── */}
       <div
         className="relative overflow-hidden rounded-3xl p-6"
@@ -851,6 +854,9 @@ function DashboardInner() {
         </div>
       </div>
 
+      {/* ── Equity + underwater drawdown chart ── */}
+      <EquityDrawdownChart data={data} />
+
       {/* ── Daily P&L Calendar ── */}
       <DailyPnLSection pnlByDay={data.pnlByDay} walletMargin={data.currentBalance} />
 
@@ -915,6 +921,9 @@ function DashboardInner() {
                     </div>
                     <div className="text-lg font-extrabold" style={{ color: `rgb(${TINTS.mint})` }}>{faNum(longPct)}٪</div>
                     <div className="text-xs text-muted">{faNum(data.directionStats.long)} معامله</div>
+                    <div className="mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: `rgba(${TINTS.green},0.14)`, color: `rgb(${TINTS.green})` }}>
+                      وین‌ریت {faNum(Math.round((data.directionStats.longWinRate ?? 0) * 100))}٪
+                    </div>
                   </div>
                   <div className="w-px bg-white/10" />
                   <div className="flex flex-col items-center gap-1">
@@ -924,6 +933,9 @@ function DashboardInner() {
                     </div>
                     <div className="text-lg font-extrabold" style={{ color: `rgb(${TINTS.rose})` }}>{faNum(shortPct)}٪</div>
                     <div className="text-xs text-muted">{faNum(data.directionStats.short)} معامله</div>
+                    <div className="mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: `rgba(${TINTS.green},0.14)`, color: `rgb(${TINTS.green})` }}>
+                      وین‌ریت {faNum(Math.round((data.directionStats.shortWinRate ?? 0) * 100))}٪
+                    </div>
                   </div>
                 </div>
               </>
@@ -985,51 +997,8 @@ function DashboardInner() {
           </div>
         </ChartCard>
 
-        {/* Top symbols table */}
-        <ChartCard title="برترین نمادها بر اساس سود/زیان" dot={TINTS.rose}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/5 text-center">
-                  <th className="py-2.5 pr-2 text-right text-xs font-semibold text-muted">نماد</th>
-                  <th className="py-2.5 text-xs font-semibold text-muted">تعداد</th>
-                  <th className="py-2.5 text-xs font-semibold text-muted">P&amp;L (USDT)</th>
-                  <th className="py-2.5 text-xs font-semibold text-muted">معادل تومان</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.topSymbols.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-8 text-center text-sm text-muted">داده‌ای موجود نیست</td>
-                  </tr>
-                )}
-                {data.topSymbols.map((s, i) => (
-                  <tr key={s.symbol} className="group border-b border-white/5 transition-all hover:bg-white/5">
-                    <td className="py-3 pr-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[10px] font-black"
-                          style={{
-                            background: `rgba(${s.pnl >= 0 ? TINTS.mint : TINTS.rose},0.15)`,
-                            color: `rgb(${s.pnl >= 0 ? TINTS.mint : TINTS.rose})`,
-                          }}
-                        >
-                          {i + 1}
-                        </span>
-                        <span className="font-bold" dir="ltr">{s.symbol}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 text-center text-muted">{faNum(s.count)}</td>
-                    <td className={`py-3 text-center font-semibold ${pnlColorClass(s.pnl)}`} dir="ltr">
-                      {s.pnl >= 0 ? "+" : ""}{s.pnl.toFixed(4)}
-                    </td>
-                    <td className="py-3 text-center text-xs text-muted">{formatToman(s.pnl, data.usdtIrt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </ChartCard>
+        {/* Best / worst symbols with win rate */}
+        <SymbolsCard data={data} />
       </div>
     </div>
   );
@@ -1497,5 +1466,183 @@ function Legend({ color, label, dashed, filled }: { color: string; label: string
       )}
       <span className="text-xs">{label}</span>
     </span>
+  );
+}
+
+// ─── Extra analytics: drawdown, streaks, equity/DD chart, best-worst symbols ───
+
+function StreakCell({ title, count, pnl, rgb }: { title: string; count: number; pnl: number; rgb: string }) {
+  return (
+    <div className="rounded-2xl p-3 text-center" style={{ background: `rgba(${rgb},0.1)`, border: `1px solid rgba(${rgb},0.22)` }}>
+      <div className="text-[11px] text-muted">{title}</div>
+      <div className="mt-1 text-2xl font-extrabold" style={{ color: `rgb(${rgb})` }} dir="ltr">{faNum(count)}</div>
+      <div className="text-[10px] text-muted">معاملهٔ پیاپی</div>
+      {count > 0 && (
+        <div className="mt-1 text-xs font-semibold" style={{ color: `rgb(${rgb})` }} dir="ltr">
+          برایند: {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)} USDT
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StreaksDrawdown({ data }: { data: DashboardData }) {
+  const dd = data.maxDrawdown ?? { amount: 0, percent: 0 };
+  const ws = data.winStreak ?? { count: 0, pnl: 0 };
+  const ls = data.lossStreak ?? { count: 0, pnl: 0 };
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {/* Max drawdown */}
+      <div className="relative overflow-hidden rounded-3xl p-5" style={glassTint(TINTS.red)}>
+        <div className="pointer-events-none absolute -left-10 -top-10 h-28 w-28 rounded-full opacity-60 blur-3xl" style={{ background: `rgba(${TINTS.red},0.3)` }} />
+        <div className="relative flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.red})` }} />
+          <h3 className="text-sm font-bold">حداکثر افتِ سرمایه (Drawdown)</h3>
+        </div>
+        <div className="relative mt-2 flex items-end gap-2" dir="ltr">
+          <span className="text-3xl font-extrabold tracking-tight" style={{ color: `rgb(${TINTS.red})` }}>
+            −{formatUsd(dd.amount, 2)}
+          </span>
+          <span className="mb-1 rounded-full px-2.5 py-1 text-sm font-bold" style={{ background: `rgba(${TINTS.red},0.16)`, color: `rgb(${TINTS.red})` }}>
+            {faNum(dd.percent.toFixed(2))}٪
+          </span>
+        </div>
+        <p className="relative mt-1.5 text-xs text-muted">بیشترین کاهش از سقفِ سرمایه تا کفِ بعدی</p>
+      </div>
+
+      {/* Consecutive win / loss streaks */}
+      <div className="rounded-3xl p-5" style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px) saturate(155%)", WebkitBackdropFilter: "blur(20px) saturate(155%)" }}>
+        <div className="mb-3 flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.violet})` }} />
+          <h3 className="text-sm font-bold">سری‌های متوالی</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <StreakCell title="بیشترین سودِ پیاپی" count={ws.count} pnl={ws.pnl} rgb={TINTS.green} />
+          <StreakCell title="بیشترین زیانِ پیاپی" count={ls.count} pnl={ls.pnl} rgb={TINTS.red} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EquityDrawdownChart({ data }: { data: DashboardData }) {
+  const border = "rgba(148,163,184,0.18)";
+  const muted = cssVar("--muted") || "#888";
+  const dd = data.maxDrawdown ?? { amount: 0, percent: 0 };
+  const series = useMemo(() => {
+    let peak = -Infinity;
+    return data.equityCurve.map((p) => {
+      peak = Math.max(peak, p.balance);
+      return { ...p, dd: -(peak - p.balance), dateLabel: shortDate(p.date) };
+    });
+  }, [data.equityCurve]);
+
+  if (series.length === 0) {
+    return (
+      <ChartCard title="نمودار اکوییتی (Equity) و افت سرمایه" dot={TINTS.sky}>
+        <p className="py-10 text-center text-sm text-muted">هنوز معاملهٔ بسته‌شده‌ای برای رسم نمودار نیست.</p>
+      </ChartCard>
+    );
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-3xl p-6" style={{ background: "var(--glass-bg)", backdropFilter: "blur(24px) saturate(160%)", WebkitBackdropFilter: "blur(24px) saturate(160%)", border: "1px solid var(--glass-border)", boxShadow: `0 20px 56px -24px rgba(${TINTS.sky},0.28), inset 0 1px 0 rgba(255,255,255,0.08)` }}>
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-40 blur-3xl" style={{ background: `rgba(${TINTS.sky},0.5)` }} />
+      <div className="relative mb-1 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.sky})`, boxShadow: `0 0 10px 2px rgba(${TINTS.sky},0.6)` }} />
+          <h3 className="text-sm font-bold tracking-wide">نمودار اکوییتی (Equity) و افت سرمایه</h3>
+        </div>
+        <div className="rounded-full px-3 py-1 text-xs font-bold" style={{ background: `rgba(${TINTS.red},0.14)`, color: `rgb(${TINTS.red})` }} dir="ltr">
+          Max DD −{formatUsd(dd.amount, 0)} ({dd.percent.toFixed(1)}%)
+        </div>
+      </div>
+      <p className="relative mb-4 text-xs text-muted">رشدِ سرمایه در بالا، و «زیرِ آب» بودنِ حساب (فاصله از سقف) در پایین.</p>
+
+      <div className="relative">
+        <ResponsiveContainer width="100%" height={230}>
+          <AreaChart data={series} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="eq-fill2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.45} />
+                <stop offset="60%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0.12} />
+                <stop offset="100%" stopColor={`rgb(${TINTS.sky})`} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke={border} strokeDasharray="4 4" vertical={false} />
+            <XAxis dataKey="dateLabel" stroke={muted} fontSize={11} tickLine={false} axisLine={false} minTickGap={28} tickMargin={8} />
+            <YAxis stroke={muted} fontSize={11} width={70} tickLine={false} axisLine={false} domain={["auto", "auto"]} tickFormatter={(v) => `$${Number(v).toLocaleString()}`} />
+            <Tooltip {...tooltipStyle(border)} formatter={(v: number) => [`$${v.toFixed(2)}`, "سرمایه"]} />
+            <Area type="monotone" dataKey="balance" stroke={`rgb(${TINTS.sky})`} strokeWidth={2.5} fill="url(#eq-fill2)" dot={false} animationDuration={1200} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="relative mt-2">
+        <ResponsiveContainer width="100%" height={100}>
+          <AreaChart data={series} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="dd-fill2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.06} />
+                <stop offset="100%" stopColor={`rgb(${TINTS.red})`} stopOpacity={0.45} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke={border} strokeDasharray="4 4" vertical={false} />
+            <XAxis dataKey="dateLabel" hide />
+            <YAxis stroke={muted} fontSize={10} width={70} tickLine={false} axisLine={false} domain={["auto", 0]} tickFormatter={(v) => `$${Number(v).toFixed(0)}`} />
+            <Tooltip {...tooltipStyle(border)} formatter={(v: number) => [`$${v.toFixed(2)}`, "افت از سقف"]} />
+            <Area type="monotone" dataKey="dd" stroke={`rgb(${TINTS.red})`} strokeWidth={1.5} fill="url(#dd-fill2)" dot={false} animationDuration={1200} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function SymbolsCard({ data }: { data: DashboardData }) {
+  const [mode, setMode] = useState<"top" | "worst">("top");
+  const rows = mode === "top" ? data.topSymbols : (data.worstSymbols ?? []);
+  const accent = mode === "top" ? TINTS.mint : TINTS.rose;
+  const tabStyle = (active: boolean, rgb: string): React.CSSProperties =>
+    active
+      ? { background: `linear-gradient(135deg, rgba(${rgb},0.9), rgba(${rgb},0.6))`, color: "#0a1622" }
+      : { background: "var(--glass-bg)", border: "1px solid var(--glass-border)", color: "var(--muted)" };
+  return (
+    <ChartCard title="نمادها بر اساس سود/زیان" dot={TINTS.rose}>
+      <div className="-mt-2 mb-3 flex gap-1.5">
+        <button onClick={() => setMode("top")} className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition" style={tabStyle(mode === "top", TINTS.mint)}>برترین نمادها</button>
+        <button onClick={() => setMode("worst")} className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition" style={tabStyle(mode === "worst", TINTS.rose)}>بدترین نمادها</button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/5 text-center">
+              <th className="py-2.5 pr-2 text-right text-xs font-semibold text-muted">نماد</th>
+              <th className="py-2.5 text-xs font-semibold text-muted">تعداد</th>
+              <th className="py-2.5 text-xs font-semibold text-muted">وین‌ریت</th>
+              <th className="py-2.5 text-xs font-semibold text-muted">P&amp;L (USDT)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={4} className="py-8 text-center text-sm text-muted">داده‌ای موجود نیست</td></tr>
+            )}
+            {rows.map((s, i) => (
+              <tr key={s.symbol} className="border-b border-white/5 transition-all hover:bg-white/5">
+                <td className="py-3 pr-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[10px] font-black" style={{ background: `rgba(${accent},0.15)`, color: `rgb(${accent})` }}>{faNum(i + 1)}</span>
+                    <span className="font-bold" dir="ltr">{s.symbol}</span>
+                  </div>
+                </td>
+                <td className="py-3 text-center text-muted">{faNum(s.count)}</td>
+                <td className="py-3 text-center font-semibold text-muted" dir="ltr">{s.winRate != null ? `${faNum(Math.round(s.winRate * 100))}٪` : "—"}</td>
+                <td className={`py-3 text-center font-semibold ${pnlColorClass(s.pnl)}`} dir="ltr">{s.pnl >= 0 ? "+" : ""}{s.pnl.toFixed(4)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </ChartCard>
   );
 }

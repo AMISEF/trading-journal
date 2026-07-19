@@ -23,7 +23,7 @@ from app.schemas.template import ChecklistOut
 from app.schemas.base import CamelModel
 from app.schemas.trade import TradeOut
 from app.schemas.user import UserOut
-from app.services import balances, calc as calc_engine, plans, tabdeal
+from app.services import balances, calc as calc_engine, dashboard_stats, plans, tabdeal
 from app.services.balances import _txn_sum
 from app.services.sessions import session_for
 
@@ -425,6 +425,7 @@ async def user_dashboard(
 
     # --- Running equity curve + per-trade PnL + RR ---
     balance = (target.wallet_margin or 0.0) + _txn_sum(transactions)
+    start_balance = balance
     equity_curve: list[dict] = []
     pnls: list[float] = []
     rr_values: list[float] = []
@@ -499,11 +500,9 @@ async def user_dashboard(
         by_day[key] += pnl
     pnl_by_day = [{"date": d, "pnl": v} for d, v in sorted(by_day.items())]
 
-    # --- Direction stats ---
-    direction_stats = {
-        "long": sum(1 for t in closed if t.direction == "LONG"),
-        "short": sum(1 for t in closed if t.direction == "SHORT"),
-    }
+    # --- Extra analytics: drawdown, streaks, direction win rates, best/worst symbols ---
+    extra = dashboard_stats.compute_extra(closed, pnls, start_balance)
+    direction_stats = extra["direction_stats"]
 
     # --- Session stats ---
     sess_count: dict[str, int] = defaultdict(int)
@@ -517,18 +516,8 @@ async def user_dashboard(
         for s in sess_count
     ]
 
-    # --- Top symbols by PnL ---
-    sym_pnl: dict[str, float] = defaultdict(float)
-    sym_count: dict[str, int] = defaultdict(int)
-    for t, pnl in zip(closed, pnls):
-        sym = t.symbol or "?"
-        sym_pnl[sym] += pnl
-        sym_count[sym] += 1
-    top_symbols = sorted(
-        ({"symbol": s, "pnl": sym_pnl[s], "count": sym_count[s]} for s in sym_pnl),
-        key=lambda x: x["pnl"],
-        reverse=True,
-    )[:5]
+    # --- Top / worst symbols by PnL (with win rate) ---
+    top_symbols = extra["top_symbols"]
 
     # --- Checklist discipline ---
     fractions: list[float] = []
@@ -559,4 +548,8 @@ async def user_dashboard(
         top_symbols=top_symbols,
         checklist_discipline=checklist_discipline,
         usdt_irt=irt.get("rate"),
+        worst_symbols=extra["worst_symbols"],
+        max_drawdown=extra["max_drawdown"],
+        win_streak=extra["win_streak"],
+        loss_streak=extra["loss_streak"],
     )
