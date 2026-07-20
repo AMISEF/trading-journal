@@ -23,9 +23,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core import crypto
@@ -252,12 +251,9 @@ async def _upsert_trade(
 ) -> tuple[Trade, bool]:
     """Create or update the journal row for one Toobit position."""
     pos_id = fields["toobit_position_id"]
-    # selectinload is required: with async SQLAlchemy, touching take_profits on a
-    # lazily-loaded trade raises MissingGreenlet and kills the whole upsert.
     res = await db.execute(
         select(Trade)
         .where(Trade.user_id == user.id, Trade.toobit_position_id == pos_id)
-        .options(selectinload(Trade.take_profits))
     )
     trade = res.scalars().first()
     created = trade is None
@@ -314,15 +310,22 @@ async def _upsert_trade(
         trade.rr_achieved = None
 
     # Rebuild the take-profit ladder from the reconstructed partial closes.
-    trade.take_profits.clear()
-    await db.flush()
+    # We do this with Core DELETE/INSERT keyed by trade_id rather than mutating
+    # trade.take_profits: touching that lazily-loaded relationship under async
+    # SQLAlchemy raises MissingGreenlet (IO in a sync context) and aborts the
+    # whole position's upsert.
+    await db.flush()  # ensure a new trade has its PK before we key on trade.id
+    await db.execute(delete(TakeProfit).where(TakeProfit.trade_id == trade.id))
+    order = 0
     for tp in fields.get("take_profits") or []:
         price = tp.get("price")
         if price is None:
             continue
-        trade.take_profits.append(
+        order += 1
+        db.add(
             TakeProfit(
-                order=int(tp.get("order") or (len(trade.take_profits) + 1)),
+                trade_id=trade.id,
+                order=int(tp.get("order") or order),
                 price=float(price),
                 save_percent=float(tp.get("save_percent") or 0.0),
             )
