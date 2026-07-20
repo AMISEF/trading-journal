@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getToken, BASE_PATH } from "@/lib/api";
 import { HubNav } from "@/components/HubNav";
-import { TeamLiveSection } from "@/components/TeamLiveSection";
 import { LandingFooter } from "@/components/LandingFooter";
 import { PnlStandalonePage } from "@/components/PnlStandalonePage";
 
@@ -382,9 +381,6 @@ function MarketingLanding() {
           </motion.div>
         </div>
       </section>
-
-      {/* ── برایند معاملات ربات الگو اسمارت (با تب تحلیل هوش مصنوعی؛ روی pnl پنهان است) ── */}
-      <TeamLiveSection showAiTab />
 
       {/* ── Features ── */}
       <section id="features" className="relative mx-auto max-w-7xl scroll-mt-24 px-5 py-16 md:px-8 md:py-24">
