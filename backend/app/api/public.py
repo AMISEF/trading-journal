@@ -48,10 +48,6 @@ router = APIRouter(prefix="/api/public", tags=["public"])
 
 # The group tag assigned via the admin panel (see admin.set_user_group).
 TEAM_GROUP = "CRYPTOSMART_TEAM"
-# The single showcase/demo account (e.g. «Arezo Imani»). An admin tags exactly one
-# account with this group; the journal dashboard's «ایجاد دمو» button then renders
-# that account's real journal + dashboard, read-only.
-DEMO_GROUP = "DEMO"
 
 # The whole showcase (all bots combined) starts from this single capital, so the
 # growth figures are read relative to a flat $1000 — not $1000 per bot.
@@ -154,7 +150,7 @@ async def team_user_checklists(
 ) -> list[ChecklistOut]:
     # Only expose checklists that belong to a showcase account (team bot or demo).
     u = await db.get(User, user_id)
-    if u is None or u.user_group not in (TEAM_GROUP, DEMO_GROUP):
+    if u is None or (u.user_group != TEAM_GROUP and not getattr(u, "is_demo", False)):
         return []
     result = await db.execute(
         select(ChecklistTemplate).where(ChecklistTemplate.user_id == user_id)
@@ -169,9 +165,9 @@ class DemoSummary(CamelModel):
 
 
 async def _demo_user(db: AsyncSession) -> User | None:
-    """The single account tagged as the demo showcase (lowest id if several)."""
+    """The single account flagged as the demo showcase (lowest id if several)."""
     result = await db.execute(
-        select(User).where(User.user_group == DEMO_GROUP).order_by(User.id).limit(1)
+        select(User).where(User.is_demo.is_(True)).order_by(User.id).limit(1)
     )
     return result.scalars().first()
 

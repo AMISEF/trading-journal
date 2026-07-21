@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -34,6 +34,11 @@ class User(Base):
 
     # Optional group membership (e.g. "CRYPTOSMART_TEAM").
     user_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Marks the single showcase/demo account whose journal the «ایجاد دمو»
+    # button renders read-only. Independent of user_group, so a demo account can
+    # also be a team member.
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Date when capital was last reset (for group members). Trades before this
     # date are locked and don't affect the running balance.

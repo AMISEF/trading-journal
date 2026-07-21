@@ -72,6 +72,10 @@ class AdminSetGroup(CamelModel):
     user_group: str | None = None
 
 
+class AdminSetDemo(CamelModel):
+    is_demo: bool
+
+
 class AdminSetPlan(CamelModel):
     plan: str  # bronze | silver | gold
     # Convenience: set duration in months from *now* instead of an exact date.
@@ -299,6 +303,34 @@ async def set_user_group(
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
     target.user_group = body.user_group
+    await db.commit()
+    await db.refresh(target)
+    trades = await crud.load_user_trades(db, target.id)
+    transactions = await crud.load_user_transactions(db, target.id)
+    return user_to_out(target, trades, transactions)
+
+
+@router.post("/users/{user_id}/set-demo", response_model=UserOut)
+async def set_user_demo(
+    user_id: int,
+    body: AdminSetDemo,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    """Mark (or unmark) a user as *the* site demo account. Only one demo exists,
+    so setting one clears the flag on everyone else. Independent of the group, so
+    a demo account can also stay in Cryptosmart Team."""
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.is_demo:
+        # Clear any previous demo so exactly one account is the demo.
+        await db.execute(
+            update(User).where(User.id != user_id).values(is_demo=False)
+        )
+        target.is_demo = True
+    else:
+        target.is_demo = False
     await db.commit()
     await db.refresh(target)
     trades = await crud.load_user_trades(db, target.id)

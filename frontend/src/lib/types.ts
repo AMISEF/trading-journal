@@ -21,6 +21,8 @@ export interface User {
   walletMargin: number;
   currentBalance: number;
   userGroup: string | null;
+  /** True for the single site demo account (rendered by the «ایجاد دمو» button). */
+  isDemo?: boolean;
   capitalResetDate: string | null;
   subscriptionTier: string;
   subscriptionExpiresAt: string | null;
