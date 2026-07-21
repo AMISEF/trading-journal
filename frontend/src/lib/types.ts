@@ -180,6 +180,8 @@ export interface DashboardData {
   closedCount: number;
   profitFactor: number;
   avgRr: number;
+  /** Average leverage across all the user's trades that set one. */
+  avgLeverage?: number | null;
   winRate: number;
   currentBalance: number;
   equityCurve: { number: number; balance: number; pnl: number; date: string | null }[];

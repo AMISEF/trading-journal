@@ -77,6 +77,7 @@ class DashboardOut(CamelModel):
     closed_count: int
     profit_factor: float | None
     avg_rr: float | None
+    avg_leverage: float | None = None
     win_rate: float | None
     current_balance: float
     equity_curve: list[dict]
@@ -114,6 +115,13 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
 
     trade_count = len(unlocked)
     closed_count = len(closed)
+
+    # Average leverage across all of the user's (unlocked) trades that set one.
+    lev_values = [
+        float(t.leverage) for t in unlocked
+        if t.leverage is not None and float(t.leverage) > 0
+    ]
+    avg_leverage = (sum(lev_values) / len(lev_values)) if lev_values else None
 
     # --- Running equity curve + per-trade PnL + RR (using the same balance logic) ---
     balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
@@ -235,6 +243,7 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
         closed_count=closed_count,
         profit_factor=profit_factor,
         avg_rr=avg_rr,
+        avg_leverage=avg_leverage,
         win_rate=win_rate,
         current_balance=current_balance,
         equity_curve=equity_curve,
