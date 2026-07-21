@@ -845,23 +845,7 @@ function DashboardInner() {
             </svg>
           }
         />
-        <KpiCard
-          label="میانگین لوریج"
-          value={fmtLev(data.avgLeverage)}
-          tint={TINTS.rose}
-          sub={
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5" dir="ltr">
-              <span style={{ color: `rgb(${TINTS.green})` }}>لانگ {fmtLev(data.avgLeverageLong)}</span>
-              <span className="text-muted">·</span>
-              <span style={{ color: `rgb(${TINTS.red})` }}>شورت {fmtLev(data.avgLeverageShort)}</span>
-            </span>
-          }
-          icon={
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
-            </svg>
-          }
-        />
+        <LeverageCard data={data} />
         <BalanceCard data={data} />
       </div>
 
@@ -1372,6 +1356,70 @@ function KpiCard({
         {value}
       </div>
       {sub && <div className="relative mt-1 text-xs text-muted">{sub}</div>}
+    </div>
+  );
+}
+
+/** Average-leverage KPI with a small long/short bar chart inside the box. */
+function LeverageCard({ data }: { data: DashboardData }) {
+  const tint = TINTS.rose;
+  const longV = data.avgLeverageLong ?? null;
+  const shortV = data.avgLeverageShort ?? null;
+  const max = Math.max(longV ?? 0, shortV ?? 0, 1);
+  const rows = [
+    { label: "لانگ", val: longV, rgb: TINTS.green },
+    { label: "شورت", val: shortV, rgb: TINTS.red },
+  ];
+
+  return (
+    <div
+      className="group relative overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5"
+      style={glassTint(tint)}
+    >
+      <div
+        className="absolute inset-x-6 top-0 h-px animate-sheen"
+        style={{ background: `linear-gradient(90deg, transparent, rgba(${tint},0.8), transparent)` }}
+      />
+      <div
+        className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+        style={{ background: `rgba(${tint},0.3)` }}
+      />
+      <div className="relative flex items-center justify-between">
+        <div className="text-xs font-medium text-muted">میانگین لوریج</div>
+        <div
+          className="grid h-9 w-9 place-items-center rounded-2xl"
+          style={{ background: `rgba(${tint},0.16)`, color: `rgb(${tint})`, border: `1px solid rgba(${tint},0.25)` }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+        </div>
+      </div>
+
+      <div className="relative mt-3 text-3xl font-extrabold tracking-tight" style={{ color: `rgb(${tint})` }} dir="ltr">
+        {fmtLev(data.avgLeverage)}
+      </div>
+
+      {/* Long / short mini bar chart */}
+      <div className="relative mt-3 space-y-2">
+        {rows.map((r) => (
+          <div key={r.label}>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="font-semibold" style={{ color: `rgb(${r.rgb})` }}>{r.label}</span>
+              <span className="tabular-nums text-muted" dir="ltr">{fmtLev(r.val)}</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: `rgba(${r.rgb},0.14)` }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${((r.val ?? 0) / max) * 100}%`,
+                  background: `linear-gradient(90deg, rgba(${r.rgb},0.65), rgb(${r.rgb}))`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
