@@ -24,8 +24,9 @@ import {
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button, Spinner } from "@/components/ui";
-import { dashboardApi, tradesApi } from "@/lib/api";
-import type { DashboardData } from "@/lib/types";
+import { dashboardApi, tradesApi, publicApi } from "@/lib/api";
+import type { DashboardData, Trade } from "@/lib/types";
+import { DemoTradesPanel } from "@/components/DemoTradesPanel";
 import {
   faNum,
   formatPct,
@@ -633,17 +634,62 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
+const DEMO_KEY = "tj_demo_on";
+
 function DashboardInner() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
+  // ── Demo mode: render the «Arezo Imani» showcase account read-only ──
+  const [demoOn, setDemoOn] = useState(false);
+  const [demoTrades, setDemoTrades] = useState<Trade[] | null>(null);
+  const [demoName, setDemoName] = useState("");
+  const [demoBusy, setDemoBusy] = useState(false);
+
+  const loadReal = () =>
     dashboardApi
       .get()
       .then(setData)
       .catch(() => setError("بارگذاری داشبورد با خطا مواجه شد."));
+
+  const enterDemo = async () => {
+    setDemoBusy(true);
+    setError("");
+    try {
+      const s = await publicApi.demoSummary();
+      if (!s.available) {
+        alert("در حال حاضر حساب دمو تنظیم نشده است.");
+        return;
+      }
+      const [dash, trades] = await Promise.all([publicApi.demoDashboard(), publicApi.demoTrades()]);
+      setData(dash);
+      setDemoTrades(trades);
+      setDemoName(s.name || "دمو");
+      setDemoOn(true);
+      if (typeof window !== "undefined") localStorage.setItem(DEMO_KEY, "1");
+    } catch {
+      alert("بارگذاری دمو ممکن نشد. کمی بعد دوباره تلاش کنید.");
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
+  const exitDemo = () => {
+    setDemoOn(false);
+    setDemoTrades(null);
+    setDemoName("");
+    if (typeof window !== "undefined") localStorage.removeItem(DEMO_KEY);
+    setData(null);
+    loadReal();
+  };
+
+  useEffect(() => {
+    const wantDemo = typeof window !== "undefined" && localStorage.getItem(DEMO_KEY) === "1";
+    if (wantDemo) enterDemo();
+    else loadReal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const createTrade = async () => {
@@ -701,10 +747,57 @@ function DashboardInner() {
           </h1>
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
         </div>
-        <Button onClick={createTrade} disabled={creating}>
-          {creating ? "در حال ساخت…" : "+ ثبت معامله جدید"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {demoOn ? (
+            <button
+              type="button"
+              onClick={exitDemo}
+              className="rounded-xl px-4 py-2 text-sm font-bold text-white transition-all hover:-translate-y-0.5 active:scale-95"
+              style={{
+                background: "linear-gradient(120deg, rgb(248,68,68), rgb(219,39,39))",
+                boxShadow: "0 12px 28px -12px rgba(248,68,68,0.8)",
+              }}
+            >
+              ✕ حذف دمو
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={enterDemo}
+              disabled={demoBusy}
+              className="rounded-xl px-4 py-2 text-sm font-bold text-[#06121f] transition-all hover:-translate-y-0.5 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                background: `linear-gradient(120deg, rgb(${TINTS.violet}), rgb(${TINTS.sky}))`,
+                boxShadow: `0 12px 28px -12px rgba(${TINTS.violet},0.8)`,
+              }}
+            >
+              {demoBusy ? "در حال بارگذاری…" : "🎬 ایجاد دمو"}
+            </button>
+          )}
+          {!demoOn && (
+            <Button onClick={createTrade} disabled={creating}>
+              {creating ? "در حال ساخت…" : "+ ثبت معامله جدید"}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* ── Demo banner ── */}
+      {demoOn && (
+        <div
+          className="flex flex-wrap items-center gap-3 rounded-2xl px-5 py-3.5"
+          style={{
+            background: `linear-gradient(150deg, rgba(${TINTS.violet},0.16), rgba(${TINTS.sky},0.06) 60%, var(--glass-bg))`,
+            border: `1px solid rgba(${TINTS.violet},0.3)`,
+          }}
+        >
+          <span className="grid h-9 w-9 place-items-center rounded-xl text-lg" style={{ background: `rgba(${TINTS.violet},0.2)` }}>🎬</span>
+          <div className="text-sm">
+            <div className="font-bold">حالت دمو — ژورنالِ نمونهٔ {demoName}</div>
+            <div className="text-xs text-muted">این داشبورد و معاملات نمونه‌ای از تیم کریپتواسمارت هستند. برای بازگشت به ژورنال خودتان «حذف دمو» را بزنید.</div>
+          </div>
+        </div>
+      )}
 
       {/* ── KPI cards ── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -1000,6 +1093,17 @@ function DashboardInner() {
         {/* Best / worst symbols with win rate */}
         <SymbolsCard data={data} />
       </div>
+
+      {/* ── Demo journal list (clickable → full read-only detail with images) ── */}
+      {demoOn && demoTrades && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-extrabold">معاملات دمو</h2>
+            <span className="h-2 w-2 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.violet})` }} />
+          </div>
+          <DemoTradesPanel trades={demoTrades} />
+        </div>
+      )}
     </div>
   );
 }

@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
-from app.api.dashboard import DashboardOut
+from app.api.dashboard import DashboardOut, build_user_dashboard
 from app.api.serializers import trade_to_out
 from app.core.deps import get_current_admin, get_db
 from app.db.session import AsyncSessionLocal
@@ -48,6 +48,10 @@ router = APIRouter(prefix="/api/public", tags=["public"])
 
 # The group tag assigned via the admin panel (see admin.set_user_group).
 TEAM_GROUP = "CRYPTOSMART_TEAM"
+# The single showcase/demo account (e.g. «Arezo Imani»). An admin tags exactly one
+# account with this group; the journal dashboard's «ایجاد دمو» button then renders
+# that account's real journal + dashboard, read-only.
+DEMO_GROUP = "DEMO"
 
 # The whole showcase (all bots combined) starts from this single capital, so the
 # growth figures are read relative to a flat $1000 — not $1000 per bot.
@@ -148,14 +152,65 @@ async def team_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
 async def team_user_checklists(
     user_id: int, db: AsyncSession = Depends(get_db)
 ) -> list[ChecklistOut]:
-    # Only expose checklists that belong to a team (bot) account.
+    # Only expose checklists that belong to a showcase account (team bot or demo).
     u = await db.get(User, user_id)
-    if u is None or u.user_group != TEAM_GROUP:
+    if u is None or u.user_group not in (TEAM_GROUP, DEMO_GROUP):
         return []
     result = await db.execute(
         select(ChecklistTemplate).where(ChecklistTemplate.user_id == user_id)
     )
     return [ChecklistOut.model_validate(c) for c in result.scalars().all()]
+
+
+# ── demo showcase account (a single real journal, shown read-only) ───────────
+class DemoSummary(CamelModel):
+    available: bool
+    name: str | None = None
+
+
+async def _demo_user(db: AsyncSession) -> User | None:
+    """The single account tagged as the demo showcase (lowest id if several)."""
+    result = await db.execute(
+        select(User).where(User.user_group == DEMO_GROUP).order_by(User.id).limit(1)
+    )
+    return result.scalars().first()
+
+
+def _demo_name(u: User) -> str:
+    full = f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip()
+    return full or (u.username or "").strip() or "دمو"
+
+
+@router.get("/demo/summary", response_model=DemoSummary)
+async def demo_summary(db: AsyncSession = Depends(get_db)) -> DemoSummary:
+    u = await _demo_user(db)
+    if u is None:
+        return DemoSummary(available=False)
+    return DemoSummary(available=True, name=_demo_name(u))
+
+
+@router.get("/demo/trades", response_model=list[TradeOut])
+async def demo_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
+    u = await _demo_user(db)
+    if u is None:
+        return []
+    trades = await crud.load_user_trades(db, u.id)
+    transactions = await crud.load_user_transactions(db, u.id)
+    out = [
+        trade_to_out(u, trades, t, transactions)
+        for t in trades
+        if not getattr(t, "is_locked", False)
+    ]
+    out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
+    return out
+
+
+@router.get("/demo/dashboard", response_model=DashboardOut)
+async def demo_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
+    u = await _demo_user(db)
+    if u is None:
+        raise HTTPException(status_code=404, detail="حساب دمو تنظیم نشده است.")
+    return await build_user_dashboard(db, u)
 
 
 # ── combined journal list (anonymous) ────────────────────────────────────────

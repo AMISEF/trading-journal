@@ -100,6 +100,12 @@ async def dashboard(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DashboardOut:
+    return await build_user_dashboard(db, user)
+
+
+async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
+    """Compute one user's full dashboard. Shared by the authenticated endpoint
+    and the public demo endpoint (which renders a showcase account read-only)."""
     trades = await crud.load_user_trades(db, user.id)
     transactions = await crud.load_user_transactions(db, user.id)
     unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
