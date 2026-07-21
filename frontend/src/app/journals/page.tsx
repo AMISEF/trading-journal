@@ -10,8 +10,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Button, Paginator, Spinner, StatusDot, usePagination } from "@/components/ui";
-import { exportUrl, tradesApi } from "@/lib/api";
+import { exportUrl, tradesApi, publicApi } from "@/lib/api";
 import { useAuth } from "@/store/auth";
+import { DemoTradesPanel } from "@/components/DemoTradesPanel";
 import type { Trade, TradeStatus } from "@/lib/types";
 import {
   faNum,
@@ -83,12 +84,32 @@ export default function JournalsPage() {
   );
 }
 
+const DEMO_KEY = "tj_demo_on";
+
 function JournalsInner() {
   const router = useRouter();
   const user = useAuth((s) => s.user);
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Demo mode mirrors the dashboard toggle: when on, show the showcase account's
+  // journals read-only (clicking a row opens the full read-only detail).
+  const [demoOn, setDemoOn] = useState(false);
+  const [demoTrades, setDemoTrades] = useState<Trade[] | null>(null);
+
+  useEffect(() => {
+    const on = typeof window !== "undefined" && localStorage.getItem(DEMO_KEY) === "1";
+    if (!on) return;
+    setDemoOn(true);
+    publicApi.demoTrades().then(setDemoTrades).catch(() => setDemoTrades([]));
+  }, []);
+
+  const exitDemo = () => {
+    if (typeof window !== "undefined") localStorage.removeItem(DEMO_KEY);
+    setDemoOn(false);
+    setDemoTrades(null);
+  };
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<TradeStatus | "ALL">("ALL");
@@ -222,6 +243,55 @@ function JournalsInner() {
       return next;
     });
   };
+
+  // ── Demo mode: show the showcase account's journals read-only ──
+  if (demoOn) {
+    return (
+      <div className="relative space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1
+              className="text-3xl font-extrabold tracking-tight"
+              style={{
+                backgroundImage: "linear-gradient(120deg, rgb(167,139,250), rgb(125,211,252))",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              ژورنال‌ها
+            </h1>
+            <span className="rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ background: "rgba(167,139,250,0.16)", color: "rgb(167,139,250)" }}>دمو</span>
+          </div>
+          <button
+            type="button"
+            onClick={exitDemo}
+            className="rounded-xl px-4 py-2 text-sm font-bold text-white transition-all hover:-translate-y-0.5 active:scale-95"
+            style={{ background: "linear-gradient(120deg, rgb(248,68,68), rgb(219,39,39))", boxShadow: "0 12px 28px -12px rgba(248,68,68,0.8)" }}
+          >
+            ✕ حذف دمو
+          </button>
+        </div>
+
+        <div
+          className="flex flex-wrap items-center gap-3 rounded-2xl px-5 py-3.5"
+          style={{ background: "linear-gradient(150deg, rgba(167,139,250,0.16), rgba(125,211,252,0.06) 60%, var(--glass-bg))", border: "1px solid rgba(167,139,250,0.3)" }}
+        >
+          <span className="grid h-9 w-9 place-items-center rounded-xl text-lg" style={{ background: "rgba(167,139,250,0.2)" }}>🎬</span>
+          <div className="text-sm">
+            <div className="font-bold">حالت دمو — نمونهٔ یک ژورنالِ کامل</div>
+            <div className="text-xs text-muted">این معاملاتِ نمونه‌اند تا ببینید ژورنال چطور پر می‌شود. روی هر ردیف بزنید تا جزئیات کامل باز شود.</div>
+          </div>
+        </div>
+
+        {demoTrades === null ? (
+          <Spinner label="در حال بارگذاری دمو…" />
+        ) : (
+          <DemoTradesPanel trades={demoTrades} />
+        )}
+      </div>
+    );
+  }
 
   if (error) return <p className="text-loss">{error}</p>;
   if (!trades) return <Spinner label="در حال بارگذاری ژورنال‌ها…" />;
