@@ -1360,7 +1360,9 @@ function KpiCard({
   );
 }
 
-/** Average-leverage KPI with a small long/short bar chart inside the box. */
+/** Average-leverage KPI with a small long/short bar chart inside the box.
+ *  Spans both columns on mobile (like the balance card) so it never leaves a
+ *  half-empty row; a single column on desktop's six-up grid. */
 function LeverageCard({ data }: { data: DashboardData }) {
   const tint = TINTS.rose;
   const longV = data.avgLeverageLong ?? null;
@@ -1373,7 +1375,7 @@ function LeverageCard({ data }: { data: DashboardData }) {
 
   return (
     <div
-      className="group relative overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5"
+      className="group relative col-span-2 overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5 lg:col-span-1"
       style={glassTint(tint)}
     >
       <div
