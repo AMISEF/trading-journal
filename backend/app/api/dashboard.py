@@ -78,6 +78,8 @@ class DashboardOut(CamelModel):
     profit_factor: float | None
     avg_rr: float | None
     avg_leverage: float | None = None
+    avg_leverage_long: float | None = None
+    avg_leverage_short: float | None = None
     win_rate: float | None
     current_balance: float
     equity_curve: list[dict]
@@ -116,12 +118,18 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
     trade_count = len(unlocked)
     closed_count = len(closed)
 
-    # Average leverage across all of the user's (unlocked) trades that set one.
-    lev_values = [
-        float(t.leverage) for t in unlocked
-        if t.leverage is not None and float(t.leverage) > 0
-    ]
-    avg_leverage = (sum(lev_values) / len(lev_values)) if lev_values else None
+    # Average leverage across all of the user's (unlocked) trades that set one,
+    # plus a long/short breakdown.
+    def _avg_lev(rows) -> float | None:
+        vals = [
+            float(t.leverage) for t in rows
+            if t.leverage is not None and float(t.leverage) > 0
+        ]
+        return (sum(vals) / len(vals)) if vals else None
+
+    avg_leverage = _avg_lev(unlocked)
+    avg_leverage_long = _avg_lev([t for t in unlocked if t.direction == "LONG"])
+    avg_leverage_short = _avg_lev([t for t in unlocked if t.direction == "SHORT"])
 
     # --- Running equity curve + per-trade PnL + RR (using the same balance logic) ---
     balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
@@ -244,6 +252,8 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
         profit_factor=profit_factor,
         avg_rr=avg_rr,
         avg_leverage=avg_leverage,
+        avg_leverage_long=avg_leverage_long,
+        avg_leverage_short=avg_leverage_short,
         win_rate=win_rate,
         current_balance=current_balance,
         equity_curve=equity_curve,

@@ -110,6 +110,12 @@ function fmtUsdt(v: number): string {
   return `${v.toFixed(6)} USDT`;
 }
 
+/** Format an average leverage like "۱۰×" (one decimal, trimmed), or "—" when null. */
+function fmtLev(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${faNum(Math.round(v * 10) / 10)}×`;
+}
+
 function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string; pnl: number }[]; walletMargin: number }) {
   const today = new Date();
   const todayJp = getJalaliParts(today.toISOString().slice(0, 10));
@@ -841,8 +847,15 @@ function DashboardInner() {
         />
         <KpiCard
           label="میانگین لوریج"
-          value={data.avgLeverage != null ? `${faNum(Math.round(data.avgLeverage * 10) / 10)}×` : "—"}
+          value={fmtLev(data.avgLeverage)}
           tint={TINTS.rose}
+          sub={
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5" dir="ltr">
+              <span style={{ color: `rgb(${TINTS.green})` }}>لانگ {fmtLev(data.avgLeverageLong)}</span>
+              <span className="text-muted">·</span>
+              <span style={{ color: `rgb(${TINTS.red})` }}>شورت {fmtLev(data.avgLeverageShort)}</span>
+            </span>
+          }
           icon={
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
@@ -1325,7 +1338,7 @@ function KpiCard({
 }: {
   label: string;
   value: string;
-  sub?: string;
+  sub?: React.ReactNode;
   tint: string;
   icon?: React.ReactNode;
 }) {
