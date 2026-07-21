@@ -327,7 +327,16 @@ export const publicApi = {
   // Admin-only: kick off combined team analyses.
   generateTeamOverall: () => http.post<TeamAIData>("/public/team/ai/overall", {}).then((r) => r.data),
   generateTeamReport: () => http.post<TeamAIData>("/public/team/ai/report", {}).then((r) => r.data),
+  // Demo showcase account (a single real journal, read-only).
+  demoSummary: () => http.get<DemoSummary>("/public/demo/summary").then((r) => r.data),
+  demoDashboard: () => http.get<DashboardData>("/public/demo/dashboard").then((r) => r.data),
+  demoTrades: () => http.get<Trade[]>("/public/demo/trades").then((r) => r.data),
 };
+
+export interface DemoSummary {
+  available: boolean;
+  name: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Uploads
