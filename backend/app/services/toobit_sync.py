@@ -90,6 +90,16 @@ def _dt(ms) -> datetime | None:
         return None
 
 
+def _ts_dt(dt: datetime | None) -> float:
+    """Sortable epoch seconds tolerating None and naive/aware datetimes."""
+    if dt is None:
+        return 0.0
+    try:
+        return dt.timestamp()
+    except (ValueError, OverflowError, OSError):
+        return 0.0
+
+
 # --- fill-level reconstruction (entry ladders + partial take-profits) ---------
 # The authoritative position endpoints give exact PnL/margin/avg prices but hide
 # *how* the trade was built. The userTrades fills feed exposes each executed
@@ -114,19 +124,140 @@ def _plain_fills(rows: list[dict]) -> list[dict]:
     return out
 
 
-def _window_closed(fills: list[dict], open_dt: datetime | None, close_dt: datetime | None) -> list[dict]:
-    """Fills belonging to one closed position, by its [open, close] time window."""
-    lo = (open_dt.timestamp() - 60) if open_dt else None
-    hi = (close_dt.timestamp() + 60) if close_dt else None
-    out = []
+def _split_instances(fills: list[dict]) -> list[dict]:
+    """Split one contract's time-ordered fills into position *instances*.
+
+    An instance starts with the first fill after being flat and ends when the
+    net quantity returns to zero. This is the unit the journal cares about: one
+    instance = one trade, no matter how many entries (پله) or partial exits it
+    had — Toobit's historyPositions returns one row per *close event*, which is
+    why importing rows 1:1 created duplicates.
+    """
+    out: list[dict] = []
+    cur: list[dict] = []
+    open_side = ""
+    net = 0.0
     for f in fills:
-        t = f["ts"].timestamp()
-        if lo is not None and t < lo:
-            continue
-        if hi is not None and t > hi:
-            continue
-        out.append(f)
+        if not cur:
+            open_side = f["side"]
+            net = 0.0
+        cur.append(f)
+        net += f["qty"] if f["side"] == open_side else -f["qty"]
+        if net <= 1e-9 and any(x["side"] != open_side for x in cur):
+            out.append({
+                "direction": "LONG" if open_side == "BUY" else "SHORT",
+                "fills": cur,
+                "closed": True,
+            })
+            cur = []
+    if cur:
+        out.append({
+            "direction": "LONG" if open_side == "BUY" else "SHORT",
+            "fills": cur,
+            "closed": False,
+        })
     return out
+
+
+def _merge_by_price(rows: list[dict]) -> list[list[float]]:
+    """[(price, qty)] with consecutive same-price fills merged (one order often
+    executes as several fills at the same price)."""
+    merged: list[list[float]] = []
+    for f in sorted(rows, key=lambda x: x["ts"]):
+        if merged and abs(merged[-1][0] - f["price"]) < 1e-12:
+            merged[-1][1] += f["qty"]
+        else:
+            merged.append([f["price"], f["qty"]])
+    return merged
+
+
+def _fields_from_instance(
+    contract: str, inst: dict, hist_rows: list[dict], used_hist: set,
+) -> dict | None:
+    """Build the journal fields for one CLOSED position instance.
+
+    Structure (entries/TPs/stop/dates) comes from the fills; the authoritative
+    money numbers (realized PnL, leverage, margin) come from the historyPositions
+    rows whose close time falls inside the instance's window — all of them, since
+    Toobit emits one row per partial close.
+    """
+    fills = inst["fills"]
+    direction = inst["direction"]
+    open_side = "BUY" if direction == "LONG" else "SELL"
+    opens = [f for f in fills if f["side"] == open_side]
+    closes = [f for f in fills if f["side"] != open_side]
+    opened_qty = sum(f["qty"] for f in opens)
+    closed_qty = sum(f["qty"] for f in closes)
+    if opened_qty <= 0 or not closes:
+        return None
+    avg_entry = sum(f["price"] * f["qty"] for f in opens) / opened_qty
+    avg_exit = sum(f["price"] * f["qty"] for f in closes) / closed_qty
+
+    open_dt: datetime = fills[0]["ts"]
+    close_dt: datetime = fills[-1]["ts"]
+
+    # ── authoritative numbers from the matching history rows ──
+    lo = open_dt - timedelta(seconds=120)
+    hi = close_dt + timedelta(seconds=120)
+    matched: list[dict] = []
+    for h in hist_rows:
+        hid = h.get("id")
+        if hid in used_hist:
+            continue
+        if (h.get("side") or "LONG").upper() != direction:
+            continue
+        cdt = _dt(h.get("closeTime"))
+        if cdt is None or cdt < lo or cdt > hi:
+            continue
+        matched.append(h)
+    if not matched:
+        # No authoritative record (e.g. the instance is a tail of an older
+        # position that started before the fetch window) — don't guess.
+        return None
+    for h in matched:
+        used_hist.add(h.get("id"))
+
+    realized = sum(_f(h.get("realizedPnL")) or 0.0 for h in matched)
+    leverage = next((_f(h.get("leverage")) for h in matched if _f(h.get("leverage"))), None)
+    close_value = sum(_f(h.get("closeValue")) or 0.0 for h in matched)
+    if not close_value:
+        close_value = sum(
+            (_f(h.get("maxPosition")) or 0.0) * (_f(h.get("openAvgPrice")) or 0.0)
+            for h in matched
+        )
+    margin = (close_value / leverage) if (close_value and leverage) else None
+
+    # ── entry ladder: one level per distinct opening price ──
+    entry_levels = [
+        {"order": i + 1, "price": round(p, 10),
+         "margin_percent": round(q / opened_qty * 100.0, 2), "is_activated": True}
+        for i, (p, q) in enumerate(_merge_by_price(opens))
+    ]
+
+    # ── exits: profit-side partial closes are TPs; a loss-side final close is the stop ──
+    profit = (lambda px: px > avg_entry) if direction == "LONG" else (lambda px: px < avg_entry)
+    take_profits = [
+        {"order": i + 1, "price": round(p, 10),
+         "save_percent": round(min(q / opened_qty, 1.0) * 100.0, 2)}
+        for i, (p, q) in enumerate(_merge_by_price([f for f in closes if profit(f["price"])]))
+    ]
+    final_px = closes[-1]["price"]
+    if profit(final_px):
+        exit_type = "LAST_TP"
+        stop_loss = None
+    else:
+        exit_type = "STOP_LOSS"
+        stop_loss = round(final_px, 10)
+
+    return {
+        "toobit_position_id": f"pos:{contract}:{direction}:{int(open_dt.timestamp() * 1000)}",
+        "symbol": contract, "direction": direction, "status": "CLOSED",
+        "entry_price": round(avg_entry, 10), "exit_price": round(avg_exit, 10),
+        "leverage": leverage, "margin": margin, "realized_pnl": realized,
+        "open_date": open_dt, "close_date": close_dt,
+        "entry_levels": entry_levels, "take_profits": take_profits,
+        "stop_loss": stop_loss, "exit_type": exit_type,
+    }
 
 
 def _current_open_segment(fills: list[dict], direction: str) -> list[dict]:
@@ -280,7 +411,7 @@ async def _upsert_trade(
     trade.entry_price = fields["entry_price"]                 # avg open price
     trade.exit_price = fields.get("exit_price")               # avg close price (closed only)
     trade.stop_loss = fields.get("stop_loss")                 # set on a losing close
-    trade.entry_levels = fields.get("entry_levels") or []     # the entry ladder (پله‌ها)
+    trade.exit_type = fields.get("exit_type")                 # LAST_TP / STOP_LOSS
     trade.leverage = fields.get("leverage")
     trade.is_risk_free_mgmt = bool(fields.get("is_risk_free_mgmt"))
     trade.realized_pnl = fields.get("realized_pnl")           # exact PnL from the exchange
@@ -290,14 +421,32 @@ async def _upsert_trade(
     if not trade.tags:
         trade.tags = ["toobit"]
 
-    # Record the real margin the trader committed. The journal derives margin as
-    # balance_snapshot × margin_percent/100, so pin the snapshot to the margin and
-    # the percent to 100 — then margin (e.g. 24), position size (24×leverage) and
-    # PnL all come out right.
+    # Record the real margin the trader committed, expressed against the capital
+    # registered in the journal: margin_percent = margin / capital × 100, with the
+    # snapshot pinned to the capital so the derived margin (snapshot × percent)
+    # reproduces the exchange's exact margin. Falls back to pinning the snapshot
+    # to the margin itself when no capital is registered.
     margin = fields.get("margin")
+    capital = user.wallet_margin or 0.0
     if margin and margin > 0:
-        trade.balance_snapshot = margin
-        trade.margin_percent = 100.0
+        if capital > 0:
+            trade.balance_snapshot = capital
+            trade.margin_percent = round(margin / capital * 100.0, 2)
+        else:
+            trade.balance_snapshot = margin
+            trade.margin_percent = 100.0
+
+    # Entry-ladder percentages: the reconstruction stores each level's share of
+    # the *position* (sums to 100). The journal expects each level as a share of
+    # the wallet, so rescale by the trade's total margin percent.
+    levels = fields.get("entry_levels") or []
+    total_pct = trade.margin_percent or 0.0
+    if levels and total_pct:
+        levels = [
+            {**lvl, "margin_percent": round((lvl.get("margin_percent") or 0.0) * total_pct / 100.0, 2)}
+            for lvl in levels
+        ]
+    trade.entry_levels = levels
 
     # Achieved R for imported trades. Toobit doesn't expose the bot's intended
     # stop (there's no reliable per-trade SL for a winner), so we express the
@@ -380,49 +529,73 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
         await db.commit()
         raise
 
-    open_keys: set[tuple[str, str]] = set()
-    for p in positions:
-        fields = _fields_from_open(p)
-        if not fields:
-            continue
-        # Skip positions opened before the key was connected.
-        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
-            continue
-        open_keys.add((_base_symbol(fields["symbol"]), fields["direction"]))
-        try:
-            fills = await _fills_for_contract(client, fields["symbol"], fills_cache, since_ms)
-            seg = _current_open_segment(fills, fields["direction"])
-            fields.update(_reconstruct(fields["direction"], seg, is_loss=False, fallback_exit=None))
-            await _upsert_trade(db, user, fields, fields.get("leverage"))
-            touched += 1
-            await db.commit()
-        except Exception as exc:  # noqa: BLE001
-            await db.rollback()
-            errors.append(f"{fields.get('symbol')}: {type(exc).__name__}: {exc}")
-            logger.exception("toobit open import failed")
+    produced: set[str] = set()
 
+    # History rows grouped by contract, for matching money numbers to instances.
+    hist_by_contract: dict[str, list[dict]] = {}
     for h in history:
-        fields = _fields_from_closed(h)
-        if not fields:
-            continue
-        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
-            continue
-        try:
+        sym = h.get("symbol")
+        if sym:
+            hist_by_contract.setdefault(sym, []).append(h)
+
+    # Open positions from the authoritative endpoint (margin/leverage in real units).
+    open_by_key: dict[tuple[str, str], dict] = {}
+    for p in positions:
+        f = _fields_from_open(p)
+        if f:
+            open_by_key[(f["symbol"], f["direction"])] = f
+
+    contracts = sorted(set(hist_by_contract) | {k[0] for k in open_by_key})
+
+    # ── Reconstruct every position instance per contract from the fills ──
+    closed_fields: list[dict] = []
+    for contract in contracts:
+        fills = await _fills_for_contract(client, contract, fills_cache, since_ms)
+        hist_rows = hist_by_contract.get(contract, [])
+        used_hist: set = set()
+
+        if fills:
+            for inst in _split_instances(fills):
+                if inst["closed"]:
+                    fields = _fields_from_instance(contract, inst, hist_rows, used_hist)
+                    if fields is not None:
+                        closed_fields.append(fields)
+                else:
+                    base = open_by_key.pop((contract, inst["direction"]), None)
+                    if base is None:
+                        continue
+                    base.update(_reconstruct(inst["direction"], inst["fills"], is_loss=False, fallback_exit=None))
+                    if not base.get("open_date"):
+                        base["open_date"] = inst["fills"][0]["ts"]
+                    open_by_key[(contract, inst["direction"])] = base  # keep enriched
+
+        # Fallback: history rows with no usable fills → one journal row per
+        # exchange row, exactly as before (better than dropping them).
+        for h in hist_rows:
+            if h.get("id") in used_hist:
+                continue
+            fields = _fields_from_closed(h)
+            if not fields:
+                continue
             is_loss = (fields.get("realized_pnl") or 0.0) < 0
-            fills = await _fills_for_contract(client, fields["symbol"], fills_cache, since_ms)
-            window = _window_closed(fills, fields.get("open_date"), fields.get("close_date"))
-            fields.update(_reconstruct(
-                fields["direction"], window, is_loss=is_loss, fallback_exit=fields.get("exit_price")
-            ))
-            # Fallbacks when fills are unavailable: a loss's close is the stop; a
-            # win with no reconstructed ladder still shows the exit as the target.
-            if is_loss and not fields.get("stop_loss"):
+            if is_loss:
                 fields["stop_loss"] = fields.get("exit_price")
-            if not is_loss and not fields.get("take_profits") and fields.get("exit_price"):
+                fields["exit_type"] = "STOP_LOSS"
+            elif fields.get("exit_price"):
                 fields["take_profits"] = [
                     {"order": 1, "price": fields["exit_price"], "save_percent": 100.0}
                 ]
+                fields["exit_type"] = "LAST_TP"
+            closed_fields.append(fields)
+
+    # ── Upsert closed instances in chronological order (stable numbering) ──
+    closed_fields.sort(key=lambda f: _ts_dt(f.get("open_date")))
+    for fields in closed_fields:
+        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
+            continue
+        try:
             await _upsert_trade(db, user, fields, fields.get("leverage"))
+            produced.add(fields["toobit_position_id"])
             touched += 1
             await db.commit()
         except Exception as exc:  # noqa: BLE001
@@ -430,24 +603,41 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
             errors.append(f"{fields.get('symbol')}: {type(exc).__name__}: {exc}")
             logger.exception("toobit closed import failed")
 
-    # Remove phantom OPEN rows for positions that have since closed (they now live
-    # as a hist:* row). Skip any the user edited after the last sync.
+    # ── Upsert still-open positions ──
+    for fields in open_by_key.values():
+        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
+            continue
+        try:
+            await _upsert_trade(db, user, fields, fields.get("leverage"))
+            produced.add(fields["toobit_position_id"])
+            touched += 1
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            await db.rollback()
+            errors.append(f"{fields.get('symbol')}: {type(exc).__name__}: {exc}")
+            logger.exception("toobit open import failed")
+
+    # ── Cleanup: drop unedited toobit rows inside the window that this pass did
+    # not produce. This removes the old one-row-per-partial-close duplicates
+    # (hist:*), superseded ids, and phantom open:* rows after a position closes.
     try:
         existing = (await db.execute(
-            select(Trade).where(
-                Trade.user_id == user.id, Trade.source == "toobit",
-                Trade.toobit_position_id.like("open:%"),
-            )
+            select(Trade).where(Trade.user_id == user.id, Trade.source == "toobit")
         )).scalars().all()
+        since_s = since_ms / 1000.0
         for t in existing:
+            if t.toobit_position_id in produced:
+                continue
             edited = (t.synced_at and t.updated_at and t.updated_at > t.synced_at + timedelta(seconds=5))
-            still_open = (t.symbol, t.direction) in open_keys
-            if not still_open and not edited:
+            if edited:
+                continue
+            in_window = _ts_dt(t.open_date) >= since_s if t.open_date else t.toobit_position_id and t.toobit_position_id.startswith("open:")
+            if in_window:
                 await db.delete(t)
         await db.commit()
     except Exception:  # noqa: BLE001
         await db.rollback()
-        logger.exception("toobit phantom-open cleanup failed")
+        logger.exception("toobit stale-row cleanup failed")
 
     user.toobit_synced_at = _utcnow()
     # Surface exactly what failed in the settings panel; None when all clean.
