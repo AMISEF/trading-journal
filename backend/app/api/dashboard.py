@@ -132,7 +132,10 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
     avg_leverage_short = _avg_lev([t for t in unlocked if t.direction == "SHORT"])
 
     # --- Running equity curve + per-trade PnL + RR (using the same balance logic) ---
-    balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
+    # Wallet deposits/withdrawals are intentionally excluded here: the dashboard
+    # reflects *trading* performance only, so moving money in/out of the wallet
+    # never shows up as a gain or loss in the results (برآیند).
+    balance = (user.wallet_margin or 0.0)
     start_balance = balance
     equity_curve: list[dict] = []
     pnls: list[float] = []

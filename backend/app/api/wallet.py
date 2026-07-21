@@ -5,15 +5,26 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import crud
+from app.api.serializers import user_to_out
 from app.core.deps import get_current_user, get_db
+from app.models.trade import Trade
 from app.models.user import User
 from app.models.wallet_transaction import WalletTransaction
+from app.schemas.base import CamelModel
+from app.schemas.user import UserOut
 from app.schemas.wallet import WalletTransactionIn, WalletTransactionOut
 
 router = APIRouter(prefix="/api/wallet", tags=["wallet"])
+
+
+class ResetCapitalIn(CamelModel):
+    """Reset the account's capital to a chosen amount (default $1000), like a
+    fresh registration: existing trades are locked and wallet history cleared."""
+    amount: float = 1000.0
 
 
 @router.get("/transactions", response_model=list[WalletTransactionOut])
@@ -89,3 +100,35 @@ async def delete_transaction(
         raise HTTPException(404, "Transaction not found")
     await db.delete(tx)
     await db.commit()
+
+
+@router.post("/reset-capital", response_model=UserOut)
+async def reset_capital(
+    body: ResetCapitalIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    """Reset the user's own capital to a chosen amount (default $1000).
+
+    Behaves like starting fresh at registration: the new amount becomes the
+    capital, all existing trades are locked (kept for history but excluded from
+    the running balance/results), and the wallet deposit/withdrawal history is
+    cleared so the balance is exactly the chosen amount.
+    """
+    amount = body.amount if (body.amount and body.amount > 0) else 1000.0
+
+    user.wallet_margin = float(amount)
+    user.capital_reset_date = datetime.now(timezone.utc)
+
+    await db.execute(
+        update(Trade).where(Trade.user_id == user.id).values(is_locked=True)
+    )
+    await db.execute(
+        delete(WalletTransaction).where(WalletTransaction.user_id == user.id)
+    )
+    await db.commit()
+    await db.refresh(user)
+
+    trades = await crud.load_user_trades(db, user.id)
+    transactions = await crud.load_user_transactions(db, user.id)
+    return user_to_out(user, trades, transactions)

@@ -252,7 +252,9 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
         transactions = await crud.load_user_transactions(db, u.id)
         unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
         closed = [t for t in unlocked if t.status == "CLOSED"]
-        base_balance = (u.wallet_margin or 0.0) + _txn_sum(transactions)
+        # Exclude wallet deposits/withdrawals from the results (برآیند): show
+        # trading performance only, not money moved in/out of the wallet.
+        base_balance = (u.wallet_margin or 0.0)
 
         start_balance += base_balance
         trade_count += len(unlocked)

@@ -375,6 +375,9 @@ export const walletApi = {
   update: (id: string, payload: WalletTransactionPayload) =>
     http.patch<WalletTransaction>(`/wallet/transactions/${id}`, payload).then((r) => r.data),
   remove: (id: string) => http.delete(`/wallet/transactions/${id}`).then((r) => r.data),
+  /** Reset capital to a chosen amount (default 1000): locks trades + clears history. */
+  resetCapital: (amount: number) =>
+    http.post<User>("/wallet/reset-capital", { amount }).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------
