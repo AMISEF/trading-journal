@@ -46,8 +46,10 @@ logger = logging.getLogger("app.api.public")
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
-# The group tag assigned via the admin panel (see admin.set_user_group).
+# The group tags assigned via the admin panel (see admin.set_user_group).
 TEAM_GROUP = "CRYPTOSMART_TEAM"
+# «برایند لایو ترید» — a separate showcase group for a live (human) trader.
+LIVE_TRADE_GROUP = "LIVE_TRADE"
 
 # The whole showcase (all bots combined) starts from this single capital, so the
 # growth figures are read relative to a flat $1000 — not $1000 per bot.
@@ -70,12 +72,12 @@ def _ts(dt: datetime | None) -> float:
         return 0.0
 
 
-async def _team_members(db: AsyncSession) -> list[User]:
+async def _group_members(db: AsyncSession, group: str) -> list[User]:
     result = await db.execute(
-        select(User).where(User.user_group == TEAM_GROUP).order_by(User.id)
+        select(User).where(User.user_group == group).order_by(User.id)
     )
     members = list(result.scalars().all())
-    # Split the single $1000 starting capital evenly across the bots so the
+    # Split the single $1000 starting capital evenly across the accounts so the
     # combined figures sum to a flat $1000. Detached from the session so this
     # never persists to the DB.
     per = INITIAL_CAPITAL / (len(members) or 1)
@@ -83,6 +85,10 @@ async def _team_members(db: AsyncSession) -> list[User]:
         u.wallet_margin = per
         db.expunge(u)
     return members
+
+
+async def _team_members(db: AsyncSession) -> list[User]:
+    return await _group_members(db, TEAM_GROUP)
 
 
 def _pnl_of(trade: Trade, base_balance: float) -> tuple[float, float | None]:
@@ -148,9 +154,13 @@ async def team_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
 async def team_user_checklists(
     user_id: int, db: AsyncSession = Depends(get_db)
 ) -> list[ChecklistOut]:
-    # Only expose checklists that belong to a showcase account (team bot or demo).
+    # Only expose checklists that belong to a showcase account (team bot, live
+    # trader, or demo).
     u = await db.get(User, user_id)
-    if u is None or (u.user_group != TEAM_GROUP and not getattr(u, "is_demo", False)):
+    if u is None or (
+        u.user_group not in (TEAM_GROUP, LIVE_TRADE_GROUP)
+        and not getattr(u, "is_demo", False)
+    ):
         return []
     result = await db.execute(
         select(ChecklistTemplate).where(ChecklistTemplate.user_id == user_id)
@@ -210,9 +220,7 @@ async def demo_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
 
 
 # ── combined journal list (anonymous) ────────────────────────────────────────
-@router.get("/team/trades", response_model=list[TradeOut])
-async def team_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
-    members = await _team_members(db)
+async def _aggregate_trades(db: AsyncSession, members: list[User]) -> list[TradeOut]:
     out: list[TradeOut] = []
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
@@ -225,11 +233,13 @@ async def team_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
     return out
 
 
-# ── aggregated dashboard (sum of the per-bot dashboards, $1000 each) ──────────
-@router.get("/team/dashboard", response_model=DashboardOut)
-async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
-    members = await _team_members(db)
+@router.get("/team/trades", response_model=list[TradeOut])
+async def team_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
+    return await _aggregate_trades(db, await _team_members(db))
 
+
+# ── aggregated dashboard (sum of the per-account dashboards, $1000 each) ───────
+async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> DashboardOut:
     start_balance = 0.0
     trade_count = 0
     closed_count = 0
@@ -345,6 +355,32 @@ async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
         win_streak=extra["win_streak"],
         loss_streak=extra["loss_streak"],
     )
+
+
+@router.get("/team/dashboard", response_model=DashboardOut)
+async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
+    return await _aggregate_dashboard(db, await _team_members(db))
+
+
+# ── «برایند لایو ترید» — same aggregation for the LIVE_TRADE group ───────────
+@router.get("/livetrade/summary", response_model=TeamSummary)
+async def livetrade_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
+    members = await _group_members(db, LIVE_TRADE_GROUP)
+    return TeamSummary(
+        count=len(members),
+        initial_capital=INITIAL_CAPITAL,
+        total_initial_capital=INITIAL_CAPITAL,
+    )
+
+
+@router.get("/livetrade/trades", response_model=list[TradeOut])
+async def livetrade_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
+    return await _aggregate_trades(db, await _group_members(db, LIVE_TRADE_GROUP))
+
+
+@router.get("/livetrade/dashboard", response_model=DashboardOut)
+async def livetrade_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
+    return await _aggregate_dashboard(db, await _group_members(db, LIVE_TRADE_GROUP))
 
 
 # ── combined team AI (read public, generate admin) ───────────────────────────

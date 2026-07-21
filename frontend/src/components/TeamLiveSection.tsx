@@ -83,7 +83,7 @@ const tooltipStyle = {
   contentStyle: { background: CHART_BG, border: `1px solid ${border}`, borderRadius: 12, fontSize: 12, color: "#fff" },
 } as const;
 
-type Tab = "dashboard" | "journal" | "ai";
+type Tab = "dashboard" | "journal" | "ai" | "live";
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "dashboard", label: "داشبورد معاملات", icon: <path d="M3 3v18h18M7 15l4-4 3 3 5-6" /> },
@@ -99,6 +99,16 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
       <>
         <path d="M12 2a5 5 0 0 0-5 5c0 1.2.5 2.3 1.3 3.1L8 12l-1 3h10l-1-3-.3-1.9A5 5 0 0 0 17 7a5 5 0 0 0-5-5z" />
         <path d="M9 21h6M10 17.5v2M14 17.5v2" />
+      </>
+    ),
+  },
+  {
+    key: "live",
+    label: "برایند لایو ترید",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="2" />
+        <path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14" />
       </>
     ),
   },
@@ -198,6 +208,7 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
         {tab === "dashboard" && <DashboardPanel summary={summary} onUpdated={onDataTick} />}
         {tab === "journal" && <JournalPanel onUpdated={onDataTick} />}
         {tab === "ai" && <AIPanel isAdmin={isAdmin} onUpdated={onDataTick} />}
+        {tab === "live" && <LiveTradePanel onUpdated={onDataTick} />}
       </motion.div>
     </section>
   );
@@ -241,7 +252,17 @@ function toDayTrades(rows: Trade[]): DayTradeItem[] {
   }));
 }
 
-function DashboardPanel({ summary, onUpdated }: { summary: TeamSummary; onUpdated?: () => void }) {
+function DashboardPanel({
+  summary,
+  onUpdated,
+  dashboardFn = publicApi.teamDashboard,
+  tradesFn = publicApi.teamTrades,
+}: {
+  summary: TeamSummary;
+  onUpdated?: () => void;
+  dashboardFn?: () => Promise<DashboardData>;
+  tradesFn?: () => Promise<Trade[]>;
+}) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [dayTrades, setDayTrades] = useState<DayTradeItem[] | undefined>(undefined);
   const [error, setError] = useState(false);
@@ -249,7 +270,7 @@ function DashboardPanel({ summary, onUpdated }: { summary: TeamSummary; onUpdate
 
   const refresh = useCallback(async () => {
     try {
-      const [dash, trades] = await Promise.all([publicApi.teamDashboard(), publicApi.teamTrades()]);
+      const [dash, trades] = await Promise.all([dashboardFn(), tradesFn()]);
       setData(dash);
       setDayTrades(toDayTrades(trades));
       setError(false);
@@ -259,7 +280,7 @@ function DashboardPanel({ summary, onUpdated }: { summary: TeamSummary; onUpdate
       // Keep previous snapshot if we already rendered once.
       if (!hasData.current) setError(true);
     }
-  }, [onUpdated]);
+  }, [onUpdated, dashboardFn, tradesFn]);
 
   useLiveRefresh(refresh, LIVE_POLL_MS);
 
@@ -485,7 +506,13 @@ function pnlOf(t: Trade): number | null {
 
 const PAGE_SIZE = 10;
 
-function JournalPanel({ onUpdated }: { onUpdated?: () => void }) {
+function JournalPanel({
+  onUpdated,
+  tradesFn = publicApi.teamTrades,
+}: {
+  onUpdated?: () => void;
+  tradesFn?: () => Promise<Trade[]>;
+}) {
   const [rows, setRows] = useState<Trade[] | null>(null);
   const [error, setError] = useState(false);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -495,7 +522,7 @@ function JournalPanel({ onUpdated }: { onUpdated?: () => void }) {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await publicApi.teamTrades();
+      const data = await tradesFn();
       setRows(data);
       setError(false);
       hasData.current = true;
@@ -503,7 +530,7 @@ function JournalPanel({ onUpdated }: { onUpdated?: () => void }) {
     } catch {
       if (!hasData.current) setError(true);
     }
-  }, [onUpdated]);
+  }, [onUpdated, tradesFn]);
 
   useLiveRefresh(refresh, LIVE_POLL_MS);
 
@@ -670,6 +697,57 @@ function StatusPill({ status, pnl }: { status: string; pnl: number | null }) {
   const label = status === "OPEN" ? "باز" : "برنامه‌ریزی";
   const rgb = status === "OPEN" ? T.sky : T.violet;
   return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: `rgba(${rgb},0.16)`, color: `rgb(${rgb})` }}>{label}</span>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Live-trade panel — one live trader's results (dashboard + calendar + journal)
+// ═══════════════════════════════════════════════════════════════════════════
+function LiveTradePanel({ onUpdated }: { onUpdated?: () => void }) {
+  const [summary, setSummary] = useState<TeamSummary | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const hasData = useRef(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await publicApi.liveSummary();
+      if (s.count === 0) {
+        setHidden(true);
+        setSummary(null);
+      } else {
+        setHidden(false);
+        setSummary(s);
+        hasData.current = true;
+      }
+    } catch {
+      if (!hasData.current) setHidden(true);
+    }
+  }, []);
+
+  useLiveRefresh(refresh, LIVE_POLL_MS);
+
+  if (hidden) return <PanelEmpty text="هنوز کاربری برای «لایو ترید» انتخاب نشده است." />;
+  if (!summary) return <PanelSpinner />;
+
+  return (
+    <div className="space-y-8">
+      {/* Full dashboard (KPIs, equity curve, donuts, Jalali calendar with clickable days) */}
+      <DashboardPanel
+        summary={summary}
+        onUpdated={onUpdated}
+        dashboardFn={publicApi.liveDashboard}
+        tradesFn={publicApi.liveTrades}
+      />
+
+      {/* Journal list — click any row for the full read-only detail */}
+      <div>
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${T.sky})` }} />
+          <h3 className="text-lg font-bold">ژورنال معاملاتِ لایو ترید</h3>
+        </div>
+        <JournalPanel onUpdated={onUpdated} tradesFn={publicApi.liveTrades} />
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

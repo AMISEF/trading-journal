@@ -123,6 +123,7 @@ function Inner() {
   if (!trades) return <Spinner label="در حال بارگذاری ژورنال‌ها…" />;
 
   const isCryptoTeam = user?.userGroup === "CRYPTOSMART_TEAM";
+  const isLiveTrade = user?.userGroup === "LIVE_TRADE";
 
   const pnl = (t: Trade) => t.calc?.realizedPnl ?? t.realizedPnl ?? null;
   const rr  = (t: Trade) => t.calc?.rrAchieved  ?? t.rrAchieved  ?? null;
@@ -244,6 +245,43 @@ function Inner() {
           )}
         </div>
         {groupError && <p className="text-xs text-loss">{groupError}</p>}
+      </div>
+
+      {/* Live-trade showcase group */}
+      <div className="tj-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          گروه لایو ترید
+          {isLiveTrade && (
+            <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-semibold text-sky-500">
+              عضو لایو ترید
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted">
+          کاربرانِ این گروه در تبِ «برایند لایو ترید» (بخش برایند ربات) با داشبورد، تقویم و ژورنالِ
+          معاملات نمایش داده می‌شوند. سرمایهٔ نمایشی روی ۱۰۰۰ دلار نرمال می‌شود.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {isLiveTrade ? (
+            <button
+              type="button"
+              disabled={groupBusy}
+              onClick={() => handleSetGroup(null)}
+              className="rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+            >
+              {groupBusy ? "…" : "حذف از لایو ترید"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={groupBusy}
+              onClick={() => handleSetGroup("LIVE_TRADE")}
+              className="rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+            >
+              {groupBusy ? "…" : "افزودن به لایو ترید"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Site demo account */}

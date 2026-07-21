@@ -325,6 +325,10 @@ export const publicApi = {
     http.get<ChecklistTemplate[]>(`/public/checklists/${userId}`).then((r) => r.data),
   teamDashboard: () => http.get<DashboardData>("/public/team/dashboard").then((r) => r.data),
   teamTrades: () => http.get<Trade[]>("/public/team/trades").then((r) => r.data),
+  // «برایند لایو ترید» — same shape as the team endpoints, LIVE_TRADE group.
+  liveSummary: () => http.get<TeamSummary>("/public/livetrade/summary").then((r) => r.data),
+  liveDashboard: () => http.get<DashboardData>("/public/livetrade/dashboard").then((r) => r.data),
+  liveTrades: () => http.get<Trade[]>("/public/livetrade/trades").then((r) => r.data),
   teamAi: () => http.get<TeamAIData>("/public/team/ai").then((r) => r.data),
   // Admin-only: kick off combined team analyses.
   generateTeamOverall: () => http.post<TeamAIData>("/public/team/ai/overall", {}).then((r) => r.data),
