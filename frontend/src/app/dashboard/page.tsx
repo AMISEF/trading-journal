@@ -642,10 +642,9 @@ function DashboardInner() {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // ── Demo mode: render the «Arezo Imani» showcase account read-only ──
+  // ── Demo mode: render a sample showcase journal read-only (name never shown) ──
   const [demoOn, setDemoOn] = useState(false);
   const [demoTrades, setDemoTrades] = useState<Trade[] | null>(null);
-  const [demoName, setDemoName] = useState("");
   const [demoBusy, setDemoBusy] = useState(false);
 
   const loadReal = () =>
@@ -666,7 +665,6 @@ function DashboardInner() {
       const [dash, trades] = await Promise.all([publicApi.demoDashboard(), publicApi.demoTrades()]);
       setData(dash);
       setDemoTrades(trades);
-      setDemoName(s.name || "دمو");
       setDemoOn(true);
       if (typeof window !== "undefined") localStorage.setItem(DEMO_KEY, "1");
     } catch {
@@ -679,7 +677,6 @@ function DashboardInner() {
   const exitDemo = () => {
     setDemoOn(false);
     setDemoTrades(null);
-    setDemoName("");
     if (typeof window !== "undefined") localStorage.removeItem(DEMO_KEY);
     setData(null);
     loadReal();
@@ -793,8 +790,8 @@ function DashboardInner() {
         >
           <span className="grid h-9 w-9 place-items-center rounded-xl text-lg" style={{ background: `rgba(${TINTS.violet},0.2)` }}>🎬</span>
           <div className="text-sm">
-            <div className="font-bold">حالت دمو — ژورنالِ نمونهٔ {demoName}</div>
-            <div className="text-xs text-muted">این داشبورد و معاملات نمونه‌ای از تیم کریپتواسمارت هستند. برای بازگشت به ژورنال خودتان «حذف دمو» را بزنید.</div>
+            <div className="font-bold">حالت دمو — نمونهٔ یک ژورنالِ کامل</div>
+            <div className="text-xs text-muted">این یک دموی نمونه است تا ببینید سایت چطور پر می‌شود و نتایج چطور نمایش داده می‌شوند. برای بازگشت به ژورنال خودتان «حذف دمو» را بزنید.</div>
           </div>
         </div>
       )}
