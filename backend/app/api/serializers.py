@@ -27,6 +27,7 @@ def user_to_out(
         wallet_margin=user.wallet_margin,
         current_balance=balances.current_balance(user, trades, transactions),
         user_group=user.user_group,
+        is_demo=bool(getattr(user, "is_demo", False)),
         capital_reset_date=user.capital_reset_date,
         subscription_tier=user.subscription_tier,
         subscription_expires_at=user.subscription_expires_at,

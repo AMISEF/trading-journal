@@ -75,6 +75,19 @@ function Inner() {
     }
   };
 
+  const handleSetDemo = async (isDemo: boolean) => {
+    setGroupBusy(true);
+    setGroupError("");
+    try {
+      const updated = await adminApi.setDemo(userId, isDemo);
+      setUser(updated);
+    } catch {
+      setGroupError("خطا در تنظیم دموی سایت");
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
   const handleResetCapital = async () => {
     if (!confirm("آیا مطمئن هستید؟ این عمل سرمایه را به ۱۰۰۰ دلار ریست می‌کند و همه معاملات قبلی را قفل می‌کند.")) return;
     setGroupBusy(true);
@@ -231,6 +244,43 @@ function Inner() {
           )}
         </div>
         {groupError && <p className="text-xs text-loss">{groupError}</p>}
+      </div>
+
+      {/* Site demo account */}
+      <div className="tj-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          دموی سایت
+          {user?.isDemo && (
+            <span className="rounded-full bg-violet-500/15 px-2.5 py-0.5 text-xs font-semibold text-violet-500">
+              حساب دمو فعال
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted">
+          حسابِ دمو همان ژورنالی است که با زدن دکمهٔ «ایجاد دمو» در داشبورد به کاربران نمایش داده می‌شود.
+          فقط یک حساب می‌تواند دمو باشد؛ با فعال‌کردنِ این حساب، دموی قبلی خودکار غیرفعال می‌شود.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {user?.isDemo ? (
+            <button
+              type="button"
+              disabled={groupBusy}
+              onClick={() => handleSetDemo(false)}
+              className="rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {groupBusy ? "…" : "حذف از دموی سایت"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={groupBusy}
+              onClick={() => handleSetDemo(true)}
+              className="rounded-lg border border-violet-400/40 px-3 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-50 disabled:opacity-50"
+            >
+              {groupBusy ? "…" : "تنظیم به‌عنوان دموی سایت"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Subscription plan management */}
