@@ -45,10 +45,24 @@ jobs:
             echo "▶ Frontend: installing deps..."
             cd /var/www/trading-journal/frontend
             npm install
-            echo "▶ Frontend: building..."
+
+            # journal build (algohub.cryptosmart.site/journal — basePath=/journal, distDir=.next)
+            echo "▶ Frontend (journal): building..."
             npm run build
-            echo "▶ Frontend: restarting PM2..."
-            pm2 restart tj-frontend || pm2 start ecosystem.config.js
+            echo "▶ Frontend (journal): restarting PM2..."
+            pm2 restart tj-frontend || pm2 start ecosystem.config.js --only tj-frontend
+
+            # pnl build (pnl.cryptosmart.site — root, SITE_MODE=pnl, distDir=.next-pnl)
+            # Built into a separate distDir so it never overwrites the journal build.
+            echo "▶ Frontend (pnl): building..."
+            NODE_OPTIONS=--max-old-space-size=2048 \
+            NEXT_PUBLIC_SITE_MODE=pnl \
+            NEXT_PUBLIC_BASE_PATH= \
+            NEXT_PUBLIC_API_BASE=/api \
+            NEXT_DIST_DIR=.next-pnl \
+            npm run build
+            echo "▶ Frontend (pnl): restarting PM2..."
+            pm2 restart tj-pnl-frontend --update-env || pm2 start ecosystem.config.js --only tj-pnl-frontend
 
             pm2 save
-            echo "✅ Deploy complete — https://trading-journal.cryptosmart.site"
+            echo "✅ Deploy complete — https://trading-journal.cryptosmart.site + https://pnl.cryptosmart.site"
