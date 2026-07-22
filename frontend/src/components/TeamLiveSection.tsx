@@ -318,7 +318,13 @@ function DashboardPanel({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi label="تعداد معاملات" value={faNum(data.tradeCount)} sub={`${faNum(data.closedCount)} بسته‌شده`} rgb={T.sky} />
         <Kpi label="ضریب سود (PF)" value={formatRatio(data.profitFactor)} rgb={T.violet} />
-        <Kpi label="میانگین R:R" value={formatRatio(data.avgRr)} rgb={T.mint} />
+        <Kpi
+          label="حداکثر افت سرمایه (درادان)"
+          value={`${faNum((data.maxDrawdown?.percent ?? 0).toFixed(2))}٪`}
+          sub={data.maxDrawdown ? `−${formatUsd(data.maxDrawdown.amount, 2)}` : undefined}
+          rgb={T.red}
+          ltr
+        />
         <Kpi label="وین‌ریت" value={formatPct((data.winRate ?? 0) * 100)} rgb={T.amber} />
       </div>
 
