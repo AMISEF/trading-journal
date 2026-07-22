@@ -35,7 +35,7 @@ import {
   formatUsd,
   pnlColorClass,
 } from "@/lib/format";
-import { JALALI_MONTHS, getJalaliParts, jalaliDaysInMonth, jalaliToGregorianDate, toPersianDigits } from "@/lib/jalali";
+import { JALALI_MONTHS, getJalaliParts, jalaliDaysInMonth, jalaliToGregorianDate, toPersianDigits, jalaliWeekday } from "@/lib/jalali";
 import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
 
 export default function DashboardPage() {
@@ -642,6 +642,44 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
 
 const DEMO_KEY = "tj_demo_on";
 
+/** Live Jalali date + weekday + clock shown at the top of the dashboard. */
+function JalaliClock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!now) return null;
+  const iso = now.toISOString();
+  const jp = getJalaliParts(iso);
+  const weekday = jalaliWeekday(now);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const time = toPersianDigits(`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl px-4 py-2.5 text-sm"
+      style={{
+        background: `linear-gradient(150deg, rgba(${TINTS.sky},0.16), rgba(${TINTS.violet},0.05) 60%, var(--glass-bg))`,
+        border: `1px solid rgba(${TINTS.sky},0.28)`,
+      }}
+    >
+      <span className="grid h-8 w-8 place-items-center rounded-xl" style={{ background: `rgba(${TINTS.sky},0.18)`, color: `rgb(${TINTS.sky})` }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+        </svg>
+      </span>
+      {jp && (
+        <span className="font-bold">
+          {weekday}، {toPersianDigits(jp.day)} {jp.monthName} {toPersianDigits(jp.year)}
+        </span>
+      )}
+      <span className="text-muted">·</span>
+      <span className="font-mono font-bold tabular-nums" style={{ color: `rgb(${TINTS.sky})` }} dir="ltr">{time}</span>
+    </div>
+  );
+}
+
 function DashboardInner() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
@@ -749,6 +787,7 @@ function DashboardInner() {
             داشبورد
           </h1>
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
+          <JalaliClock />
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           {demoOn ? (
