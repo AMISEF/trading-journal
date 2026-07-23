@@ -360,7 +360,7 @@ def build_overall_summary(
 ) -> str:
     closed = [
         t for t in trades
-        if t.status == "CLOSED" and not getattr(t, "is_locked", False)
+        if t.status == "CLOSED" and balances.in_active_cycle(t, user.capital_reset_date)
     ]
     closed.sort(key=lambda t: t.number)
     # Only feed the most recent trades to the model (bounds token usage).
@@ -625,7 +625,7 @@ def build_institutional_summary(
 ) -> str:
     closed = [
         t for t in trades
-        if t.status == "CLOSED" and not getattr(t, "is_locked", False)
+        if t.status == "CLOSED" and balances.in_active_cycle(t, user.capital_reset_date)
     ]
     closed.sort(key=lambda t: t.number)
     # Only feed the most recent trades to the model (bounds token usage).
@@ -1267,7 +1267,7 @@ async def analyze_institutional(
     images: list[tuple[str, str, str]] = []
     closed = [
         t for t in trades
-        if t.status == "CLOSED" and not getattr(t, "is_locked", False)
+        if t.status == "CLOSED" and balances.in_active_cycle(t, user.capital_reset_date)
     ]
     closed.sort(key=lambda t: t.number, reverse=True)
     for t in closed:

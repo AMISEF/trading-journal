@@ -179,8 +179,8 @@ async def update_trade(
 ) -> TradeOut:
     trade = await _get_owned_trade(db, user, trade_id)
 
-    if trade.is_locked:
-        raise HTTPException(status_code=403, detail="این معامله قفل شده و قابل ویرایش نیست.")
+    # Trades are always editable now — the monthly reset uses capital_reset_date
+    # (not a per-trade lock) to keep previous months out of the new month's stats.
 
     data = body.model_dump(exclude_unset=True)
     take_profits = data.pop("take_profits", None)

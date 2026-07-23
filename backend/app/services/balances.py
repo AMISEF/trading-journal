@@ -35,6 +35,25 @@ def _count_activated_levels(trade: Trade) -> int:
     return max(1, n)
 
 
+def in_active_cycle(trade: Trade, reset_dt) -> bool:
+    """Whether a trade counts in the current capital cycle.
+
+    A monthly capital reset (to $1000) stamps ``capital_reset_date``. Trades that
+    opened *before* that reset belong to a previous month and must not affect the
+    new month's balance or stats — this replaces the old per-trade "lock". With no
+    reset date, all trades count.
+    """
+    if reset_dt is None:
+        return True
+    d = getattr(trade, "open_date", None) or getattr(trade, "close_date", None)
+    if d is None:
+        return True
+    try:
+        return d.timestamp() >= reset_dt.timestamp()
+    except (ValueError, OverflowError, OSError, AttributeError):
+        return True
+
+
 def _txn_sum(
     transactions: list[WalletTransaction] | None,
     before_date=None,
@@ -80,10 +99,12 @@ def current_balance(
     trades: list[Trade],
     transactions: list[WalletTransaction] | None = None,
 ) -> float:
-    """wallet_margin + ALL transactions + PnL of CLOSED, unlocked trades in order."""
+    """wallet_margin + ALL transactions + PnL of CLOSED trades in the current
+    capital cycle (trades before the last reset don't count)."""
     balance = (user.wallet_margin or 0.0) + _txn_sum(transactions)
+    reset_dt = getattr(user, "capital_reset_date", None)
     for t in sorted(trades, key=lambda x: x.number):
-        if t.status == "CLOSED" and not getattr(t, "is_locked", False):
+        if t.status == "CLOSED" and in_active_cycle(t, reset_dt):
             balance += realized_pnl_of(t, balance)
     return balance
 
@@ -104,10 +125,11 @@ def balance_before_trade(
         return current_balance(user, trades, transactions)
 
     balance = (user.wallet_margin or 0.0) + _txn_sum(transactions, before_date=trade.open_date)
+    reset_dt = getattr(user, "capital_reset_date", None)
     for t in sorted(trades, key=lambda x: x.number):
         if t.number >= trade.number:
             break
-        if t.status == "CLOSED" and not getattr(t, "is_locked", False):
+        if t.status == "CLOSED" and in_active_cycle(t, reset_dt):
             balance += realized_pnl_of(t, balance)
     return balance
 

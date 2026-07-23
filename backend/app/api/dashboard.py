@@ -111,10 +111,9 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
     and the public demo endpoint (which renders a showcase account read-only)."""
     trades = await crud.load_user_trades(db, user.id)
     transactions = await crud.load_user_transactions(db, user.id)
-    # Locked trades are still counted here: locking (e.g. a reset-to-$1000) only
-    # freezes a trade from editing — it must remain visible in the results,
-    # calendar and monthly برآیند.
-    shown = list(trades)
+    # Only the current capital cycle counts: after a monthly reset-to-$1000, the
+    # previous month's trades are excluded so the new month's stats start fresh.
+    shown = [t for t in trades if balances.in_active_cycle(t, user.capital_reset_date)]
     closed = [t for t in shown if t.status == "CLOSED"]
     closed.sort(key=lambda t: t.number)
 
