@@ -141,7 +141,12 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
-export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = {}) {
+const JOIN_BOT_URL = "https://t.me/cryptosmart_futures_bot";
+
+export function TeamLiveSection({
+  showAiTab = true,
+  showJoinCta = false,
+}: { showAiTab?: boolean; showJoinCta?: boolean } = {}) {
   const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [hidden, setHidden] = useState(false);
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -208,6 +213,8 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
         <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">برایند معاملات ربات الگو اسمارت</h2>
       </motion.div>
 
+      {showJoinCta && <JoinBotCta />}
+
       <div className="mt-9 flex flex-wrap items-center justify-center gap-2.5">
         {visibleTabs.map((tb) => {
           const active = tab === tb.key;
@@ -266,6 +273,40 @@ export function TeamLiveSection({ showAiTab = true }: { showAiTab?: boolean } = 
         {tab === "mordad" && <MonthPanel summary={summary} jm={5} onUpdated={onDataTick} />}
       </motion.div>
     </section>
+  );
+}
+
+function JoinBotCta() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.4 }}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      className="mx-auto mt-7 flex max-w-2xl flex-col items-center gap-4 rounded-3xl px-6 py-6 text-center"
+      style={glassTint(T.accent)}
+    >
+      <p className="text-sm leading-7 text-white/80 md:text-base">
+        اگر شما هم می‌خواهید در کنار ربات الگو اسمارت، به‌صورت مستمر و اصولی چنین سودی بسازید،
+        همین حالا با یک کلیک روی دکمهٔ <b className="font-black text-white">عضویت</b> به جمع کاربران ربات بپیوندید.
+      </p>
+      <a
+        href={JOIN_BOT_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2.5 rounded-2xl px-7 py-3.5 text-sm font-black transition-all duration-300 hover:-translate-y-0.5 md:text-base"
+        style={{
+          background: `linear-gradient(120deg, rgba(${T.accent},0.98), rgba(${T.sky},0.78))`,
+          color: "#06121f",
+          boxShadow: `0 16px 40px -14px rgba(${T.accent},0.95)`,
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71l-4.14-3.05-1.99 1.93c-.23.23-.42.42-.86.42z" />
+        </svg>
+        عضویت در ربات الگو اسمارت
+      </a>
+    </motion.div>
   );
 }
 

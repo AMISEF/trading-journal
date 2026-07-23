@@ -75,7 +75,7 @@ export function PnlStandalonePage() {
       </header>
 
       <main className="pt-20 md:pt-24">
-        <TeamLiveSection showAiTab={false} />
+        <TeamLiveSection showAiTab={false} showJoinCta />
       </main>
 
       <LandingFooter logoSrc={`${BASE_PATH}/crypto-smart-logo.png`} />
