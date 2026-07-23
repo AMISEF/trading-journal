@@ -202,11 +202,8 @@ async def demo_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
         return []
     trades = await crud.load_user_trades(db, u.id)
     transactions = await crud.load_user_transactions(db, u.id)
-    out = [
-        trade_to_out(u, trades, t, transactions)
-        for t in trades
-        if not getattr(t, "is_locked", False)
-    ]
+    # Locked trades are shown too (locking only prevents editing).
+    out = [trade_to_out(u, trades, t, transactions) for t in trades]
     out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
     return out
 

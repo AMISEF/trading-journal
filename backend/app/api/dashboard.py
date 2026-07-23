@@ -111,14 +111,17 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
     and the public demo endpoint (which renders a showcase account read-only)."""
     trades = await crud.load_user_trades(db, user.id)
     transactions = await crud.load_user_transactions(db, user.id)
-    unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
-    closed = [t for t in unlocked if t.status == "CLOSED"]
+    # Locked trades are still counted here: locking (e.g. a reset-to-$1000) only
+    # freezes a trade from editing — it must remain visible in the results,
+    # calendar and monthly برآیند.
+    shown = list(trades)
+    closed = [t for t in shown if t.status == "CLOSED"]
     closed.sort(key=lambda t: t.number)
 
-    trade_count = len(unlocked)
+    trade_count = len(shown)
     closed_count = len(closed)
 
-    # Average leverage across all of the user's (unlocked) trades that set one,
+    # Average leverage across all of the user's trades that set one,
     # plus a long/short breakdown.
     def _avg_lev(rows) -> float | None:
         vals = [
@@ -127,9 +130,9 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
         ]
         return (sum(vals) / len(vals)) if vals else None
 
-    avg_leverage = _avg_lev(unlocked)
-    avg_leverage_long = _avg_lev([t for t in unlocked if t.direction == "LONG"])
-    avg_leverage_short = _avg_lev([t for t in unlocked if t.direction == "SHORT"])
+    avg_leverage = _avg_lev(shown)
+    avg_leverage_long = _avg_lev([t for t in shown if t.direction == "LONG"])
+    avg_leverage_short = _avg_lev([t for t in shown if t.direction == "SHORT"])
 
     # --- Running equity curve + per-trade PnL + RR (using the same balance logic) ---
     # Wallet deposits/withdrawals are intentionally excluded here: the dashboard
