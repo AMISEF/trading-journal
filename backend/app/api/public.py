@@ -221,13 +221,14 @@ async def demo_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
 
 # ── combined journal list (anonymous) ────────────────────────────────────────
 async def _aggregate_trades(db: AsyncSession, members: list[User]) -> list[TradeOut]:
+    # Locked trades ARE shown here: locking a Cryptosmart-team trader's month (via
+    # reset-to-$1000) only freezes editing; the trades must still appear in the
+    # showcase journal, calendar and monthly results.
     out: list[TradeOut] = []
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
         for t in trades:
-            if getattr(t, "is_locked", False):
-                continue
             out.append(trade_to_out(u, trades, t, transactions))
     out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
     return out
@@ -250,14 +251,17 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
-        unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
-        closed = [t for t in unlocked if t.status == "CLOSED"]
+        # Include locked trades: a reset-to-$1000 for a team trader freezes their
+        # trades from editing but they must still count in the showcase brآیند
+        # (dashboard, calendar and monthly results).
+        shown = list(trades)
+        closed = [t for t in shown if t.status == "CLOSED"]
         # Exclude wallet deposits/withdrawals from the results (برآیند): show
         # trading performance only, not money moved in/out of the wallet.
         base_balance = (u.wallet_margin or 0.0)
 
         start_balance += base_balance
-        trade_count += len(unlocked)
+        trade_count += len(shown)
         closed_count += len(closed)
 
         for t in closed:
