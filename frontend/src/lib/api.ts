@@ -321,16 +321,26 @@ export interface TeamAIData {
   reportError: string | null;
 }
 
+// Optional Jalali-month date window for the fixed monthly برایند tabs.
+export type DateRange = { from: string; to: string };
+function rangeParams(range?: DateRange) {
+  return range ? { from: range.from, to: range.to } : undefined;
+}
+
 export const publicApi = {
   teamSummary: () => http.get<TeamSummary>("/public/team/summary").then((r) => r.data),
   teamChecklists: (userId: string) =>
     http.get<ChecklistTemplate[]>(`/public/checklists/${userId}`).then((r) => r.data),
-  teamDashboard: () => http.get<DashboardData>("/public/team/dashboard").then((r) => r.data),
-  teamTrades: () => http.get<Trade[]>("/public/team/trades").then((r) => r.data),
+  teamDashboard: (range?: DateRange) =>
+    http.get<DashboardData>("/public/team/dashboard", { params: rangeParams(range) }).then((r) => r.data),
+  teamTrades: (range?: DateRange) =>
+    http.get<Trade[]>("/public/team/trades", { params: rangeParams(range) }).then((r) => r.data),
   // «برایند لایو ترید» — same shape as the team endpoints, LIVE_TRADE group.
   liveSummary: () => http.get<TeamSummary>("/public/livetrade/summary").then((r) => r.data),
-  liveDashboard: () => http.get<DashboardData>("/public/livetrade/dashboard").then((r) => r.data),
-  liveTrades: () => http.get<Trade[]>("/public/livetrade/trades").then((r) => r.data),
+  liveDashboard: (range?: DateRange) =>
+    http.get<DashboardData>("/public/livetrade/dashboard", { params: rangeParams(range) }).then((r) => r.data),
+  liveTrades: (range?: DateRange) =>
+    http.get<Trade[]>("/public/livetrade/trades", { params: rangeParams(range) }).then((r) => r.data),
   teamAi: () => http.get<TeamAIData>("/public/team/ai").then((r) => r.data),
   // Admin-only: kick off combined team analyses.
   generateTeamOverall: () => http.post<TeamAIData>("/public/team/ai/overall", {}).then((r) => r.data),

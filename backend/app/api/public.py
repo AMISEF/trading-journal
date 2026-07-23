@@ -20,9 +20,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +40,7 @@ from app.schemas.base import CamelModel
 from app.schemas.template import ChecklistOut
 from app.schemas.trade import TradeOut
 from app.services import ai_analysis, calc as calc_engine, dashboard_stats, tabdeal
-from app.services.balances import _txn_sum, in_active_cycle
+from app.services.balances import _txn_sum
 from app.services.sessions import session_for
 
 logger = logging.getLogger("app.api.public")
@@ -199,30 +199,70 @@ async def demo_dashboard(db: AsyncSession = Depends(get_db)):
 
 
 # ── combined journal list (anonymous) ────────────────────────────────────────
-async def _aggregate_trades(db: AsyncSession, members: list[User]) -> list[TradeOut]:
-    # Locked trades ARE shown here: locking a Cryptosmart-team trader's month (via
-    # reset-to-$1000) only freezes editing; the trades must still appear in the
-    # showcase journal, calendar and monthly results — but only the current
-    # capital cycle (trades from before the member's last reset are a previous
-    # month and don't belong to the new month's showcase).
+async def _aggregate_trades(
+    db: AsyncSession, members: list[User], date_from=None, date_to=None
+) -> list[TradeOut]:
+    # The bot showcase journal is fixed per-month and NOT affected by a capital
+    # reset. We show every trade (optionally scoped to a Jalali month via
+    # date_from/date_to) — never just the "current cycle" — so resetting the
+    # traders' capital to $1000 does not change the monthly برایند.
     out: list[TradeOut] = []
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
         for t in trades:
-            if in_active_cycle(t, u.capital_reset_date):
+            if _in_range(t, date_from, date_to):
                 out.append(trade_to_out(u, trades, t, transactions))
     out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
     return out
 
 
 @router.get("/team/trades", response_model=list[TradeOut])
-async def team_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
-    return await _aggregate_trades(db, await _team_members(db))
+async def team_trades(
+    db: AsyncSession = Depends(get_db),
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = Query(None),
+) -> list[TradeOut]:
+    dfrom, dto = _parse_range(from_, to)
+    return await _aggregate_trades(db, await _team_members(db), dfrom, dto)
+
+
+def _in_range(t: Trade, dfrom, dto) -> bool:
+    """Whether a trade's date falls within [dfrom, dto] (inclusive dates)."""
+    if dfrom is None and dto is None:
+        return True
+    d = t.close_date or t.open_date
+    if d is None:
+        return False
+    try:
+        day = d.date()
+    except (AttributeError, ValueError, OSError):
+        return False
+    if dfrom and day < dfrom:
+        return False
+    if dto and day > dto:
+        return False
+    return True
+
+
+def _parse_range(from_: str | None, to: str | None):
+    """Parse ?from=&to= ISO dates (YYYY-MM-DD) into a (date, date) pair.
+
+    Bad/absent values become None (no bound on that side)."""
+    def _one(v):
+        if not v:
+            return None
+        try:
+            return date.fromisoformat(v)
+        except (ValueError, TypeError):
+            return None
+    return _one(from_), _one(to)
 
 
 # ── aggregated dashboard (sum of the per-account dashboards, $1000 each) ───────
-async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> DashboardOut:
+async def _aggregate_dashboard(
+    db: AsyncSession, members: list[User], date_from=None, date_to=None
+) -> DashboardOut:
     start_balance = 0.0
     trade_count = 0
     closed_count = 0
@@ -234,10 +274,10 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
-        # Only the current capital cycle: a monthly reset-to-$1000 stamps the
-        # member's capital_reset_date, and previous-month trades must not affect
-        # the new month's showcase برآیند/calendar/stats.
-        shown = [t for t in trades if in_active_cycle(t, u.capital_reset_date)]
+        # The bot showcase is fixed per-month and NOT affected by a capital reset:
+        # we show every trade (optionally scoped to a month via date_from/date_to),
+        # never the "current cycle".
+        shown = [t for t in trades if _in_range(t, date_from, date_to)]
         closed = [t for t in shown if t.status == "CLOSED"]
         # Exclude wallet deposits/withdrawals from the results (برآیند): show
         # trading performance only, not money moved in/out of the wallet.
@@ -247,11 +287,10 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
         trade_count += len(shown)
         closed_count += len(closed)
 
-        # Full history (every month) for the calendar — kept even after a reset.
-        for t in trades:
-            if t.status == "CLOSED":
-                hp, _ = _pnl_of(t, base_balance)
-                hist_pairs.append((t, hp))
+        # Calendar series — the same (possibly month-scoped) set of closed trades.
+        for t in closed:
+            hp, _ = _pnl_of(t, base_balance)
+            hist_pairs.append((t, hp))
 
         for t in closed:
             pnl, rr = _pnl_of(t, base_balance)
@@ -353,8 +392,13 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
 
 
 @router.get("/team/dashboard", response_model=DashboardOut)
-async def team_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
-    return await _aggregate_dashboard(db, await _team_members(db))
+async def team_dashboard(
+    db: AsyncSession = Depends(get_db),
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = Query(None),
+) -> DashboardOut:
+    dfrom, dto = _parse_range(from_, to)
+    return await _aggregate_dashboard(db, await _team_members(db), dfrom, dto)
 
 
 # ── «برایند لایو ترید» — same aggregation for the LIVE_TRADE group ───────────
@@ -369,13 +413,27 @@ async def livetrade_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
 
 
 @router.get("/livetrade/trades", response_model=list[TradeOut])
-async def livetrade_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
-    return await _aggregate_trades(db, await _group_members(db, LIVE_TRADE_GROUP))
+async def livetrade_trades(
+    db: AsyncSession = Depends(get_db),
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = Query(None),
+) -> list[TradeOut]:
+    dfrom, dto = _parse_range(from_, to)
+    return await _aggregate_trades(
+        db, await _group_members(db, LIVE_TRADE_GROUP), dfrom, dto
+    )
 
 
 @router.get("/livetrade/dashboard", response_model=DashboardOut)
-async def livetrade_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
-    return await _aggregate_dashboard(db, await _group_members(db, LIVE_TRADE_GROUP))
+async def livetrade_dashboard(
+    db: AsyncSession = Depends(get_db),
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = Query(None),
+) -> DashboardOut:
+    dfrom, dto = _parse_range(from_, to)
+    return await _aggregate_dashboard(
+        db, await _group_members(db, LIVE_TRADE_GROUP), dfrom, dto
+    )
 
 
 # ── combined team AI (read public, generate admin) ───────────────────────────
