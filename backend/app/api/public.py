@@ -39,7 +39,7 @@ from app.schemas.base import CamelModel
 from app.schemas.template import ChecklistOut
 from app.schemas.trade import TradeOut
 from app.services import ai_analysis, calc as calc_engine, dashboard_stats, tabdeal
-from app.services.balances import _txn_sum
+from app.services.balances import _txn_sum, in_active_cycle
 from app.services.sessions import session_for
 
 logger = logging.getLogger("app.api.public")
@@ -220,13 +220,16 @@ async def demo_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
 async def _aggregate_trades(db: AsyncSession, members: list[User]) -> list[TradeOut]:
     # Locked trades ARE shown here: locking a Cryptosmart-team trader's month (via
     # reset-to-$1000) only freezes editing; the trades must still appear in the
-    # showcase journal, calendar and monthly results.
+    # showcase journal, calendar and monthly results — but only the current
+    # capital cycle (trades from before the member's last reset are a previous
+    # month and don't belong to the new month's showcase).
     out: list[TradeOut] = []
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
         for t in trades:
-            out.append(trade_to_out(u, trades, t, transactions))
+            if in_active_cycle(t, u.capital_reset_date):
+                out.append(trade_to_out(u, trades, t, transactions))
     out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
     return out
 
@@ -248,10 +251,10 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
-        # Include locked trades: a reset-to-$1000 for a team trader freezes their
-        # trades from editing but they must still count in the showcase brآیند
-        # (dashboard, calendar and monthly results).
-        shown = list(trades)
+        # Only the current capital cycle: a monthly reset-to-$1000 stamps the
+        # member's capital_reset_date, and previous-month trades must not affect
+        # the new month's showcase برآیند/calendar/stats.
+        shown = [t for t in trades if in_active_cycle(t, u.capital_reset_date)]
         closed = [t for t in shown if t.status == "CLOSED"]
         # Exclude wallet deposits/withdrawals from the results (برآیند): show
         # trading performance only, not money moved in/out of the wallet.

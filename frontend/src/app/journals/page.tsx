@@ -526,32 +526,23 @@ function TradeTable({
             <tr
               key={t.id}
               className={`border-b border-white/5 transition-colors ${
-                t.isLocked
-                  ? "opacity-60 bg-gray-100 dark:bg-gray-800/40"
-                  : selected.has(t.id)
-                    ? "bg-primary-soft"
-                    : t.source === "toobit"
-                      ? "bg-sky-400/10 hover:bg-sky-400/20 backdrop-blur-sm"
-                      : "hover:bg-white/5"
+                selected.has(t.id)
+                  ? "bg-primary-soft"
+                  : t.source === "toobit"
+                    ? "bg-sky-400/10 hover:bg-sky-400/20 backdrop-blur-sm"
+                    : "hover:bg-white/5"
               }`}
             >
               <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
-                {!t.isLocked && (
-                  <input
-                    type="checkbox"
-                    checked={selected.has(t.id)}
-                    onChange={() => onToggle(t.id)}
-                    className="cursor-pointer"
-                  />
-                )}
+                <input
+                  type="checkbox"
+                  checked={selected.has(t.id)}
+                  onChange={() => onToggle(t.id)}
+                  className="cursor-pointer"
+                />
               </td>
               <td className="cursor-pointer p-3 text-center font-medium" onClick={() => onOpen(t.id)}>
                 {faNum(t.number)}
-                {t.isLocked && (
-                  <span className="mr-1 rounded bg-gray-300 px-1 py-0.5 text-[9px] font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                    قفل شده
-                  </span>
-                )}
               </td>
               <td className="cursor-pointer p-3 text-center" dir="ltr" onClick={() => onOpen(t.id)}>
                 {t.tradeNumber != null ? <span className="font-medium text-primary">{faNum(t.tradeNumber)}</span> : <span className="text-muted">—</span>}
@@ -613,9 +604,7 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {rows.map((t) => {
         const pnl = pnlOf(t);
-        const rgb = t.isLocked
-          ? "148,163,184"
-          : pnl != null && pnl > 0
+        const rgb = pnl != null && pnl > 0
           ? TINTS.mint
           : pnl != null && pnl < 0
           ? TINTS.rose
@@ -625,20 +614,13 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
           key={t.id}
           onClick={() => onOpen(t.id)}
           className="group relative cursor-pointer overflow-hidden rounded-3xl p-4 transition-all duration-300 hover:-translate-y-1"
-          style={t.isLocked ? { ...glassTint("148,163,184"), opacity: 0.7 } : glassTint(rgb)}
+          style={glassTint(rgb)}
         >
           {/* animated top sheen */}
           <div
             className="absolute inset-x-6 top-0 h-px animate-sheen"
             style={{ background: `linear-gradient(90deg, transparent, rgba(${rgb},0.8), transparent)` }}
           />
-          {t.isLocked && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-gray-400/20 dark:bg-gray-700/30">
-              <span className="rounded-lg bg-gray-500/80 px-3 py-1.5 text-sm font-bold text-white">
-                قفل شده
-              </span>
-            </div>
-          )}
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <StatusDot status={t.status} pnl={pnlOf(t)} exitType={t.exitType} />

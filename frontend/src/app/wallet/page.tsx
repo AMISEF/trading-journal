@@ -31,37 +31,11 @@ export default function WalletPage() {
 
 function WalletInner() {
   const user = useAuth((s) => s.user);
-  const setUser = useAuth((s) => s.setUser);
   const [txs, setTxs] = useState<WalletTransaction[] | null>(null);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editTx, setEditTx] = useState<WalletTransaction | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
-  const [resetting, setResetting] = useState(false);
-
-  const handleReset = async () => {
-    const raw = window.prompt(
-      "سرمایهٔ حساب به چه مبلغی (دلار) ریست شود؟\nاین کار مثل شروعِ دوباره است: معاملات فعلی قفل می‌شوند و تاریخچهٔ واریز/برداشت پاک می‌شود.",
-      "1000",
-    );
-    if (raw === null) return;
-    const amount = Number(raw.replace(/[^\d.]/g, ""));
-    if (!amount || amount <= 0) {
-      alert("لطفاً یک عدد معتبر بزرگ‌تر از صفر وارد کنید.");
-      return;
-    }
-    if (!confirm(`سرمایه به ${amount.toLocaleString("en-US")}$ ریست شود؟ معاملات فعلی قفل و تاریخچهٔ کیف پول پاک می‌شود.`)) return;
-    setResetting(true);
-    try {
-      const updated = await walletApi.resetCapital(amount);
-      setUser(updated);
-      load();
-    } catch {
-      alert("ریست سرمایه ناموفق بود. کمی بعد دوباره تلاش کنید.");
-    } finally {
-      setResetting(false);
-    }
-  };
 
   const load = () =>
     walletApi
@@ -98,21 +72,12 @@ function WalletInner() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">کیف پول</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleReset}
-            disabled={resetting}
-            className="rounded-lg border border-amber-400/50 px-4 py-2 text-sm font-medium text-amber-500 transition hover:bg-amber-400/10 disabled:opacity-50"
-          >
-            {resetting ? "در حال ریست…" : "↺ ریست سرمایه"}
-          </button>
-          <button
-            onClick={() => { setEditTx(null); setShowForm(true); }}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"
-          >
-            + تراکنش جدید
-          </button>
-        </div>
+        <button
+          onClick={() => { setEditTx(null); setShowForm(true); }}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"
+        >
+          + تراکنش جدید
+        </button>
       </div>
       <p className="-mt-3 text-xs text-muted">
         نکته: واریز/برداشت از کیف پول در «برایند» معاملات حساب نمی‌شود؛ برایند فقط عملکرد معاملات را نشان می‌دهد.

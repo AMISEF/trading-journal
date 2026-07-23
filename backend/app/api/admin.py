@@ -377,7 +377,9 @@ async def reset_user_capital(
     _admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
-    """Reset a user's capital to $1000, lock all existing trades, record reset date."""
+    """Start a new capital cycle: set the user's capital to $1000 and stamp the
+    reset date. Previous-month trades stay editable but no longer affect the new
+    month's balance or stats (they're before the reset date)."""
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -385,9 +387,9 @@ async def reset_user_capital(
     target.wallet_margin = 1000.0
     target.capital_reset_date = datetime.now(timezone.utc)
 
-    # Lock all existing trades for this user.
+    # No locking anymore — clear any leftover locks so all trades stay editable.
     await db.execute(
-        update(Trade).where(Trade.user_id == user_id).values(is_locked=True)
+        update(Trade).where(Trade.user_id == user_id).values(is_locked=False)
     )
     await db.commit()
     await db.refresh(target)
@@ -468,143 +470,7 @@ async def user_dashboard(
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
-
-    trades = await crud.load_user_trades(db, target.id)
-    transactions = await crud.load_user_transactions(db, target.id)
-    unlocked = [t for t in trades if not getattr(t, "is_locked", False)]
-    closed = [t for t in unlocked if t.status == "CLOSED"]
-    closed.sort(key=lambda t: t.number)
-
-    trade_count = len(unlocked)
-    closed_count = len(closed)
-
-    # --- Running equity curve + per-trade PnL + RR ---
-    balance = (target.wallet_margin or 0.0) + _txn_sum(transactions)
-    start_balance = balance
-    equity_curve: list[dict] = []
-    pnls: list[float] = []
-    rr_values: list[float] = []
-    for t in closed:
-        tp_dicts = [
-            {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
-            for tp in t.take_profits
-        ]
-        base = t.balance_snapshot if t.balance_snapshot is not None else balance
-        result = calc_engine.compute(
-            direction=t.direction,
-            entry=t.entry_price,
-            leverage=t.leverage,
-            margin_percent=t.margin_percent,
-            wallet_balance_now=base,
-            stop_loss=t.stop_loss,
-            take_profits=tp_dicts,
-            exit_type=t.exit_type,
-            trail_value=t.trail_exit_value,
-            trail_is_percent=bool(t.trail_is_percent),
-            exit_price=t.exit_price,
-        )
-        pnl = result["realizedPnl"]
-        rr = result.get("rrAchieved")
-        if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
-            rr = t.rr_achieved
-        if rr is not None:
-            rr_values.append(rr)
-        balance += pnl
-        pnls.append(pnl)
-        _d = t.close_date or t.open_date
-        equity_curve.append({
-            "number": t.number,
-            "balance": balance,
-            "pnl": pnl,
-            "date": _d.date().isoformat() if _d else None,
-        })
-
-    current_balance = balance
-
-    # --- Profit factor ---
-    gross_profit = sum(p for p in pnls if p > 0)
-    gross_loss = sum(-p for p in pnls if p < 0)
-    if gross_loss > 0:
-        profit_factor = gross_profit / gross_loss
-    elif gross_profit > 0:
-        profit_factor = None  # no losses at all -> "infinite"; report None
-    else:
-        profit_factor = None
-
-    # --- Average RR achieved ---
-    avg_rr = (sum(rr_values) / len(rr_values)) if rr_values else None
-
-    # --- Win / loss distribution ---
-    win_pnls = [p for p in pnls if p > 0]
-    loss_pnls = [p for p in pnls if p < 0]
-    wins = len(win_pnls)
-    win_rate = (wins / closed_count) if closed_count else None
-    win_loss = {
-        "win": wins,
-        "loss": len(loss_pnls),
-        "breakeven": sum(1 for p in pnls if p == 0),
-        "avgWin": (sum(win_pnls) / len(win_pnls)) if win_pnls else None,
-        "avgLoss": (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None,
-    }
-
-    # --- PnL by day (close date) ---
-    by_day: dict[str, float] = defaultdict(float)
-    for t, pnl in zip(closed, pnls):
-        day = t.close_date or t.open_date
-        key = day.date().isoformat() if day else "unknown"
-        by_day[key] += pnl
-    pnl_by_day = [{"date": d, "pnl": v} for d, v in sorted(by_day.items())]
-
-    # --- Extra analytics: drawdown, streaks, direction win rates, best/worst symbols ---
-    extra = dashboard_stats.compute_extra(closed, pnls, start_balance)
-    direction_stats = extra["direction_stats"]
-
-    # --- Session stats ---
-    sess_count: dict[str, int] = defaultdict(int)
-    sess_pnl: dict[str, float] = defaultdict(float)
-    for t, pnl in zip(closed, pnls):
-        s = session_for(t.open_date) or "Unknown"
-        sess_count[s] += 1
-        sess_pnl[s] += pnl
-    session_stats = [
-        {"session": s, "count": sess_count[s], "pnl": sess_pnl[s]}
-        for s in sess_count
-    ]
-
-    # --- Top / worst symbols by PnL (with win rate) ---
-    top_symbols = extra["top_symbols"]
-
-    # --- Checklist discipline ---
-    fractions: list[float] = []
-    for t in closed:
-        ticks = t.checklist_ticks or {}
-        if isinstance(ticks, dict) and ticks:
-            total = len(ticks)
-            done = sum(1 for v in ticks.values() if v)
-            if total:
-                fractions.append(done / total)
-    checklist_discipline = (sum(fractions) / len(fractions)) if fractions else None
-
-    # --- USDT/IRT rate (best effort) ---
-    irt = await tabdeal.get_usdt_irt()
-
-    return DashboardOut(
-        trade_count=trade_count,
-        closed_count=closed_count,
-        profit_factor=profit_factor,
-        avg_rr=avg_rr,
-        win_rate=win_rate,
-        current_balance=current_balance,
-        equity_curve=equity_curve,
-        pnl_by_day=pnl_by_day,
-        direction_stats=direction_stats,
-        session_stats=session_stats,
-        win_loss=win_loss,
-        top_symbols=top_symbols,
-        checklist_discipline=checklist_discipline,
-        usdt_irt=irt.get("rate"),
-        worst_symbols=extra["worst_symbols"],
-        max_drawdown=extra["max_drawdown"],
-        win_streak=extra["win_streak"],
-        loss_streak=extra["loss_streak"],
-    )
+    # Reuse the shared (cycle-aware) computation so the admin view matches the
+    # user's own dashboard exactly.
+    from app.api.dashboard import build_user_dashboard
+    return await build_user_dashboard(db, target)

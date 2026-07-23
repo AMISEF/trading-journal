@@ -89,7 +89,7 @@ function Inner() {
   };
 
   const handleResetCapital = async () => {
-    if (!confirm("آیا مطمئن هستید؟ این عمل سرمایه را به ۱۰۰۰ دلار ریست می‌کند و همه معاملات قبلی را قفل می‌کند.")) return;
+    if (!confirm("سرمایه به ۱۰۰۰ دلار ریست شود و ماه جدید شروع شود؟ معاملات ماه‌های قبل قابل ویرایش می‌مانند ولی دیگر در شاخص‌ها و موجودیِ ماه جدید حساب نمی‌شوند.")) return;
     setGroupBusy(true);
     setGroupError("");
     try {
@@ -106,7 +106,7 @@ function Inner() {
   };
 
   const handleUnlock = async () => {
-    if (!confirm("قفل همهٔ معاملات این کاربر برداشته شود؟ (معاملات دوباره قابل ویرایش می‌شوند)")) return;
+    if (!confirm("ریست سرمایه لغو شود؟ معاملات ماه‌های قبل دوباره در شاخص‌ها و موجودی حساب می‌شوند.")) return;
     setGroupBusy(true);
     setGroupError("");
     try {
@@ -252,7 +252,7 @@ function Inner() {
             onClick={handleResetCapital}
             className="rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
           >
-            {groupBusy ? "…" : "ریست سرمایه به $۱۰۰۰ + قفل معاملات"}
+            {groupBusy ? "…" : "ریست سرمایه به $۱۰۰۰ (شروع ماه جدید)"}
           </button>
           <button
             type="button"
@@ -260,7 +260,7 @@ function Inner() {
             onClick={handleUnlock}
             className="rounded-lg border border-emerald-400/50 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
           >
-            {groupBusy ? "…" : "🔓 لغو قفل معاملات"}
+            {groupBusy ? "…" : "↺ لغو ریست سرمایه"}
           </button>
           {user?.capitalResetDate && (
             <span className="text-xs text-muted">
@@ -458,15 +458,10 @@ function Inner() {
                   <tr
                     key={t.id}
                     onClick={() => router.push(`/admin/trades/${t.id}`)}
-                    className={`cursor-pointer border-b border-border/60 text-right ${t.isLocked ? "opacity-60 bg-surface-2" : "hover:bg-surface-2"}`}
+                    className="cursor-pointer border-b border-border/60 text-right hover:bg-surface-2"
                   >
                     <td className="p-3 font-medium text-primary">
                       {faNum(t.number)}
-                      {t.isLocked && (
-                        <span className="mr-1 rounded bg-gray-300 px-1 py-0.5 text-[9px] font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                          قفل
-                        </span>
-                      )}
                     </td>
                     <td className="p-3" dir="ltr">{t.tradeNumber != null ? <span className="font-medium text-primary">{faNum(t.tradeNumber)}</span> : <span className="text-muted">—</span>}</td>
                     <td className="p-3" dir="ltr">{t.symbol || "—"}</td>

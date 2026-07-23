@@ -108,20 +108,19 @@ async def reset_capital(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
-    """Reset the user's own capital to a chosen amount (default $1000).
-
-    Behaves like starting fresh at registration: the new amount becomes the
-    capital, all existing trades are locked (kept for history but excluded from
-    the running balance/results), and the wallet deposit/withdrawal history is
-    cleared so the balance is exactly the chosen amount.
+    """Start a new capital cycle: set capital to a chosen amount (default $1000)
+    and stamp the reset date, so previous trades no longer affect the new cycle's
+    balance/stats. Trades stay editable (no locking); wallet history is cleared so
+    the balance is exactly the chosen amount.
     """
     amount = body.amount if (body.amount and body.amount > 0) else 1000.0
 
     user.wallet_margin = float(amount)
     user.capital_reset_date = datetime.now(timezone.utc)
 
+    # No locking — clear any leftover locks so all trades stay editable.
     await db.execute(
-        update(Trade).where(Trade.user_id == user.id).values(is_locked=True)
+        update(Trade).where(Trade.user_id == user.id).values(is_locked=False)
     )
     await db.execute(
         delete(WalletTransaction).where(WalletTransaction.user_id == user.id)
