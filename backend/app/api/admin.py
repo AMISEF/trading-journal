@@ -396,6 +396,29 @@ async def reset_user_capital(
     return user_to_out(target, trades, transactions)
 
 
+@router.post("/users/{user_id}/unlock-trades", response_model=UserOut)
+async def unlock_user_trades(
+    user_id: int,
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    """Undo a capital reset: unlock all of the user's trades (make them editable
+    again) and clear the reset date. Wallet capital is left as-is (adjust it via
+    the user's wallet-margin field if needed)."""
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.execute(
+        update(Trade).where(Trade.user_id == user_id).values(is_locked=False)
+    )
+    target.capital_reset_date = None
+    await db.commit()
+    await db.refresh(target)
+    trades = await crud.load_user_trades(db, target.id)
+    transactions = await crud.load_user_transactions(db, target.id)
+    return user_to_out(target, trades, transactions)
+
+
 @router.post("/users/{user_id}/reset-password")
 async def reset_user_password(
     user_id: int,

@@ -105,6 +105,22 @@ function Inner() {
     }
   };
 
+  const handleUnlock = async () => {
+    if (!confirm("قفل همهٔ معاملات این کاربر برداشته شود؟ (معاملات دوباره قابل ویرایش می‌شوند)")) return;
+    setGroupBusy(true);
+    setGroupError("");
+    try {
+      const updated = await adminApi.unlockTrades(userId);
+      setUser(updated);
+      const refreshed = await adminApi.userTrades(userId);
+      setTrades(refreshed);
+    } catch {
+      setGroupError("لغو قفل ناموفق بود");
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
   const handleSetPlan = async (plan: string) => {
     setPlanBusy(true);
     setPlanError("");
@@ -237,6 +253,14 @@ function Inner() {
             className="rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
           >
             {groupBusy ? "…" : "ریست سرمایه به $۱۰۰۰ + قفل معاملات"}
+          </button>
+          <button
+            type="button"
+            disabled={groupBusy}
+            onClick={handleUnlock}
+            className="rounded-lg border border-emerald-400/50 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+          >
+            {groupBusy ? "…" : "🔓 لغو قفل معاملات"}
           </button>
           {user?.capitalResetDate && (
             <span className="text-xs text-muted">
