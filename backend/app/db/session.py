@@ -31,7 +31,7 @@ async def init_db() -> None:
     from sqlalchemy import text
 
     # Import models so they register with Base.metadata.
-    from app.models import user, trade, template, wallet_transaction, auth_code, team_ai  # noqa: F401
+    from app.models import user, trade, template, wallet_transaction, auth_code, team_ai, demo_snapshot  # noqa: F401
     from app.db.base import Base
 
     async with engine.begin() as conn:

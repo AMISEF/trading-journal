@@ -319,19 +319,30 @@ function Inner() {
           )}
         </div>
         <p className="text-xs text-muted">
-          حسابِ دمو همان ژورنالی است که با زدن دکمهٔ «ایجاد دمو» در داشبورد به کاربران نمایش داده می‌شود.
-          فقط یک حساب می‌تواند دمو باشد؛ با فعال‌کردنِ این حساب، دموی قبلی خودکار غیرفعال می‌شود.
+          با زدنِ «تنظیم به‌عنوان دمو»، از داشبورد و معاملاتِ فعلیِ این حساب یک «عکسِ ثابت» گرفته و ذخیره می‌شود؛
+          دمو دیگر تغییر نمی‌کند حتی اگر بعداً سرمایهٔ این تریدر را ریست کنید. فقط یک حساب می‌تواند دمو باشد.
+          برای به‌روزرسانیِ محتوای دمو، دوباره «به‌روزرسانی اسنپ‌شات» را بزنید.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {user?.isDemo ? (
-            <button
-              type="button"
-              disabled={groupBusy}
-              onClick={() => handleSetDemo(false)}
-              className="rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              {groupBusy ? "…" : "حذف از دموی سایت"}
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={groupBusy}
+                onClick={() => handleSetDemo(true)}
+                className="rounded-lg border border-violet-400/40 px-3 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-50 disabled:opacity-50"
+              >
+                {groupBusy ? "…" : "↻ به‌روزرسانی اسنپ‌شات دمو"}
+              </button>
+              <button
+                type="button"
+                disabled={groupBusy}
+                onClick={() => handleSetDemo(false)}
+                className="rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {groupBusy ? "…" : "حذف از دموی سایت"}
+              </button>
+            </>
           ) : (
             <button
               type="button"

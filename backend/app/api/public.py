@@ -27,10 +27,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
-from app.api.dashboard import DashboardOut, build_user_dashboard
+from app.api.dashboard import DashboardOut
 from app.api.serializers import trade_to_out
 from app.core.deps import get_current_admin, get_db
 from app.db.session import AsyncSessionLocal
+from app.models.demo_snapshot import DemoSnapshot
 from app.models.team_ai import TeamAI
 from app.models.template import ChecklistTemplate
 from app.models.trade import Trade
@@ -154,13 +155,14 @@ async def team_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
 async def team_user_checklists(
     user_id: int, db: AsyncSession = Depends(get_db)
 ) -> list[ChecklistOut]:
-    # Only expose checklists that belong to a showcase account (team bot, live
-    # trader, or demo).
+    # The demo journal is served from a frozen snapshot — return its stored
+    # checklists so the read-only detail view stays consistent with the snapshot.
+    snap = await db.get(DemoSnapshot, 1)
+    if snap is not None and snap.user_id == user_id and snap.checklists is not None:
+        return snap.checklists
+    # Otherwise only expose checklists of a live showcase account (team / live).
     u = await db.get(User, user_id)
-    if u is None or (
-        u.user_group not in (TEAM_GROUP, LIVE_TRADE_GROUP)
-        and not getattr(u, "is_demo", False)
-    ):
+    if u is None or u.user_group not in (TEAM_GROUP, LIVE_TRADE_GROUP):
         return []
     result = await db.execute(
         select(ChecklistTemplate).where(ChecklistTemplate.user_id == user_id)
@@ -168,52 +170,32 @@ async def team_user_checklists(
     return [ChecklistOut.model_validate(c) for c in result.scalars().all()]
 
 
-# ── demo showcase account (a single real journal, shown read-only) ───────────
+# ── demo showcase account (a frozen snapshot, shown read-only) ───────────────
 class DemoSummary(CamelModel):
     available: bool
     name: str | None = None
 
 
-async def _demo_user(db: AsyncSession) -> User | None:
-    """The single account flagged as the demo showcase (lowest id if several)."""
-    result = await db.execute(
-        select(User).where(User.is_demo.is_(True)).order_by(User.id).limit(1)
-    )
-    return result.scalars().first()
-
-
-def _demo_name(u: User) -> str:
-    full = f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip()
-    return full or (u.username or "").strip() or "دمو"
-
-
 @router.get("/demo/summary", response_model=DemoSummary)
 async def demo_summary(db: AsyncSession = Depends(get_db)) -> DemoSummary:
-    u = await _demo_user(db)
-    if u is None:
+    snap = await db.get(DemoSnapshot, 1)
+    if snap is None or snap.dashboard is None:
         return DemoSummary(available=False)
-    return DemoSummary(available=True, name=_demo_name(u))
+    return DemoSummary(available=True, name=snap.name)
 
 
-@router.get("/demo/trades", response_model=list[TradeOut])
-async def demo_trades(db: AsyncSession = Depends(get_db)) -> list[TradeOut]:
-    u = await _demo_user(db)
-    if u is None:
-        return []
-    trades = await crud.load_user_trades(db, u.id)
-    transactions = await crud.load_user_transactions(db, u.id)
-    # Locked trades are shown too (locking only prevents editing).
-    out = [trade_to_out(u, trades, t, transactions) for t in trades]
-    out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
-    return out
+@router.get("/demo/trades", response_model=None)
+async def demo_trades(db: AsyncSession = Depends(get_db)):
+    snap = await db.get(DemoSnapshot, 1)
+    return snap.trades if (snap and snap.trades) else []
 
 
-@router.get("/demo/dashboard", response_model=DashboardOut)
-async def demo_dashboard(db: AsyncSession = Depends(get_db)) -> DashboardOut:
-    u = await _demo_user(db)
-    if u is None:
+@router.get("/demo/dashboard", response_model=None)
+async def demo_dashboard(db: AsyncSession = Depends(get_db)):
+    snap = await db.get(DemoSnapshot, 1)
+    if snap is None or snap.dashboard is None:
         raise HTTPException(status_code=404, detail="حساب دمو تنظیم نشده است.")
-    return await build_user_dashboard(db, u)
+    return snap.dashboard
 
 
 # ── combined journal list (anonymous) ────────────────────────────────────────
