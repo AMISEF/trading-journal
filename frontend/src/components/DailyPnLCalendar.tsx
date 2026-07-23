@@ -123,6 +123,9 @@ export function DailyPnLCalendar({
   const todayPnl = pnlMap.get(todayStr) ?? null;
 
   const calendarCells = useMemo(() => buildJalaliMonthGrid(jViewYear, jViewMonth, pnlMap), [jViewYear, jViewMonth, pnlMap]);
+  // Total PnL (and % of capital) for the month currently shown in the calendar.
+  const monthTotal = useMemo(() => calendarCells.reduce((s, c) => s + (c.pnl || 0), 0), [calendarCells]);
+  const monthPct = walletMargin > 0 ? (monthTotal / walletMargin) * 100 : 0;
   const monthlyData = useMemo(() => buildMonthlyData(pnlByDay), [pnlByDay]);
   const weeklyData = useMemo(() => buildWeeklyData(pnlByDay), [pnlByDay]);
 
@@ -202,8 +205,17 @@ export function DailyPnLCalendar({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-5 py-3">
         <div className="flex items-center gap-2">
           <button onClick={prevMonth} className="flex h-8 w-8 items-center justify-center rounded-full text-sm transition hover:-translate-y-0.5" style={{ background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` }}>‹</button>
-          <div className="text-sm font-medium">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
             <span className="font-bold" style={{ color: `rgb(${TINTS.mint})` }}>{JALALI_MONTHS[jViewMonth - 1]} {toPersianDigits(jViewYear)}</span>
+            {monthTotal !== 0 && (
+              <span
+                className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                style={{ background: `rgba(${monthTotal >= 0 ? TINTS.green : TINTS.red},0.16)`, color: `rgb(${monthTotal >= 0 ? TINTS.green : TINTS.red})` }}
+                dir="ltr"
+              >
+                {formatSignedUsd(monthTotal)}{walletMargin > 0 ? ` (${monthPct >= 0 ? "+" : ""}${monthPct.toFixed(2)}٪)` : ""}
+              </span>
+            )}
           </div>
           <button onClick={nextMonth} className="flex h-8 w-8 items-center justify-center rounded-full text-sm transition hover:-translate-y-0.5" style={{ background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` }}>›</button>
         </div>

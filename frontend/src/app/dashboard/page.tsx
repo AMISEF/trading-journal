@@ -168,6 +168,9 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
     () => buildJalaliMonthGrid(jViewYear, jViewMonth, pnlMap),
     [jViewYear, jViewMonth, pnlMap]
   );
+  // Total PnL (+ % of capital) for the month currently shown in the calendar.
+  const viewMonthPnl = useMemo(() => calendarCells.reduce((s, c) => s + (c.pnl || 0), 0), [calendarCells]);
+  const viewMonthPct = walletMargin > 0 ? (viewMonthPnl / walletMargin) * 100 : 0;
 
   const monthlyData = useMemo(() => buildMonthlyData(pnlByDay), [pnlByDay]);
   const weeklyData = useMemo(() => buildWeeklyData(pnlByDay), [pnlByDay]);
@@ -361,10 +364,19 @@ function DailyPnLSection({ pnlByDay, walletMargin }: { pnlByDay: { date: string;
             >
               ‹
             </button>
-            <div className="text-sm font-medium">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
               <span className="font-bold" style={{ color: `rgb(${TINTS.mint})` }}>
                 {JALALI_MONTHS[jViewMonth - 1]} {toPersianDigits(jViewYear)}
               </span>
+              {viewMonthPnl !== 0 && (
+                <span
+                  className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                  style={{ background: `rgba(${viewMonthPnl >= 0 ? TINTS.green : TINTS.red},0.16)`, color: `rgb(${viewMonthPnl >= 0 ? TINTS.green : TINTS.red})` }}
+                  dir="ltr"
+                >
+                  {viewMonthPnl >= 0 ? "+" : "−"}{Math.abs(viewMonthPnl).toFixed(2)} USDT{walletMargin > 0 ? ` (${viewMonthPct >= 0 ? "+" : ""}${viewMonthPct.toFixed(2)}٪)` : ""}
+                </span>
+              )}
             </div>
             <button
               onClick={nextMonth}
