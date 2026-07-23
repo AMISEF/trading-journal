@@ -323,14 +323,50 @@ async def set_user_demo(
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
+
+    from app.api.dashboard import build_user_dashboard
+    from app.models.demo_snapshot import DemoSnapshot
+
     if body.is_demo:
         # Clear any previous demo so exactly one account is the demo.
         await db.execute(
             update(User).where(User.id != user_id).values(is_demo=False)
         )
         target.is_demo = True
+
+        # Freeze a snapshot of the account's dashboard + journal so the demo never
+        # changes afterward (e.g. when the trader is reset for a new month). We
+        # snapshot the FULL history (ignore any capital reset) so the demo shows a
+        # complete journal. Stored pre-serialized (camelCase) as the API returns.
+        _saved_reset = target.capital_reset_date
+        target.capital_reset_date = None
+        dash = await build_user_dashboard(db, target)
+        target.capital_reset_date = _saved_reset
+        trades = await crud.load_user_trades(db, target.id)
+        transactions = await crud.load_user_transactions(db, target.id)
+        trades_out = [trade_to_out(target, trades, t, transactions) for t in trades]
+        cl_res = await db.execute(
+            select(ChecklistTemplate).where(ChecklistTemplate.user_id == target.id)
+        )
+        checklists = [ChecklistOut.model_validate(c) for c in cl_res.scalars().all()]
+
+        snap = await db.get(DemoSnapshot, 1)
+        if snap is None:
+            snap = DemoSnapshot(id=1)
+            db.add(snap)
+        snap.user_id = target.id
+        snap.name = (f"{target.first_name or ''} {target.last_name or ''}".strip()
+                     or target.username)
+        snap.dashboard = dash.model_dump(by_alias=True, mode="json")
+        snap.trades = [t.model_dump(by_alias=True, mode="json") for t in trades_out]
+        snap.checklists = [c.model_dump(by_alias=True, mode="json") for c in checklists]
+        snap.created_at = datetime.now(timezone.utc)
     else:
         target.is_demo = False
+        snap = await db.get(DemoSnapshot, 1)
+        if snap is not None:
+            await db.delete(snap)
+
     await db.commit()
     await db.refresh(target)
     trades = await crud.load_user_trades(db, target.id)
