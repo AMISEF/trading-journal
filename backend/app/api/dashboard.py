@@ -210,9 +210,28 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
         "avgLoss": avg_loss,
     }
 
-    # --- PnL by day (close date) ---
+    # --- PnL by day (close date) — FULL history ---
+    # The calendar keeps every month's برآیند visible even after a reset; only the
+    # KPIs/equity/balance above use the current cycle. So group *all* closed
+    # trades (not just the current cycle) by day here.
+    all_closed = sorted((t for t in trades if t.status == "CLOSED"), key=lambda t: t.number)
+    hist_balance = (user.wallet_margin or 0.0)
     by_day: dict[str, float] = defaultdict(float)
-    for t, pnl in zip(closed, pnls):
+    for t in all_closed:
+        tp_dicts = [
+            {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
+            for tp in t.take_profits
+        ]
+        base = t.balance_snapshot if t.balance_snapshot is not None else hist_balance
+        res = calc_engine.compute(
+            direction=t.direction, entry=t.entry_price, leverage=t.leverage,
+            margin_percent=t.margin_percent, wallet_balance_now=base,
+            stop_loss=t.stop_loss, take_profits=tp_dicts, exit_type=t.exit_type,
+            trail_value=t.trail_exit_value, trail_is_percent=bool(t.trail_is_percent),
+            exit_price=t.exit_price,
+        )
+        pnl = res["realizedPnl"]
+        hist_balance += pnl
         day = (t.close_date or t.open_date)
         key = day.date().isoformat() if day else "unknown"
         by_day[key] += pnl

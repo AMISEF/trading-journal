@@ -245,6 +245,7 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
     trade_count = 0
     closed_count = 0
     closed_pairs: list[tuple[Trade, float]] = []
+    hist_pairs: list[tuple[Trade, float]] = []  # ALL closed trades (for the calendar)
     rr_values: list[float] = []
     fractions: list[float] = []
 
@@ -263,6 +264,12 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
         start_balance += base_balance
         trade_count += len(shown)
         closed_count += len(closed)
+
+        # Full history (every month) for the calendar — kept even after a reset.
+        for t in trades:
+            if t.status == "CLOSED":
+                hp, _ = _pnl_of(t, base_balance)
+                hist_pairs.append((t, hp))
 
         for t in closed:
             pnl, rr = _pnl_of(t, base_balance)
@@ -314,7 +321,7 @@ async def _aggregate_dashboard(db: AsyncSession, members: list[User]) -> Dashboa
     }
 
     by_day: dict[str, float] = defaultdict(float)
-    for t, pnl in closed_pairs:
+    for t, pnl in hist_pairs:
         day = t.close_date or t.open_date
         key = day.date().isoformat() if day else "unknown"
         by_day[key] += pnl
