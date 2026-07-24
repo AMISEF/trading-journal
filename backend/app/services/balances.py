@@ -42,6 +42,12 @@ def in_active_cycle(trade: Trade, reset_dt) -> bool:
     opened *before* that reset belong to a previous month and must not affect the
     new month's balance or stats — this replaces the old per-trade "lock". With no
     reset date, all trades count.
+
+    The comparison is by *calendar day*, not exact instant: a reset starts a new
+    cycle for the whole reset day onward, so a trade opened earlier on the same
+    day (or with a date-only open date at midnight) still counts in the new
+    month. Comparing instants would drop those trades and leave the balance stuck
+    at $1000.
     """
     if reset_dt is None:
         return True
@@ -49,7 +55,7 @@ def in_active_cycle(trade: Trade, reset_dt) -> bool:
     if d is None:
         return True
     try:
-        return d.timestamp() >= reset_dt.timestamp()
+        return d.date() >= reset_dt.date()
     except (ValueError, OverflowError, OSError, AttributeError):
         return True
 
