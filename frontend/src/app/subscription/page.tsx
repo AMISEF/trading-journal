@@ -5,7 +5,7 @@ import { TimelineContent } from "@/components/ui/timeline-animation";
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal";
 import { cn } from "@/lib/utils";
 import NumberFlow from "@number-flow/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
@@ -84,6 +84,48 @@ const plans = [
     ],
   },
 ] as const;
+
+// ── Payment / activation details ────────────────────────────────────────────
+const SUPPORT_URL = "https://t.me/cryptosmart_sup";
+const PAY_ADDRESSES = [
+  { net: "شبکهٔ TRC20 — ترون", value: "TKnDWJ6PXt7CAjXEEvUnoJbD9QwnCwGyCL" },
+  { net: "شبکهٔ BEP20 — بایننس اسمارت چین", value: "0x723B04ABAAFF8524F98d4b60B20Fff67920A48A5" },
+] as const;
+const TOOBIT_UID = "129107184";
+
+/** The formal, ready-to-send message the buyer opens the support chat with. */
+function supportMessage(planName: string, periodLabel: string, priceLabel: string) {
+  return (
+    "سلام؛ وقت بخیر.\n" +
+    `مایل به تهیهٔ اشتراک «${planName}» پنل ژورنال تریدینگ کریپتو اسمارت ` +
+    `(دورهٔ ${periodLabel} — ${priceLabel}) هستم.\n` +
+    "لطفاً راهنمایی بفرمایید. سپاسگزارم."
+  );
+}
+
+/** Copy with a fallback for browsers without the async Clipboard API. */
+async function copyText(text: string) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    /* fall through to the legacy path */
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;top:-9999px;opacity:0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+  } catch {
+    /* nothing else we can do */
+  }
+  document.body.removeChild(ta);
+}
 
 const TIER_LABEL: Record<string, string> = {
   bronze: "برنزی",
@@ -237,6 +279,161 @@ function CurrentPlanCard() {
   );
 }
 
+/** Copyable address/UID row. */
+function CopyRow({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-3">
+      <div className="mb-1.5 text-[11px] font-bold text-gray-400">{label}</div>
+      <button
+        type="button"
+        onClick={() => {
+          copyText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1600);
+        }}
+        className={cn(
+          "flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-right transition-colors",
+          copied
+            ? "border-emerald-400/70 bg-emerald-400/10"
+            : "border-dashed border-white/20 bg-white/5 hover:border-emerald-400/60 hover:bg-emerald-400/5"
+        )}
+      >
+        <span className="break-all text-left text-xs font-semibold text-gray-100" dir="ltr">
+          {value}
+        </span>
+        <span className="flex-none text-[11px] font-extrabold text-emerald-400">
+          {copied ? "کپی شد ✓" : "کپی"}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/** Payment + activation guide, opened when a paid plan's buy button is clicked. */
+function PaymentModal({
+  planName,
+  periodLabel,
+  priceLabel,
+  tint,
+  onClose,
+}: {
+  planName: string;
+  periodLabel: string;
+  priceLabel: string;
+  tint: string;
+  onClose: () => void;
+}) {
+  const message = supportMessage(planName, periodLabel, priceLabel);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      dir="rtl"
+      onClick={onClose}
+      className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="my-6 w-full max-w-lg overflow-hidden rounded-3xl p-6 text-right text-white backdrop-blur-2xl"
+        style={{
+          background: `linear-gradient(155deg, rgba(${tint},0.16) 0%, rgba(255,255,255,0.05) 45%, rgba(6,11,19,0.98) 100%), #0b1220`,
+          border: `1px solid rgba(${tint},0.38)`,
+          boxShadow: `0 40px 100px -30px rgba(${tint},0.55)`,
+        }}
+      >
+        <div className="mb-1 flex items-start justify-between gap-3">
+          <h2 className="text-xl font-black">راهنمای پرداخت و فعال‌سازی اشتراک</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="بستن"
+            className="-mt-1 flex-none rounded-lg px-2 py-1 text-2xl leading-none text-gray-400 transition-colors hover:text-white"
+          >
+            ×
+          </button>
+        </div>
+        <p className="mb-5 text-sm text-gray-300">
+          پلن انتخابی شما:{" "}
+          <b className="font-black" style={{ color: `rgb(${tint})` }}>
+            {planName}
+          </b>{" "}
+          — {periodLabel} {priceLabel}
+        </p>
+
+        {/* USDT */}
+        <section className="mb-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-black">
+            <span>💵</span>پرداخت ارزی — تتر (USDT)
+          </h3>
+          <p className="mt-1.5 text-xs leading-7 text-gray-400">
+            مبلغ اشتراک را به یکی از آدرس‌های زیر واریز کنید. پیش از واریز، از تطابق شبکه اطمینان حاصل فرمایید.
+          </p>
+          {PAY_ADDRESSES.map((a) => (
+            <CopyRow key={a.value} label={a.net} value={a.value} />
+          ))}
+        </section>
+
+        {/* Toobit internal transfer */}
+        <section className="mb-3 rounded-2xl border border-emerald-400/35 bg-emerald-400/[0.07] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-black">
+            <span>🪙</span>انتقال داخلی صرافی توبیت — بدون کارمزد
+          </h3>
+          <p className="mt-1.5 text-xs leading-7 text-gray-400">
+            در صورت استفاده از انتقال داخلی توبیت، هیچ کارمزدی از شما کسر نخواهد شد.
+          </p>
+          <CopyRow label="شناسهٔ کاربری (UID)" value={TOOBIT_UID} />
+        </section>
+
+        {/* Rial */}
+        <section className="mb-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-black">
+            <span>🛫</span>پرداخت ریالی
+          </h3>
+          <p className="mt-1.5 text-xs leading-7 text-gray-400">
+            تمامی اشتراک‌ها به‌صورت ریالی نیز قابل تهیه است. جهت دریافت شمارهٔ کارت، با پشتیبانی در ارتباط باشید.
+          </p>
+        </section>
+
+        <p className="mb-4 text-[11px] text-gray-500">
+          با کلیک روی هر آدرس، به‌صورت خودکار در حافظه کپی می‌شود.
+        </p>
+
+        <a
+          href={`${SUPPORT_URL}?text=${encodeURIComponent(message)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          // The message is also copied on click, so if the Telegram client does
+          // not prefill the composer the buyer can simply paste it.
+          onClick={() => copyText(message)}
+          className="block w-full rounded-xl p-3.5 text-center text-sm font-black text-white transition-all hover:opacity-90"
+          style={{
+            background: `linear-gradient(to right, rgb(${tint}), rgba(${tint},0.7))`,
+            boxShadow: `0 14px 36px -12px rgba(${tint},0.7)`,
+          }}
+        >
+          ارتباط با پشتیبانی
+        </a>
+        <p className="mt-2.5 text-center text-xs leading-7 text-gray-400">
+          جهت ارسال رسید واریز دلاری یا دریافت شمارهٔ کارت، کلیک کنید.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function SubscriptionInner() {
   const [periodKey, setPeriodKey] = useState("0");
   const period = PERIODS.find((p) => p.key === periodKey)!;
@@ -252,9 +449,10 @@ function SubscriptionInner() {
     hidden: { filter: "blur(10px)", y: -20, opacity: 0 },
   };
 
-  const handleSupportClick = () => {
-    window.open("https://t.me/cryptosmart_sup", "_blank");
-  };
+  // Which paid plan's payment guide is open (null = closed).
+  const [payPlan, setPayPlan] = useState<
+    { name: string; periodLabel: string; priceLabel: string; tint: string } | null
+  >(null);
 
   return (
     <div
@@ -441,7 +639,16 @@ function SubscriptionInner() {
 
                 <div className="relative flex flex-grow flex-col pt-0">
                   <button
-                    onClick={handleSupportClick}
+                    onClick={() =>
+                      isFree
+                        ? window.open(SUPPORT_URL, "_blank")
+                        : setPayPlan({
+                            name: plan.name,
+                            periodLabel: period.label,
+                            priceLabel: `${faNum(pay.toLocaleString("en-US"))} تومان`,
+                            tint: plan.tint,
+                          })
+                    }
                     className="mb-8 w-full rounded-xl p-3 text-sm font-bold text-white transition-all hover:opacity-90"
                     style={
                       plan.popular
@@ -473,6 +680,16 @@ function SubscriptionInner() {
           );
         })}
       </div>
+
+      {payPlan && (
+        <PaymentModal
+          planName={payPlan.name}
+          periodLabel={payPlan.periodLabel}
+          priceLabel={payPlan.priceLabel}
+          tint={payPlan.tint}
+          onClose={() => setPayPlan(null)}
+        />
+      )}
     </div>
   );
 }
