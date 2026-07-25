@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Secret key used to sign login tokens (JWT). MUST be changed in production.
     SECRET_KEY: str = "change-me-to-a-long-random-secret"
 
+    # Shared secret for the machine-to-machine /api/service endpoints used by the
+    # Algo Hub Telegram admin bot. Empty (the default) disables that API entirely.
+    SERVICE_TOKEN: str = ""
+
     # JWT algorithm. HS256 = simple symmetric signing with SECRET_KEY.
     ALGORITHM: str = "HS256"
 
