@@ -10,6 +10,7 @@ import { AppShell } from "@/components/AppShell";
 import { faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
 import { useAuth } from "@/store/auth";
+import type { User } from "@/lib/types";
 
 // ── Billing periods ─────────────────────────────────────────────────────────
 // `months` = calendar months of access. `paidMonths` = months actually billed
@@ -93,14 +94,53 @@ const PAY_ADDRESSES = [
 ] as const;
 const TOOBIT_UID = "129107184";
 
+/**
+ * Wrap a value so Telegram renders it as tap-to-copy code.
+ *
+ * The message is handed to Telegram through `t.me/...?text=`, which drops it
+ * into the composer as PLAIN text — an HTML `<code>` tag would show up
+ * literally. Telegram's clients do convert backticks into a code entity on
+ * send, so this is what actually gives support a one-tap copy.
+ */
+const mono = (value: string | number) => `\`${value}\``;
+
+/**
+ * Account details appended to the support message. Support looks the buyer up
+ * by email / username / id in the Algo Hub admin bot, so those are exactly the
+ * fields we hand over — each one copyable on its own.
+ */
+function accountLines(user: User | null): string[] {
+  const out = ["", "━━━━━━━━━━━━━━━", "🧾 مشخصات حساب من (جهت فعال‌سازی):"];
+  if (!user) {
+    out.push(
+      "ℹ️ در لحظهٔ ارسال وارد حساب نبودم — ایمیل و نام کاربریِ حسابم را همین‌جا اعلام می‌کنم."
+    );
+    return out;
+  }
+  const full = [user.firstName, user.lastName].filter(Boolean).join(" ");
+  out.push(`🆔 شناسهٔ کاربری: ${mono(user.id)}`);
+  out.push(`✉️ ایمیل: ${mono(user.email || "—")}`);
+  if (user.username) out.push(`👤 نام کاربری: ${mono(user.username)}`);
+  if (full) out.push(`🙍 نام: ${full}`);
+  return out;
+}
+
 /** The formal, ready-to-send message the buyer opens the support chat with. */
-function supportMessage(planName: string, periodLabel: string, priceLabel: string) {
-  return (
-    "سلام؛ وقت بخیر.\n" +
+function supportMessage(
+  planName: string,
+  periodLabel: string,
+  priceLabel: string,
+  user: User | null
+) {
+  return [
+    "سلام؛ وقت بخیر.",
     `مایل به تهیهٔ اشتراک «${planName}» پنل ژورنال تریدینگ کریپتو اسمارت ` +
-    `(دورهٔ ${periodLabel} — ${priceLabel}) هستم.\n` +
-    "لطفاً راهنمایی بفرمایید. سپاسگزارم."
-  );
+      `(دورهٔ ${periodLabel} — ${priceLabel}) هستم.`,
+    "مبلغ را واریز کرده‌ام و رسید پرداخت را در همین گفتگو ارسال می‌کنم.",
+    ...accountLines(user),
+    "",
+    "لطفاً راهنمایی بفرمایید. سپاسگزارم.",
+  ].join("\n");
 }
 
 /** Copy with a fallback for browsers without the async Clipboard API. */
@@ -324,7 +364,10 @@ function PaymentModal({
   tint: string;
   onClose: () => void;
 }) {
-  const message = supportMessage(planName, periodLabel, priceLabel);
+  // Identify the buyer in the message so support can activate the plan without
+  // a follow-up round-trip asking who they are.
+  const user = useAuth((s) => s.user);
+  const message = supportMessage(planName, periodLabel, priceLabel, user);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
