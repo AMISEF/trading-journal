@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from datetime import date, datetime, timezone
 
@@ -57,6 +58,30 @@ LIVE_TRADE_GROUP = "LIVE_TRADE"
 INITIAL_CAPITAL = 1000.0
 
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+# The showcase is public and polled every 15s by every open tab, while the
+# underlying figures only move when a bot trades. Recomputing the full
+# aggregation per request burns CPU for nothing, so results are memoised for a
+# few seconds, keyed by (endpoint, group, from, to).
+_CACHE_TTL = 20.0
+_cache: dict[tuple, tuple[float, Any]] = {}
+
+
+def _cache_get(key: tuple) -> Any | None:
+    hit = _cache.get(key)
+    if hit and (time.monotonic() - hit[0]) < _CACHE_TTL:
+        return hit[1]
+    return None
+
+
+def _cache_put(key: tuple, value: Any) -> Any:
+    _cache[key] = (time.monotonic(), value)
+    # The key space is tiny (a handful of months × 2 groups); prune defensively.
+    if len(_cache) > 64:
+        cutoff = time.monotonic() - _CACHE_TTL
+        for k in [k for k, v in _cache.items() if v[0] < cutoff]:
+            _cache.pop(k, None)
+    return value
 
 
 def _utcnow() -> datetime:
@@ -224,7 +249,10 @@ async def team_trades(
     to: str | None = Query(None),
 ) -> list[TradeOut]:
     dfrom, dto = _parse_range(from_, to)
-    return await _aggregate_trades(db, await _team_members(db), dfrom, dto)
+    key = ("team_trades", dfrom, dto)
+    if (hit := _cache_get(key)) is not None:
+        return hit
+    return _cache_put(key, await _aggregate_trades(db, await _team_members(db), dfrom, dto))
 
 
 def _in_range(t: Trade, dfrom, dto) -> bool:
@@ -398,7 +426,10 @@ async def team_dashboard(
     to: str | None = Query(None),
 ) -> DashboardOut:
     dfrom, dto = _parse_range(from_, to)
-    return await _aggregate_dashboard(db, await _team_members(db), dfrom, dto)
+    key = ("team_dashboard", dfrom, dto)
+    if (hit := _cache_get(key)) is not None:
+        return hit
+    return _cache_put(key, await _aggregate_dashboard(db, await _team_members(db), dfrom, dto))
 
 
 # ── «برایند لایو ترید» — same aggregation for the LIVE_TRADE group ───────────
@@ -419,9 +450,12 @@ async def livetrade_trades(
     to: str | None = Query(None),
 ) -> list[TradeOut]:
     dfrom, dto = _parse_range(from_, to)
-    return await _aggregate_trades(
+    key = ("live_trades", dfrom, dto)
+    if (hit := _cache_get(key)) is not None:
+        return hit
+    return _cache_put(key, await _aggregate_trades(
         db, await _group_members(db, LIVE_TRADE_GROUP), dfrom, dto
-    )
+    ))
 
 
 @router.get("/livetrade/dashboard", response_model=DashboardOut)
@@ -431,9 +465,12 @@ async def livetrade_dashboard(
     to: str | None = Query(None),
 ) -> DashboardOut:
     dfrom, dto = _parse_range(from_, to)
-    return await _aggregate_dashboard(
+    key = ("live_dashboard", dfrom, dto)
+    if (hit := _cache_get(key)) is not None:
+        return hit
+    return _cache_put(key, await _aggregate_dashboard(
         db, await _group_members(db, LIVE_TRADE_GROUP), dfrom, dto
-    )
+    ))
 
 
 # ── combined team AI (read public, generate admin) ───────────────────────────

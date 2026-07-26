@@ -91,19 +91,32 @@ const tooltipStyle = {
   contentStyle: { background: CHART_BG, border: `1px solid ${border}`, borderRadius: 12, fontSize: 12, color: "#fff" },
 } as const;
 
-type Tab = "dashboard" | "journal" | "ai" | "live" | "tir" | "mordad";
+type Tab = "dashboard" | "journal" | "ai" | "live";
 
-// The current Jalali year, resolved once. The bot showcase resets each month,
-// so «برایند تیر ماه»/«برایند مرداد ماه» always mean Tir/Mordad of this year.
-const CURRENT_JY = getJalaliParts(new Date().toISOString())?.year ?? 1405;
+// The Jalali month the page opens on: the *current* one. The showcase is a
+// monthly result, so an all-time figure is never shown — every panel is scoped
+// to the selected month, and that month defaults to today's.
+const NOW_JALALI = getJalaliParts(new Date().toISOString());
+const CURRENT_JY = NOW_JALALI?.year ?? 1405;
+const CURRENT_JM = NOW_JALALI?.month ?? 5;
 
-// Fixed monthly result tabs (a second row, below the main tabs). Each one scopes
-// the whole dashboard + journal to exactly 1..end of that Jalali month, and is
-// NOT affected by resetting the traders' capital to $1000.
-const MONTH_TABS: { key: Tab; label: string; jm: number }[] = [
-  { key: "tir", label: "برایند تیر ماه", jm: 4 },
-  { key: "mordad", label: "برایند مرداد ماه", jm: 5 },
+const JALALI_MONTHS = [
+  "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+  "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
 ];
+
+/** The month picker: this month plus the previous ones, newest first. */
+function monthOptions(count = 6): { jy: number; jm: number; label: string }[] {
+  const out: { jy: number; jm: number; label: string }[] = [];
+  let jy = CURRENT_JY;
+  let jm = CURRENT_JM;
+  for (let i = 0; i < count; i++) {
+    out.push({ jy, jm, label: `برایند ${JALALI_MONTHS[jm - 1]} ${toPersianDigits(jy)}` });
+    jm -= 1;
+    if (jm < 1) { jm = 12; jy -= 1; }
+  }
+  return out;
+}
 
 function monthRange(jy: number, jm: number): DateRange {
   return {
@@ -150,6 +163,13 @@ export function TeamLiveSection({
   const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [hidden, setHidden] = useState(false);
   const [tab, setTab] = useState<Tab>("dashboard");
+  // The showcase always shows ONE Jalali month — never an all-time total.
+  // It opens on the current month; the picker below switches to earlier ones.
+  const [month, setMonth] = useState({ jy: CURRENT_JY, jm: CURRENT_JM });
+  const months = useMemo(() => monthOptions(), []);
+  const range = useMemo(() => monthRange(month.jy, month.jm), [month]);
+  const dashboardFn = useCallback(() => publicApi.teamDashboard(range), [range]);
+  const tradesFn = useCallback(() => publicApi.teamTrades(range), [range]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -238,39 +258,39 @@ export function TeamLiveSection({
         })}
       </div>
 
-      {/* Fixed monthly برایند tabs (second row) — each scopes everything to one
-          Jalali month and stays constant when the traders' capital is reset. */}
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-2.5">
-        {MONTH_TABS.map((tb) => {
-          const active = tab === tb.key;
+      {/* ماه انتخابی — برایند همیشه برای یک ماه شمسی است، نه کل دوره */}
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+        {months.map((m) => {
+          const active = m.jy === month.jy && m.jm === month.jm;
           return (
             <button
-              key={tb.key}
-              onClick={() => setTab(tb.key)}
-              className="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5"
+              key={`${m.jy}-${m.jm}`}
+              onClick={() => setMonth({ jy: m.jy, jm: m.jm })}
+              className="inline-flex items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-bold transition-all duration-300 hover:-translate-y-0.5 md:text-sm"
               style={
                 active
-                  ? { background: `linear-gradient(120deg, rgba(${T.violet},0.95), rgba(${T.sky},0.75))`, color: "#06121f", boxShadow: `0 14px 34px -14px rgba(${T.violet},0.9)` }
-                  : { ...glass(), color: "rgba(255,255,255,0.85)" }
+                  ? { background: `linear-gradient(120deg, rgba(${T.violet},0.95), rgba(${T.sky},0.75))`, color: "#06121f", boxShadow: `0 12px 30px -14px rgba(${T.violet},0.9)` }
+                  : { ...glass(), color: "rgba(255,255,255,0.8)" }
               }
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4M8 2v4M3 10h18" />
               </svg>
-              {tb.label}
+              {m.label}
             </button>
           );
         })}
       </div>
 
       <motion.div key={tab} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="mt-8">
-        {tab === "dashboard" && <DashboardPanel summary={summary} onUpdated={onDataTick} />}
-        {tab === "journal" && <JournalPanel onUpdated={onDataTick} />}
+        {tab === "dashboard" && (
+          <DashboardPanel summary={summary} onUpdated={onDataTick}
+                          dashboardFn={dashboardFn} tradesFn={tradesFn} />
+        )}
+        {tab === "journal" && <JournalPanel onUpdated={onDataTick} tradesFn={tradesFn} />}
         {tab === "ai" && <AIPanel isAdmin={isAdmin} onUpdated={onDataTick} />}
-        {tab === "live" && <LiveTradePanel onUpdated={onDataTick} />}
-        {tab === "tir" && <MonthPanel summary={summary} jm={4} onUpdated={onDataTick} />}
-        {tab === "mordad" && <MonthPanel summary={summary} jm={5} onUpdated={onDataTick} />}
+        {tab === "live" && <LiveTradePanel onUpdated={onDataTick} range={range} />}
       </motion.div>
     </section>
   );
@@ -804,7 +824,9 @@ function StatusPill({ status, pnl }: { status: string; pnl: number | null }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Live-trade panel — one live trader's results (dashboard + calendar + journal)
 // ═══════════════════════════════════════════════════════════════════════════
-function LiveTradePanel({ onUpdated }: { onUpdated?: () => void }) {
+function LiveTradePanel({ onUpdated, range }: { onUpdated?: () => void; range: DateRange }) {
+  const liveDash = useCallback(() => publicApi.liveDashboard(range), [range]);
+  const liveTrades = useCallback(() => publicApi.liveTrades(range), [range]);
   const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [hidden, setHidden] = useState(false);
   const hasData = useRef(false);
@@ -836,8 +858,8 @@ function LiveTradePanel({ onUpdated }: { onUpdated?: () => void }) {
       <DashboardPanel
         summary={summary}
         onUpdated={onUpdated}
-        dashboardFn={publicApi.liveDashboard}
-        tradesFn={publicApi.liveTrades}
+        dashboardFn={liveDash}
+        tradesFn={liveTrades}
       />
 
       {/* Journal list — click any row for the full read-only detail */}
@@ -846,46 +868,7 @@ function LiveTradePanel({ onUpdated }: { onUpdated?: () => void }) {
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${T.sky})` }} />
           <h3 className="text-lg font-bold">ژورنال معاملاتِ لایو ترید</h3>
         </div>
-        <JournalPanel onUpdated={onUpdated} tradesFn={publicApi.liveTrades} />
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Month panel — the whole team dashboard + journal scoped to one Jalali month
-// (برایند تیر ماه / برایند مرداد ماه). Fixed per-month: unaffected by resets.
-// ═══════════════════════════════════════════════════════════════════════════
-function MonthPanel({
-  summary,
-  jm,
-  onUpdated,
-}: {
-  summary: TeamSummary;
-  jm: number;
-  onUpdated?: () => void;
-}) {
-  const range = useMemo<DateRange>(() => monthRange(CURRENT_JY, jm), [jm]);
-  const dashboardFn = useCallback(() => publicApi.teamDashboard(range), [range]);
-  const tradesFn = useCallback(() => publicApi.teamTrades(range), [range]);
-
-  return (
-    <div className="space-y-8">
-      {/* Full dashboard (KPIs, equity curve, donuts, Jalali calendar) — this month only */}
-      <DashboardPanel
-        summary={summary}
-        onUpdated={onUpdated}
-        dashboardFn={dashboardFn}
-        tradesFn={tradesFn}
-      />
-
-      {/* Journal list — only this month's trades */}
-      <div>
-        <div className="mb-4 flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${T.sky})` }} />
-          <h3 className="text-lg font-bold">لیست ژورنالِ این ماه</h3>
-        </div>
-        <JournalPanel onUpdated={onUpdated} tradesFn={tradesFn} />
+        <JournalPanel onUpdated={onUpdated} tradesFn={liveTrades} />
       </div>
     </div>
   );
