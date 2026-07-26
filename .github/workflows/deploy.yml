@@ -32,37 +32,73 @@ jobs:
             echo "▶ Last commit:"
             git log -1 --oneline
 
+            # Which parts actually changed? Skip work that cannot be affected.
+            CHANGED=$(git diff --name-only HEAD@{1} HEAD 2>/dev/null || echo "all")
+            echo "▶ Changed paths: ${CHANGED:-<none>}"
+            changed() { [ "$CHANGED" = "all" ] || echo "$CHANGED" | grep -q "^$1"; }
+
             # ───── Backend (FastAPI / uvicorn) ─────
-            echo "▶ Backend: installing deps..."
             cd /var/www/trading-journal/backend
             python3 -m venv venv 2>/dev/null || true
-            ./venv/bin/pip install --upgrade pip
-            ./venv/bin/pip install -r requirements.txt
-            echo "▶ Backend: restarting PM2..."
-            pm2 restart tj-backend || pm2 start ecosystem.config.js
+            # pip install is slow; only run it when the pinned deps actually moved.
+            if [ "$CHANGED" = "all" ] || echo "$CHANGED" | grep -q "backend/requirements.txt"; then
+              echo "▶ Backend: requirements changed — installing deps..."
+              ./venv/bin/pip install --upgrade pip
+              ./venv/bin/pip install -r requirements.txt
+            else
+              echo "▶ Backend: requirements unchanged — skipping pip install."
+            fi
+            if changed "backend/"; then
+              echo "▶ Backend: restarting PM2..."
+              pm2 restart tj-backend --update-env || pm2 start ecosystem.config.js
+            else
+              echo "▶ Backend: untouched — no restart."
+            fi
 
             # ───── Frontend (Next.js) ─────
-            echo "▶ Frontend: installing deps..."
             cd /var/www/trading-journal/frontend
-            npm install
+            if [ "$CHANGED" = "all" ] || echo "$CHANGED" | grep -qE "frontend/(package.json|package-lock.json)"; then
+              echo "▶ Frontend: lockfile changed — installing deps..."
+              npm ci --prefer-offline --no-audit --fund=false
+            else
+              echo "▶ Frontend: deps unchanged — skipping npm install."
+            fi
 
-            # journal build (algohub.cryptosmart.site/journal — basePath=/journal, distDir=.next)
-            echo "▶ Frontend (journal): building..."
-            npm run build
-            echo "▶ Frontend (journal): restarting PM2..."
-            pm2 restart tj-frontend || pm2 start ecosystem.config.js --only tj-frontend
+            if changed "frontend/"; then
+              # Both builds get the same heap ceiling: the journal build was
+              # OOM-killed on this box, which left the process restart-looping.
+              export NODE_OPTIONS=--max-old-space-size=2048
 
-            # pnl build (pnl.cryptosmart.site — root, SITE_MODE=pnl, distDir=.next-pnl)
-            # Built into a separate distDir so it never overwrites the journal build.
-            echo "▶ Frontend (pnl): building..."
-            NODE_OPTIONS=--max-old-space-size=2048 \
-            NEXT_PUBLIC_SITE_MODE=pnl \
-            NEXT_PUBLIC_BASE_PATH= \
-            NEXT_PUBLIC_API_BASE=/api \
-            NEXT_DIST_DIR=.next-pnl \
-            npm run build
-            echo "▶ Frontend (pnl): restarting PM2..."
-            pm2 restart tj-pnl-frontend --update-env || pm2 start ecosystem.config.js --only tj-pnl-frontend
+              # journal build (algohub.cryptosmart.site/journal — basePath=/journal, distDir=.next)
+              echo "▶ Frontend (journal): building..."
+              npm run build
+              echo "▶ Frontend (journal): restarting PM2..."
+              pm2 restart tj-frontend --update-env || pm2 start ecosystem.config.js --only tj-frontend
+
+              # pnl build (pnl.cryptosmart.site — root, SITE_MODE=pnl, distDir=.next-pnl)
+              # Built into a separate distDir so it never overwrites the journal build.
+              echo "▶ Frontend (pnl): building..."
+              NEXT_PUBLIC_SITE_MODE=pnl \
+              NEXT_PUBLIC_BASE_PATH= \
+              NEXT_PUBLIC_API_BASE=/api \
+              NEXT_DIST_DIR=.next-pnl \
+              npm run build
+              echo "▶ Frontend (pnl): restarting PM2..."
+              pm2 restart tj-pnl-frontend --update-env || pm2 start ecosystem.config.js --only tj-pnl-frontend
+            else
+              echo "▶ Frontend: untouched — no rebuild."
+            fi
+
+            # Both sites must answer before the deploy is called done.
+            echo "▶ Health check..."
+            for p in 3001 3012; do
+              for i in $(seq 1 20); do
+                code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$p/" || true)
+                [ "$code" = "200" ] && { echo "  ✅ port $p OK"; break; }
+                [ "$i" = "20" ] && { echo "  ❌ port $p not answering (last=$code)"; pm2 logs --lines 40 --nostream; exit 1; }
+                sleep 3
+              done
+            done
 
             pm2 save
             echo "✅ Deploy complete — https://trading-journal.cryptosmart.site + https://pnl.cryptosmart.site"
