@@ -1,5 +1,5 @@
 """Public (no-auth) endpoints that power the landing-page "لایو معاملات ربات الگو
-اسمارت" showcase.
+aسمارت" showcase.
 
 They surface a *combined, anonymous* view of every account tagged into the
 Cryptosmart Team group ("CRYPTOSMART_TEAM") — these are algo-bot accounts, so no
@@ -9,8 +9,11 @@ personal names are ever exposed:
   • one aggregated dashboard (per-bot dashboard options summed),
   • the combined team AI analyses (overall + institutional), read-only.
 
-The whole group shares ONE $1000 starting balance per shown month, so the
-combined figures are read against a flat $1000 and clearly labelled.
+The whole group shares ONE $1000 starting balance per shown month: the capital
+is split evenly between the accounts that actually traded in that month, each
+account compounds its own share, and the combined figures are read against the
+flat $1000. So the shown برایند is the real average result of the bots — never
+$1000 per bot, and never the real result divided by the member count.
 
 Generating the AI analyses is admin-only (a POST); reading everything is public.
 """
@@ -104,18 +107,29 @@ async def _group_members(db: AsyncSession, group: str) -> list[User]:
         select(User).where(User.user_group == group).order_by(User.id)
     )
     members = list(result.scalars().all())
-    # Split the single $1000 starting capital evenly across the accounts so the
-    # combined figures sum to a flat $1000. Detached from the session so this
-    # never persists to the DB.
-    per = INITIAL_CAPITAL / (len(members) or 1)
+    # The real per-account capital is irrelevant for the showcase: every member
+    # trades a share of the shared $1000, and that share can only be worked out
+    # once we know who traded in the shown window (see _share_of). Detached from
+    # the session so nothing here ever persists to the DB.
     for u in members:
-        u.wallet_margin = per
+        u.wallet_margin = INITIAL_CAPITAL
         db.expunge(u)
     return members
 
 
 async def _team_members(db: AsyncSession) -> list[User]:
     return await _group_members(db, TEAM_GROUP)
+
+
+def _share_of(active_count: int) -> float:
+    """The slice of the shared $1000 given to each account active in the month.
+
+    Only the accounts that actually traded in the shown window get a slice: with
+    three bots trading, each runs $333.33 and the combined result is their
+    average; with a single bot trading that month, it runs the whole $1000 and
+    the showcase shows its real result instead of a third of it.
+    """
+    return INITIAL_CAPITAL / (active_count or 1)
 
 
 def _pnl_of(
@@ -126,9 +140,10 @@ def _pnl_of(
 
     `ignore_snapshot=True` forces the normalised `base_balance` instead of the
     account's real balance at the time of the trade. The public showcase needs
-    this: every month must be read against the shared $1000, otherwise each bot
-    would size its trades on its own (bigger) balance and the combined result
-    would behave like $1000 per bot.
+    this: every month must be read against its slice of the shared $1000,
+    otherwise each bot would size its trades on its own (bigger) balance and the
+    combined equity curve would be meaningless. Imported (Toobit) trades carry
+    an absolute exchange PnL, so that figure is rescaled by the same ratio.
     """
     tp_dicts = [
         {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
@@ -154,6 +169,11 @@ def _pnl_of(
     pnl = result["realizedPnl"]
     if getattr(trade, "source", None) == "toobit" and trade.realized_pnl is not None:
         pnl = trade.realized_pnl
+        # The exchange PnL was earned on the account's real balance; express it
+        # on the normalised base so it can be added to a $1000 equity curve.
+        snap = trade.balance_snapshot
+        if ignore_snapshot and snap and snap > 0:
+            pnl = pnl * (base / snap)
     return pnl, result.get("rrAchieved")
 
 
@@ -244,13 +264,25 @@ async def _aggregate_trades(
     # reset. We show every trade (optionally scoped to a Jalali month via
     # date_from/date_to) — never just the "current cycle" — so resetting the
     # traders' capital to $1000 does not change the monthly برایند.
-    out: list[TradeOut] = []
+    loaded: list[tuple[User, list[Trade], Any, list[Trade]]] = []
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
-        for t in trades:
-            if _in_range(t, date_from, date_to):
-                out.append(trade_to_out(u, trades, t, transactions))
+        shown = [t for t in trades if _in_range(t, date_from, date_to)]
+        loaded.append((u, trades, transactions, shown))
+
+    # Same normalisation as the dashboard: the shared $1000 is split between the
+    # accounts that traded in this window, so the rows' figures and the totals
+    # above them tell the same story.
+    share = _share_of(sum(1 for _, _, _, shown in loaded if shown))
+
+    out: list[TradeOut] = []
+    for u, trades, transactions, shown in loaded:
+        if not shown:
+            continue
+        u.wallet_margin = share
+        for t in shown:
+            out.append(trade_to_out(u, trades, t, transactions))
     out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
     return out
 
@@ -307,50 +339,54 @@ async def _aggregate_dashboard(
     # Every shown month opens at exactly $1000 for the whole group — never more,
     # regardless of how many accounts are tagged into it.
     start_balance = INITIAL_CAPITAL
-    trade_count = 0
-    closed_count = 0
+
+    # The bot showcase is fixed per-month and NOT affected by a capital reset:
+    # we show every trade (optionally scoped to a month via date_from/date_to),
+    # never the "current cycle".
+    loaded: list[tuple[User, list[Trade]]] = []
+    for u in members:
+        trades = await crud.load_user_trades(db, u.id)
+        loaded.append((u, [t for t in trades if _in_range(t, date_from, date_to)]))
+
+    # Only the accounts that traded in this window share the $1000. Splitting it
+    # across every tagged account (including the idle ones) used to divide the
+    # real result by the member count.
+    active = [(u, shown) for u, shown in loaded if shown]
+    share = _share_of(len(active))
+
+    trade_count = sum(len(shown) for _, shown in active)
+
+    # Walk every bot's closed trades in one chronological stream, sizing each
+    # trade on that bot's *running* share of the capital. So each account
+    # compounds its own month exactly like the real one did, just normalised to
+    # its slice of the shared $1000.
+    events: list[tuple[Trade, int]] = [
+        (t, u.id) for u, shown in active for t in shown if t.status == "CLOSED"
+    ]
+    events.sort(key=lambda e: (_ts(e[0].close_date or e[0].open_date), e[0].number))
+
+    sub_balance: dict[int, float] = {u.id: share for u, _ in active}
     closed_pairs: list[tuple[Trade, float]] = []
-    hist_pairs: list[tuple[Trade, float]] = []  # ALL closed trades (for the calendar)
     rr_values: list[float] = []
     fractions: list[float] = []
 
-    for u in members:
-        trades = await crud.load_user_trades(db, u.id)
-        transactions = await crud.load_user_transactions(db, u.id)
-        # The bot showcase is fixed per-month and NOT affected by a capital reset:
-        # we show every trade (optionally scoped to a month via date_from/date_to),
-        # never the "current cycle".
-        shown = [t for t in trades if _in_range(t, date_from, date_to)]
-        closed = [t for t in shown if t.status == "CLOSED"]
-        # Each member trades its normalised share of the shared $1000 (set by
-        # _group_members). Wallet deposits/withdrawals are excluded from the
-        # results (برآیند): trading performance only.
-        base_balance = (u.wallet_margin or 0.0)
+    for t, uid in events:
+        pnl, rr = _pnl_of(t, sub_balance[uid], ignore_snapshot=True)
+        sub_balance[uid] += pnl
+        closed_pairs.append((t, pnl))
+        # Toobit trades carry a margin-based achieved-R computed at import.
+        if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
+            rr = t.rr_achieved
+        if rr is not None:
+            rr_values.append(rr)
+        ticks = t.checklist_ticks or {}
+        if isinstance(ticks, dict) and ticks:
+            total = len(ticks)
+            done = sum(1 for v in ticks.values() if v)
+            if total:
+                fractions.append(done / total)
 
-        trade_count += len(shown)
-        closed_count += len(closed)
-
-        # Calendar series — the same (possibly month-scoped) set of closed trades.
-        for t in closed:
-            hp, _ = _pnl_of(t, base_balance, ignore_snapshot=True)
-            hist_pairs.append((t, hp))
-
-        for t in closed:
-            pnl, rr = _pnl_of(t, base_balance, ignore_snapshot=True)
-            closed_pairs.append((t, pnl))
-            # Toobit trades carry a margin-based achieved-R computed at import.
-            if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
-                rr = t.rr_achieved
-            if rr is not None:
-                rr_values.append(rr)
-            ticks = t.checklist_ticks or {}
-            if isinstance(ticks, dict) and ticks:
-                total = len(ticks)
-                done = sum(1 for v in ticks.values() if v)
-                if total:
-                    fractions.append(done / total)
-
-    closed_pairs.sort(key=lambda p: (_ts(p[0].close_date or p[0].open_date), p[0].number))
+    closed_count = len(closed_pairs)
     pnls = [pnl for _, pnl in closed_pairs]
 
     balance = start_balance
@@ -384,8 +420,9 @@ async def _aggregate_dashboard(
         "avgLoss": (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None,
     }
 
+    # Calendar series — the same (possibly month-scoped) closed trades.
     by_day: dict[str, float] = defaultdict(float)
-    for t, pnl in hist_pairs:
+    for t, pnl in closed_pairs:
         day = t.close_date or t.open_date
         key = day.date().isoformat() if day else "unknown"
         by_day[key] += pnl
