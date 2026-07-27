@@ -9,11 +9,12 @@ personal names are ever exposed:
   • one aggregated dashboard (per-bot dashboard options summed),
   • the combined team AI analyses (overall + institutional), read-only.
 
-The whole group shares ONE $1000 starting balance per shown month: the capital
-is split evenly between the accounts that actually traded in that month, each
-account compounds its own share, and the combined figures are read against the
-flat $1000. So the shown برایند is the real average result of the bots — never
-$1000 per bot, and never the real result divided by the member count.
+How a shown month is computed: every bot runs the month on a full $1000 of its
+own, which makes its result a plain percentage of $1000; those percentages are
+then ADDED together and applied to the single shared $1000 the showcase starts
+from. So the group still opens each month at exactly $1000 (never $1000 × the
+member count), while the shown برایند is the sum of the bots' returns — not
+their average, and never the real result divided by the member count.
 
 Generating the AI analyses is admin-only (a POST); reading everything is public.
 """
@@ -57,8 +58,9 @@ TEAM_GROUP = "CRYPTOSMART_TEAM"
 # «برایند لایو ترید» — a separate showcase group for a live (human) trader.
 LIVE_TRADE_GROUP = "LIVE_TRADE"
 
-# The whole showcase (all bots combined) starts from this single capital, so the
-# growth figures are read relative to a flat $1000 — not $1000 per bot.
+# The whole showcase (all bots combined) starts from this single capital, and it
+# is also the base every single bot's month is measured against, so the members'
+# percentages are directly comparable and can be summed.
 INITIAL_CAPITAL = 1000.0
 
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
@@ -107,10 +109,10 @@ async def _group_members(db: AsyncSession, group: str) -> list[User]:
         select(User).where(User.user_group == group).order_by(User.id)
     )
     members = list(result.scalars().all())
-    # The real per-account capital is irrelevant for the showcase: every member
-    # trades a share of the shared $1000, and that share can only be worked out
-    # once we know who traded in the shown window (see _share_of). Detached from
-    # the session so nothing here ever persists to the DB.
+    # The real per-account capital is irrelevant for the showcase: every member's
+    # month is measured on the same $1000 (see _member_base), so their results
+    # are percentages of one shared base. Detached from the session so nothing
+    # here ever persists to the DB.
     for u in members:
         u.wallet_margin = INITIAL_CAPITAL
         db.expunge(u)
@@ -121,15 +123,17 @@ async def _team_members(db: AsyncSession) -> list[User]:
     return await _group_members(db, TEAM_GROUP)
 
 
-def _share_of(active_count: int) -> float:
-    """The slice of the shared $1000 given to each account active in the month.
+def _member_base() -> float:
+    """The capital every showcase account trades in a shown month.
 
-    Only the accounts that actually traded in the shown window get a slice: with
-    three bots trading, each runs $333.33 and the combined result is their
-    average; with a single bot trading that month, it runs the whole $1000 and
-    the showcase shows its real result instead of a third of it.
+    Each bot runs the full $1000 — the capital is NOT divided between them.
+    That makes each bot's month a percentage of $1000, and because the combined
+    equity curve also starts from $1000, adding their PnL together is exactly
+    "sum the members' percentages and apply them to $1000". Dividing the base by
+    the member count would instead average their results (a 50% month with three
+    tagged accounts showed up as ~16%).
     """
-    return INITIAL_CAPITAL / (active_count or 1)
+    return INITIAL_CAPITAL
 
 
 def _pnl_of(
@@ -140,9 +144,9 @@ def _pnl_of(
 
     `ignore_snapshot=True` forces the normalised `base_balance` instead of the
     account's real balance at the time of the trade. The public showcase needs
-    this: every month must be read against its slice of the shared $1000,
-    otherwise each bot would size its trades on its own (bigger) balance and the
-    combined equity curve would be meaningless. Imported (Toobit) trades carry
+    this: every month must be read against the shared $1000, otherwise each bot
+    would size its trades on its own (bigger or smaller) balance and the results
+    would not be comparable, let alone summable. Imported (Toobit) trades carry
     an absolute exchange PnL, so that figure is rescaled by the same ratio.
     """
     tp_dicts = [
@@ -264,25 +268,18 @@ async def _aggregate_trades(
     # reset. We show every trade (optionally scoped to a Jalali month via
     # date_from/date_to) — never just the "current cycle" — so resetting the
     # traders' capital to $1000 does not change the monthly برایند.
-    loaded: list[tuple[User, list[Trade], Any, list[Trade]]] = []
+    #
+    # Same normalisation as the dashboard: every account's rows are read on the
+    # shared $1000, so the rows and the totals above them tell the same story.
+    base = _member_base()
+    out: list[TradeOut] = []
     for u in members:
         trades = await crud.load_user_trades(db, u.id)
         transactions = await crud.load_user_transactions(db, u.id)
-        shown = [t for t in trades if _in_range(t, date_from, date_to)]
-        loaded.append((u, trades, transactions, shown))
-
-    # Same normalisation as the dashboard: the shared $1000 is split between the
-    # accounts that traded in this window, so the rows' figures and the totals
-    # above them tell the same story.
-    share = _share_of(sum(1 for _, _, _, shown in loaded if shown))
-
-    out: list[TradeOut] = []
-    for u, trades, transactions, shown in loaded:
-        if not shown:
-            continue
-        u.wallet_margin = share
-        for t in shown:
-            out.append(trade_to_out(u, trades, t, transactions))
+        u.wallet_margin = base
+        for t in trades:
+            if _in_range(t, date_from, date_to):
+                out.append(trade_to_out(u, trades, t, transactions))
     out.sort(key=lambda t: (_ts(t.open_date), _ts(t.close_date)), reverse=True)
     return out
 
@@ -332,13 +329,17 @@ def _parse_range(from_: str | None, to: str | None):
     return _one(from_), _one(to)
 
 
-# ── aggregated dashboard (the whole group sharing one flat $1000) ────────────
+# ── aggregated dashboard (the members' percentages summed on one $1000) ─────
 async def _aggregate_dashboard(
     db: AsyncSession, members: list[User], date_from=None, date_to=None
 ) -> DashboardOut:
     # Every shown month opens at exactly $1000 for the whole group — never more,
     # regardless of how many accounts are tagged into it.
     start_balance = INITIAL_CAPITAL
+    # ...and every member's month is computed on that same $1000, so each bot's
+    # PnL is a percentage of $1000 and adding them up on the combined curve is
+    # literally the sum of the members' percentages.
+    base = _member_base()
 
     # The bot showcase is fixed per-month and NOT affected by a capital reset:
     # we show every trade (optionally scoped to a month via date_from/date_to),
@@ -348,31 +349,25 @@ async def _aggregate_dashboard(
         trades = await crud.load_user_trades(db, u.id)
         loaded.append((u, [t for t in trades if _in_range(t, date_from, date_to)]))
 
-    # Only the accounts that traded in this window share the $1000. Splitting it
-    # across every tagged account (including the idle ones) used to divide the
-    # real result by the member count.
-    active = [(u, shown) for u, shown in loaded if shown]
-    share = _share_of(len(active))
-
-    trade_count = sum(len(shown) for _, shown in active)
+    trade_count = sum(len(shown) for _, shown in loaded)
 
     # Walk every bot's closed trades in one chronological stream, sizing each
-    # trade on that bot's *running* share of the capital. So each account
-    # compounds its own month exactly like the real one did, just normalised to
-    # its slice of the shared $1000.
+    # trade on that bot's *own* running $1000. So each account compounds its own
+    # month exactly like the real one did, and the combined curve carries the sum
+    # of their results.
     events: list[tuple[Trade, int]] = [
-        (t, u.id) for u, shown in active for t in shown if t.status == "CLOSED"
+        (t, u.id) for u, shown in loaded for t in shown if t.status == "CLOSED"
     ]
     events.sort(key=lambda e: (_ts(e[0].close_date or e[0].open_date), e[0].number))
 
-    sub_balance: dict[int, float] = {u.id: share for u, _ in active}
+    sub_balance: dict[int, float] = {u.id: base for u, _ in loaded}
     closed_pairs: list[tuple[Trade, float]] = []
     rr_values: list[float] = []
     fractions: list[float] = []
 
     for t, uid in events:
-        pnl, rr = _pnl_of(t, sub_balance[uid], ignore_snapshot=True)
-        sub_balance[uid] += pnl
+        pnl, rr = _pnl_of(t, sub_balance.get(uid, base), ignore_snapshot=True)
+        sub_balance[uid] = sub_balance.get(uid, base) + pnl
         closed_pairs.append((t, pnl))
         # Toobit trades carry a margin-based achieved-R computed at import.
         if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
@@ -525,7 +520,7 @@ async def livetrade_dashboard(
     ))
 
 
-# ── combined team AI (read public, generate admin) ────────────────────────
+# ── combined team AI (read public, generate admin) ───────────────────────
 async def _get_team_ai(db: AsyncSession) -> TeamAI:
     row = await db.get(TeamAI, 1)
     if row is None:
