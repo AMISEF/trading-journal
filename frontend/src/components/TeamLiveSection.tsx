@@ -116,6 +116,12 @@ function monthLabel(m: ShowcaseMonth): string {
   return `برایند ${JALALI_MONTHS[m.jm - 1]} ${toPersianDigits(m.jy)}`;
 }
 
+/** شناسهٔ ماه — کلیدِ ری‌فچ است، پس تغییرِ ماه بلافاصله داده را نو می‌کند. */
+function monthKeyOf(m?: ShowcaseMonth): string {
+  return m ? `${m.jy}-${m.jm}` : "all";
+}
+
+/** بازهٔ کاملِ همان ماه شمسی: از روز ۱ تا آخرین روزِ ماه (۳۱ برای تیر و مرداد). */
 function monthRange(jy: number, jm: number): DateRange {
   return {
     from: jalaliToGregorianDate(jy, jm, 1),
@@ -166,6 +172,7 @@ export function TeamLiveSection({
   const [month, setMonth] = useState<ShowcaseMonth>(DEFAULT_MONTH);
   const months = SHOWCASE_MONTHS;
   const range = useMemo(() => monthRange(month.jy, month.jm), [month]);
+  const monthKey = monthKeyOf(month);
   const dashboardFn = useCallback(() => publicApi.teamDashboard(range), [range]);
   const tradesFn = useCallback(() => publicApi.teamTrades(range), [range]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -283,10 +290,10 @@ export function TeamLiveSection({
 
       <motion.div key={tab} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="mt-8">
         {tab === "dashboard" && (
-          <DashboardPanel summary={summary} onUpdated={onDataTick} month={month}
+          <DashboardPanel summary={summary} onUpdated={onDataTick} month={month} refreshKey={monthKey}
                           dashboardFn={dashboardFn} tradesFn={tradesFn} />
         )}
-        {tab === "journal" && <JournalPanel onUpdated={onDataTick} tradesFn={tradesFn} />}
+        {tab === "journal" && <JournalPanel onUpdated={onDataTick} tradesFn={tradesFn} refreshKey={monthKey} />}
         {tab === "ai" && <AIPanel isAdmin={isAdmin} onUpdated={onDataTick} />}
         {tab === "live" && <LiveTradePanel onUpdated={onDataTick} range={range} month={month} />}
       </motion.div>
@@ -370,12 +377,14 @@ function DashboardPanel({
   summary,
   onUpdated,
   month,
+  refreshKey,
   dashboardFn = publicApi.teamDashboard,
   tradesFn = publicApi.teamTrades,
 }: {
   summary: TeamSummary;
   onUpdated?: () => void;
   month?: ShowcaseMonth;
+  refreshKey?: string;
   dashboardFn?: () => Promise<DashboardData>;
   tradesFn?: () => Promise<Trade[]>;
 }) {
@@ -398,7 +407,9 @@ function DashboardPanel({
     }
   }, [onUpdated, dashboardFn, tradesFn]);
 
-  useLiveRefresh(refresh, LIVE_POLL_MS);
+  // refreshKey = ماه انتخابی: با تغییرِ آن، داده همان لحظه دوباره گرفته می‌شود
+  // (وگرنه تا ۱۵ ثانیه دادهٔ ماه قبلی روی صفحه می‌ماند و دکمه‌ها بی‌اثر به نظر می‌رسند).
+  useLiveRefresh(refresh, LIVE_POLL_MS, true, refreshKey);
 
   if (error) return <PanelEmpty text="بارگذاری داشبورد ممکن نشد." />;
   if (!data) return <PanelSpinner />;
@@ -427,6 +438,15 @@ function DashboardPanel({
 
   return (
     <div className="space-y-5">
+      {/* ماهی که هنوز معامله‌ای ندارد، صریح گفته می‌شود — نه داشبوردِ خالی */}
+      {data.tradeCount === 0 && (
+        <div className="rounded-2xl px-5 py-4 text-center text-sm text-white/70" style={glass()}>
+          {month
+            ? `برای ${JALALI_MONTHS[month.jm - 1]} ${toPersianDigits(month.jy)} هنوز معامله‌ای ثبت نشده است.`
+            : "هنوز معامله‌ای ثبت نشده است."}
+        </div>
+      )}
+
       {/* Combined capital / growth box */}
       <CapitalBox base={base} current={data.currentBalance} growth={growth} growthPct={growthPct} weekPnl={curWeek?.pnl ?? null} monthPnl={curMonth?.pnl ?? null} />
 
@@ -632,9 +652,11 @@ const PAGE_SIZE = 10;
 function JournalPanel({
   onUpdated,
   tradesFn = publicApi.teamTrades,
+  refreshKey,
 }: {
   onUpdated?: () => void;
   tradesFn?: () => Promise<Trade[]>;
+  refreshKey?: string;
 }) {
   const [rows, setRows] = useState<Trade[] | null>(null);
   const [error, setError] = useState(false);
@@ -655,15 +677,16 @@ function JournalPanel({
     }
   }, [onUpdated, tradesFn]);
 
-  useLiveRefresh(refresh, LIVE_POLL_MS);
+  // Same as the dashboard: a new month must refetch immediately, not on the next tick.
+  useLiveRefresh(refresh, LIVE_POLL_MS, true, refreshKey);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
     return rows.filter((t) => statusFilter === "ALL" || t.status === statusFilter);
   }, [rows, statusFilter]);
 
-  // Reset to the first page whenever the filter changes.
-  useEffect(() => { setPage(1); }, [statusFilter]);
+  // Reset to the first page whenever the filter or the selected month changes.
+  useEffect(() => { setPage(1); }, [statusFilter, refreshKey]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -671,7 +694,7 @@ function JournalPanel({
 
   if (error) return <PanelEmpty text="بارگذاری ژورنال‌ها ممکن نشد." />;
   if (!rows) return <PanelSpinner />;
-  if (rows.length === 0) return <PanelEmpty text="هنوز معامله‌ای ثبت نشده است." />;
+  if (rows.length === 0) return <PanelEmpty text="برای این ماه معامله‌ای ثبت نشده است." />;
 
   return (
     <div className="space-y-4">
@@ -828,6 +851,7 @@ function StatusPill({ status, pnl }: { status: string; pnl: number | null }) {
 function LiveTradePanel({ onUpdated, range, month }: { onUpdated?: () => void; range: DateRange; month?: ShowcaseMonth }) {
   const liveDash = useCallback(() => publicApi.liveDashboard(range), [range]);
   const liveTrades = useCallback(() => publicApi.liveTrades(range), [range]);
+  const refreshKey = monthKeyOf(month);
   const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [hidden, setHidden] = useState(false);
   const hasData = useRef(false);
@@ -860,6 +884,7 @@ function LiveTradePanel({ onUpdated, range, month }: { onUpdated?: () => void; r
         summary={summary}
         onUpdated={onUpdated}
         month={month}
+        refreshKey={refreshKey}
         dashboardFn={liveDash}
         tradesFn={liveTrades}
       />
@@ -870,7 +895,7 @@ function LiveTradePanel({ onUpdated, range, month }: { onUpdated?: () => void; r
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${T.sky})` }} />
           <h3 className="text-lg font-bold">ژورنال معاملاتِ لایو ترید</h3>
         </div>
-        <JournalPanel onUpdated={onUpdated} tradesFn={liveTrades} />
+        <JournalPanel onUpdated={onUpdated} tradesFn={liveTrades} refreshKey={refreshKey} />
       </div>
     </div>
   );

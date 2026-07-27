@@ -32,11 +32,18 @@ export function useInterval(fn: () => void, ms: number, enabled = true) {
  *  - re-runs every `ms` while the browser tab is visible
  *  - refreshes immediately when the tab becomes visible again
  * Failures are swallowed so the last good snapshot stays on screen.
+ *
+ * `fn` is held in a ref on purpose, so an inline callback cannot restart the
+ * loop on every render. That also means a *changed* `fn` (e.g. a new date
+ * window) would otherwise not be picked up until the next tick — pass a
+ * `resetKey` that identifies the current inputs and the loop restarts and
+ * re-fetches immediately when it changes.
  */
 export function useLiveRefresh(
   fn: () => void | Promise<void>,
   ms: number,
   enabled = true,
+  resetKey?: string | number,
 ) {
   const saved = useRef(fn);
   useEffect(() => {
@@ -79,5 +86,7 @@ export function useLiveRefresh(
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [ms, enabled]);
+    // resetKey is intentionally part of the deps: it is how a caller says
+    // "the inputs changed, refetch now".
+  }, [ms, enabled, resetKey]);
 }
