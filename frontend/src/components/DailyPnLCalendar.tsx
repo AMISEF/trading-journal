@@ -7,8 +7,13 @@
  *
  * Optional `trades` enables day-click detail: tapping a day shows that day's
  * trades with per-trade and total PnL.
+ *
+ * Optional `month` pins the grid to one Jalali month (used by the public
+ * برایند showcase, where the numbers belong to exactly one month). When it is
+ * set, the ‹ › arrows are hidden so the calendar can never show a different
+ * month than the one the figures were computed for.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { JALALI_MONTHS, formatJalaliDate, getJalaliParts, jalaliDaysInMonth, jalaliToGregorianDate, toPersianDigits } from "@/lib/jalali";
 import { buildMonthlyData, buildWeeklyData } from "@/lib/pnl";
@@ -100,18 +105,31 @@ export function DailyPnLCalendar({
   pnlByDay,
   walletMargin,
   trades,
+  month,
 }: {
   pnlByDay: { date: string; pnl: number }[];
   walletMargin: number;
   trades?: DayTradeItem[];
+  month?: { jy: number; jm: number };
 }) {
   const today = new Date();
   const todayJp = getJalaliParts(today.toISOString().slice(0, 10));
-  const [jViewYear, setJViewYear] = useState(todayJp?.year ?? 1404);
-  const [jViewMonth, setJViewMonth] = useState(todayJp?.month ?? 1);
+  // A pinned month wins over "today" for the initial view.
+  const [jViewYear, setJViewYear] = useState(month?.jy ?? todayJp?.year ?? 1404);
+  const [jViewMonth, setJViewMonth] = useState(month?.jm ?? todayJp?.month ?? 1);
   const [chartType, setChartType] = useState<"calendar" | "bar">("calendar");
   const [profitView, setProfitView] = useState<"daily" | "weekly" | "monthly">("daily");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // Pinned = the parent decides the month, so month navigation is hidden.
+  const locked = !!month;
+
+  // Follow the parent's month picker (برایند تیر / برایند مرداد).
+  useEffect(() => {
+    if (!month) return;
+    setJViewYear(month.jy);
+    setJViewMonth(month.jm);
+    setSelectedDate(null);
+  }, [month?.jy, month?.jm]);
 
   const pnlMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -204,7 +222,9 @@ export function DailyPnLCalendar({
       {/* Month nav + profit view toggle */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-5 py-3">
         <div className="flex items-center gap-2">
-          <button onClick={prevMonth} className="flex h-8 w-8 items-center justify-center rounded-full text-sm transition hover:-translate-y-0.5" style={{ background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` }}>‹</button>
+          {!locked && (
+            <button onClick={prevMonth} className="flex h-8 w-8 items-center justify-center rounded-full text-sm transition hover:-translate-y-0.5" style={{ background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` }}>‹</button>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
             <span className="font-bold" style={{ color: `rgb(${TINTS.mint})` }}>{JALALI_MONTHS[jViewMonth - 1]} {toPersianDigits(jViewYear)}</span>
             {monthTotal !== 0 && (
@@ -217,7 +237,9 @@ export function DailyPnLCalendar({
               </span>
             )}
           </div>
-          <button onClick={nextMonth} className="flex h-8 w-8 items-center justify-center rounded-full text-sm transition hover:-translate-y-0.5" style={{ background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` }}>›</button>
+          {!locked && (
+            <button onClick={nextMonth} className="flex h-8 w-8 items-center justify-center rounded-full text-sm transition hover:-translate-y-0.5" style={{ background: GLASS_BG, border: `1px solid ${GLASS_BORDER}` }}>›</button>
+          )}
         </div>
         <div className="flex gap-1.5">
           <button onClick={() => setProfitView("daily")} className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition" style={pill(profitView === "daily", TINTS.sky)}>روزانه</button>
