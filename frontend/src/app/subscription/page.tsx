@@ -10,8 +10,9 @@ import { AppShell } from "@/components/AppShell";
 import { faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
 import { useAuth } from "@/store/auth";
+import type { User } from "@/lib/types";
 
-// ── Billing periods ─────────────────────────────────────────────────────────
+// ── Billing periods ──────────────────────────────────────────────────────
 // `months` = calendar months of access. `paidMonths` = months actually billed
 // (the discount rule the product owner defined):
 //   • ۳ ماهه  → قیمت ۳ ماه خط می‌خورد، فقط ۲ ماه پرداخت می‌شود
@@ -35,7 +36,7 @@ const payPrice = (monthly: number, p: Period) => monthly * p.paidMonths;
 
 const round1000 = (n: number) => Math.round(n / 1000) * 1000;
 
-// ── Plans ───────────────────────────────────────────────────────────────────
+// ── Plans ─────────────────────────────────────────────────────────────
 // `tier` maps to the backend subscription tier; `tint` is the "R,G,B" wash used
 // across the glass card + selected-plan chrome.
 const plans = [
@@ -85,7 +86,7 @@ const plans = [
   },
 ] as const;
 
-// ── Payment / activation details ────────────────────────────────────────────
+// ── Payment / activation details ───────────────────────────────────────
 const SUPPORT_URL = "https://t.me/cryptosmart_sup";
 const PAY_ADDRESSES = [
   { net: "شبکهٔ TRC20 — ترون", value: "TKnDWJ6PXt7CAjXEEvUnoJbD9QwnCwGyCL" },
@@ -93,13 +94,39 @@ const PAY_ADDRESSES = [
 ] as const;
 const TOOBIT_UID = "129107184";
 
+/**
+ * The buyer's own account details, appended to the support message.
+ *
+ * Each value is wrapped in backticks: the Telegram client converts them into
+ * monospace (code) entities when the message is sent, so support can copy any
+ * field with a single tap while activating the plan.
+ */
+function identityBlock(user: User | null) {
+  if (!user) return "";
+  const mono = (v: string) => "`" + v + "`";
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  const rows: string[] = [];
+  if (user.email) rows.push("Email: " + mono(user.email));
+  if (user.username) rows.push("Username: " + mono(user.username));
+  if (fullName) rows.push("Name & Last Name: " + mono(fullName));
+  if (user.phone) rows.push("Phone: " + mono(user.phone));
+  if (!rows.length) return "";
+  return "\n\nمشخصات من:\n" + rows.join("\n");
+}
+
 /** The formal, ready-to-send message the buyer opens the support chat with. */
-function supportMessage(planName: string, periodLabel: string, priceLabel: string) {
+function supportMessage(
+  planName: string,
+  periodLabel: string,
+  priceLabel: string,
+  user: User | null = null
+) {
   return (
     "سلام؛ وقت بخیر.\n" +
     `مایل به تهیهٔ اشتراک «${planName}» پنل ژورنال تریدینگ کریپتو اسمارت ` +
     `(دورهٔ ${periodLabel} — ${priceLabel}) هستم.\n` +
-    "لطفاً راهنمایی بفرمایید. سپاسگزارم."
+    "لطفاً راهنمایی بفرمایید. سپاسگزارم." +
+    identityBlock(user)
   );
 }
 
@@ -138,7 +165,7 @@ const TIER_TINT: Record<string, string> = {
   gold: "251,191,36",
 };
 
-// ── Billing-period switch ─────────────────────────────────────────────────────
+// ── Billing-period switch ───────────────────────────────────────────────
 // A measured sliding indicator (no framer `layoutId`, which got stuck on the
 // first tab in RTL). The pill's position/width is read straight off the active
 // button, so it tracks every period reliably.
@@ -324,7 +351,10 @@ function PaymentModal({
   tint: string;
   onClose: () => void;
 }) {
-  const message = supportMessage(planName, periodLabel, priceLabel);
+  // The signed-in account travels with the request, so support does not have to
+  // ask who is paying before activating the plan.
+  const user = useAuth((s) => s.user);
+  const message = supportMessage(planName, periodLabel, priceLabel, user);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -428,6 +458,9 @@ function PaymentModal({
         </a>
         <p className="mt-2.5 text-center text-xs leading-7 text-gray-400">
           جهت ارسال رسید واریز دلاری یا دریافت شمارهٔ کارت، کلیک کنید.
+          {user
+            ? " مشخصات حساب شما (ایمیل، نام کاربری و نام و نام خانوادگی) به‌صورت خودکار انتهای پیام درج می‌شود."
+            : ""}
         </p>
       </div>
     </div>
