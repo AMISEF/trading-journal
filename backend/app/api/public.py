@@ -9,8 +9,8 @@ personal names are ever exposed:
   • one aggregated dashboard (per-bot dashboard options summed),
   • the combined team AI analyses (overall + institutional), read-only.
 
-Every bot's capital is normalised to a $1000 starting balance so the combined
-figures are comparable and clearly labelled.
+The whole group shares ONE $1000 starting balance per shown month, so the
+combined figures are read against a flat $1000 and clearly labelled.
 
 Generating the AI analyses is admin-only (a POST); reading everything is public.
 """
@@ -22,6 +22,7 @@ import logging
 import time
 from collections import defaultdict
 from datetime import date, datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -117,14 +118,26 @@ async def _team_members(db: AsyncSession) -> list[User]:
     return await _group_members(db, TEAM_GROUP)
 
 
-def _pnl_of(trade: Trade, base_balance: float) -> tuple[float, float | None]:
+def _pnl_of(
+    trade: Trade, base_balance: float, *, ignore_snapshot: bool = False
+) -> tuple[float, float | None]:
     """Return (realizedPnl, rrAchieved) for a closed trade, mirroring the
-    dashboard computation. Prefers the exchange's exact PnL for imported trades."""
+    dashboard computation. Prefers the exchange's exact PnL for imported trades.
+
+    `ignore_snapshot=True` forces the normalised `base_balance` instead of the
+    account's real balance at the time of the trade. The public showcase needs
+    this: every month must be read against the shared $1000, otherwise each bot
+    would size its trades on its own (bigger) balance and the combined result
+    would behave like $1000 per bot.
+    """
     tp_dicts = [
         {"order": tp.order, "price": tp.price, "save_percent": tp.save_percent}
         for tp in trade.take_profits
     ]
-    base = trade.balance_snapshot if trade.balance_snapshot is not None else base_balance
+    if ignore_snapshot or trade.balance_snapshot is None:
+        base = base_balance
+    else:
+        base = trade.balance_snapshot
     result = calc_engine.compute(
         direction=trade.direction,
         entry=trade.entry_price,
@@ -144,7 +157,7 @@ def _pnl_of(trade: Trade, base_balance: float) -> tuple[float, float | None]:
     return pnl, result.get("rrAchieved")
 
 
-# ── schemas ──────────────────────────────────────────────────────────────────
+# ── schemas ─────────────────────────────────────────────────────────────
 class TeamSummary(CamelModel):
     count: int
     initial_capital: float
@@ -163,7 +176,7 @@ class TeamAIOut(CamelModel):
     report_error: str | None = None
 
 
-# ── summary (count only — no names) ──────────────────────────────────────────
+# ── summary (count only — no names) ─────────────────────────────────────
 @router.get("/team/summary", response_model=TeamSummary)
 async def team_summary(db: AsyncSession = Depends(get_db)) -> TeamSummary:
     members = await _team_members(db)
@@ -195,7 +208,7 @@ async def team_user_checklists(
     return [ChecklistOut.model_validate(c) for c in result.scalars().all()]
 
 
-# ── demo showcase account (a frozen snapshot, shown read-only) ───────────────
+# ── demo showcase account (a frozen snapshot, shown read-only) ──────────────
 class DemoSummary(CamelModel):
     available: bool
     name: str | None = None
@@ -219,11 +232,11 @@ async def demo_trades(db: AsyncSession = Depends(get_db)):
 async def demo_dashboard(db: AsyncSession = Depends(get_db)):
     snap = await db.get(DemoSnapshot, 1)
     if snap is None or snap.dashboard is None:
-        raise HTTPException(status_code=404, detail="حساب دمو تنظیم نشده است.")
+        raise HTTPException(status_code=404, detail="حساب دمو تنطیم نشده است.")
     return snap.dashboard
 
 
-# ── combined journal list (anonymous) ────────────────────────────────────────
+# ── combined journal list (anonymous) ─────────────────────────────────
 async def _aggregate_trades(
     db: AsyncSession, members: list[User], date_from=None, date_to=None
 ) -> list[TradeOut]:
@@ -287,11 +300,13 @@ def _parse_range(from_: str | None, to: str | None):
     return _one(from_), _one(to)
 
 
-# ── aggregated dashboard (sum of the per-account dashboards, $1000 each) ───────
+# ── aggregated dashboard (the whole group sharing one flat $1000) ────────────
 async def _aggregate_dashboard(
     db: AsyncSession, members: list[User], date_from=None, date_to=None
 ) -> DashboardOut:
-    start_balance = 0.0
+    # Every shown month opens at exactly $1000 for the whole group — never more,
+    # regardless of how many accounts are tagged into it.
+    start_balance = INITIAL_CAPITAL
     trade_count = 0
     closed_count = 0
     closed_pairs: list[tuple[Trade, float]] = []
@@ -307,21 +322,21 @@ async def _aggregate_dashboard(
         # never the "current cycle".
         shown = [t for t in trades if _in_range(t, date_from, date_to)]
         closed = [t for t in shown if t.status == "CLOSED"]
-        # Exclude wallet deposits/withdrawals from the results (برآیند): show
-        # trading performance only, not money moved in/out of the wallet.
+        # Each member trades its normalised share of the shared $1000 (set by
+        # _group_members). Wallet deposits/withdrawals are excluded from the
+        # results (برآیند): trading performance only.
         base_balance = (u.wallet_margin or 0.0)
 
-        start_balance += base_balance
         trade_count += len(shown)
         closed_count += len(closed)
 
         # Calendar series — the same (possibly month-scoped) set of closed trades.
         for t in closed:
-            hp, _ = _pnl_of(t, base_balance)
+            hp, _ = _pnl_of(t, base_balance, ignore_snapshot=True)
             hist_pairs.append((t, hp))
 
         for t in closed:
-            pnl, rr = _pnl_of(t, base_balance)
+            pnl, rr = _pnl_of(t, base_balance, ignore_snapshot=True)
             closed_pairs.append((t, pnl))
             # Toobit trades carry a margin-based achieved-R computed at import.
             if getattr(t, "source", None) == "toobit" and t.rr_achieved is not None:
@@ -473,7 +488,7 @@ async def livetrade_dashboard(
     ))
 
 
-# ── combined team AI (read public, generate admin) ───────────────────────────
+# ── combined team AI (read public, generate admin) ────────────────────────
 async def _get_team_ai(db: AsyncSession) -> TeamAI:
     row = await db.get(TeamAI, 1)
     if row is None:
@@ -527,7 +542,7 @@ async def generate_team_overall(
     db: AsyncSession = Depends(get_db),
 ) -> TeamAIOut:
     if not ai_analysis.is_enabled():
-        raise HTTPException(status_code=503, detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است.")
+        raise HTTPException(status_code=503, detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنطیم نشده است.")
     row = await _get_team_ai(db)
     row.overall_status = "PENDING"
     row.overall_error = None
@@ -542,7 +557,7 @@ async def generate_team_report(
     db: AsyncSession = Depends(get_db),
 ) -> TeamAIOut:
     if not ai_analysis.is_enabled():
-        raise HTTPException(status_code=503, detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنظیم نشده است.")
+        raise HTTPException(status_code=503, detail="تحلیل هوش مصنوعی فعال نیست. کلید API در سرور تنطیم نشده است.")
     row = await _get_team_ai(db)
     row.report_status = "PENDING"
     row.report_error = None
