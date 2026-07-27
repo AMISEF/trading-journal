@@ -2,6 +2,12 @@ name: Deploy Trading Journal to VPS
 
 # Deploys ONLY the trading-journal app. The existing cryptosmart.site site
 # is untouched — it lives in its own folder, PM2 process, and Nginx block.
+#
+# The workflow only syncs the repo and hands off to deploy/remote_deploy.sh,
+# which is the single source of truth for what a deploy does. Debug a failing
+# deploy by running that same script on the box:
+#
+#     bash /var/www/trading-journal/deploy/remote_deploy.sh
 
 on:
   push:
@@ -10,8 +16,7 @@ on:
   # Lets a failed deploy be retried from the Actions tab without an empty commit.
   workflow_dispatch:
 
-# Never let two deploys build on the box at the same time: two concurrent
-# Next builds are the fastest way to run the VPS out of memory.
+# Two concurrent Next builds are the fastest way to run this VPS out of memory.
 concurrency:
   group: deploy-trading-journal
   cancel-in-progress: false
@@ -30,111 +35,9 @@ jobs:
           script_stop: true
           script: |
             set -e
-            echo "▶ Moving to project directory..."
             cd /var/www/trading-journal
-
-            echo "▶ Syncing to origin/main (hard reset so stray on-server edits never block the deploy)..."
-            PREV=$(git rev-parse HEAD 2>/dev/null || echo "")
             git fetch origin main
             git reset --hard origin/main
-            NEW=$(git rev-parse HEAD)
-            # NOTE: only tracked files are reset — untracked files like backend/.env
-            # and the uploads/ folder are left untouched (no git clean here).
-            echo "▶ Last commit:"
             git log -1 --oneline
-
-            # Which parts actually changed? Skip work that cannot be affected.
-            # If the previous SHA is unknown or identical (a re-run after a failed
-            # deploy), rebuild everything — a re-run must never be a no-op.
-            if [ -z "$PREV" ] || [ "$PREV" = "$NEW" ]; then
-              CHANGED="all"
-            else
-              CHANGED=$(git diff --name-only "$PREV" "$NEW" 2>/dev/null || echo "all")
-              [ -z "$CHANGED" ] && CHANGED="all"
-            fi
-            echo "▶ Changed paths: $CHANGED"
-            changed() { [ "$CHANGED" = "all" ] || echo "$CHANGED" | grep -q "^$1"; }
-
-            echo "▶ Memory before build:"
-            free -m || true
-
-            # ───── Backend (FastAPI / uvicorn) ─────
-            cd /var/www/trading-journal/backend
-            python3 -m venv venv 2>/dev/null || true
-            # pip install is slow; run it when the pinned deps moved OR when the
-            # venv is missing/incomplete (self-heals a half-created venv).
-            if [ ! -x venv/bin/uvicorn ] || echo "$CHANGED" | grep -q "backend/requirements.txt"; then
-              echo "▶ Backend: installing deps..."
-              ./venv/bin/pip install --upgrade pip
-              ./venv/bin/pip install -r requirements.txt
-            else
-              echo "▶ Backend: requirements unchanged — skipping pip install."
-            fi
-            if changed "backend/"; then
-              echo "▶ Backend: restarting PM2..."
-              pm2 restart tj-backend --update-env || pm2 start ecosystem.config.js
-            else
-              echo "▶ Backend: untouched — no restart."
-            fi
-
-            # ───── Frontend (Next.js) ─────
-            cd /var/www/trading-journal/frontend
-            if [ ! -d node_modules ] || echo "$CHANGED" | grep -qE "frontend/(package.json|package-lock.json)"; then
-              echo "▶ Frontend: installing deps..."
-              npm ci --prefer-offline --no-audit --fund=false
-            else
-              echo "▶ Frontend: deps unchanged — skipping npm install."
-            fi
-
-            # A Next build on this box has been OOM-killed before. Try the normal
-            # heap first and fall back to a smaller one: when the kernel kills the
-            # process, a *lower* ceiling is what lets the build finish.
-            build_try() {
-              label="$1"; shift
-              for heap in 2048 1024; do
-                echo "▶ Frontend ($label): building (heap=${heap}MB)..."
-                if NODE_OPTIONS=--max-old-space-size=$heap "$@"; then
-                  echo "  ✅ $label build OK"
-                  return 0
-                fi
-                echo "  ⚠ $label build failed with heap=${heap}MB"
-                free -m || true
-                dmesg 2>/dev/null | tail -n 5 | grep -i -E "killed process|out of memory" || true
-              done
-              echo "  ❌ $label build failed on every attempt"
-              return 1
-            }
-
-            if changed "frontend/"; then
-              # journal build (basePath=/journal, distDir=.next, port 3001)
-              build_try journal npm run build
-              echo "▶ Frontend (journal): restarting PM2..."
-              pm2 restart tj-frontend --update-env || pm2 start ecosystem.config.js --only tj-frontend
-
-              # pnl build (pnl.cryptosmart.site — root, SITE_MODE=pnl, distDir=.next-pnl)
-              # Built into a separate distDir so it never overwrites the journal build.
-              build_try pnl env \
-                NEXT_PUBLIC_SITE_MODE=pnl \
-                NEXT_PUBLIC_BASE_PATH= \
-                NEXT_PUBLIC_API_BASE=/api \
-                NEXT_DIST_DIR=.next-pnl \
-                npm run build
-              echo "▶ Frontend (pnl): restarting PM2..."
-              pm2 restart tj-pnl-frontend --update-env || pm2 start ecosystem.config.js --only tj-pnl-frontend
-            else
-              echo "▶ Frontend: untouched — no rebuild."
-            fi
-
-            # Both sites must answer before the deploy is called done.
-            echo "▶ Health check..."
-            for p in 3001 3012; do
-              for i in $(seq 1 30); do
-                code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$p/" || true)
-                [ "$code" = "200" ] && { echo "  ✅ port $p OK"; break; }
-                [ "$i" = "30" ] && { echo "  ❌ port $p not answering (last=$code)"; pm2 list || true; pm2 logs --lines 60 --nostream || true; exit 1; }
-                sleep 3
-              done
-            done
-
-            pm2 save
-            echo "✅ Deploy complete — https://trading-journal.cryptosmart.site + https://pnl.cryptosmart.site"
+            chmod +x deploy/remote_deploy.sh
+            bash deploy/remote_deploy.sh
