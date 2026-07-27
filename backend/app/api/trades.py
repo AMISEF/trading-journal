@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import crud
@@ -209,15 +209,41 @@ async def delete_trade(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    trade = await _get_owned_trade(db, user, trade_id)
-    deleted_number = trade.number
-    await db.delete(trade)
-    # Shift every subsequent trade's number down by 1 so there are no gaps.
-    # PostgreSQL evaluates the full UPDATE atomically, so the unique constraint
-    # is satisfied at statement end (deleted_number is already freed above).
+    """Delete one of the current user's trades and close the numbering gap.
+
+    Mirrors the admin route deliberately. Two traps live here:
+
+    1. Loading the ORM object and calling ``db.delete(trade)`` makes the
+       delete-orphan cascade lazy-load ``take_profits`` during flush, which the
+       async engine cannot do mid-flush — any trade with take-profits blew up.
+    2. ``number = number - 1`` in a single UPDATE trips the ``(user_id, number)``
+       unique constraint, because PostgreSQL checks it row by row rather than at
+       statement end.
+
+    Both made the request fail and roll back, so the trade simply stayed.
+    """
+    # Read only the columns we need — no ORM object, no cascade.
+    row = await db.execute(
+        select(Trade.user_id, Trade.number).where(Trade.id == trade_id)
+    )
+    found = row.first()
+    if found is None or found[0] != user.id:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    deleted_number = found[1]
+
+    # Children first, then the trade itself, with plain Core statements.
+    await db.execute(delete(TakeProfit).where(TakeProfit.trade_id == trade_id))
+    await db.execute(delete(Trade).where(Trade.id == trade_id))
+
+    # Two-step renumber so no unique constraint can clash mid-statement.
+    # Step 1: negate every affected number (positives become negatives).
     await db.execute(
-        update(Trade)
-        .where(Trade.user_id == user.id, Trade.number > deleted_number)
-        .values(number=Trade.number - 1)
+        text("UPDATE trades SET number = -number WHERE user_id = :uid AND number > :n"),
+        {"uid": user.id, "n": deleted_number},
+    )
+    # Step 2: shift the negated numbers to their final values (-n → n-1).
+    await db.execute(
+        text("UPDATE trades SET number = (-number) - 1 WHERE user_id = :uid AND number < 0"),
+        {"uid": user.id},
     )
     await db.commit()

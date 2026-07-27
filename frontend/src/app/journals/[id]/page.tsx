@@ -6,7 +6,7 @@
  * and a persistent "ذخیره ژورنال" button. Body: the tabbed editor.
  * Auto-save happens via the Zustand trade store (debounced PATCH).
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Button, Spinner, StatusDot } from "@/components/ui";
@@ -31,6 +31,9 @@ function EditorInner() {
   const id = String(params.id);
 
   const { trade, loading, saveStatus, load, saveNow, patch, reset } = useTrade();
+  // A failed delete used to do nothing at all; now it says so.
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     void load(id);
@@ -52,8 +55,15 @@ function EditorInner() {
 
   const remove = async () => {
     if (!confirm("این معامله حذف شود؟")) return;
-    await tradesApi.remove(trade.id);
-    router.push("/journals");
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await tradesApi.remove(trade.id);
+      router.push("/journals");
+    } catch {
+      setDeleting(false);
+      setDeleteError("حذف معامله انجام نشد. لطفاً چند لحظه بعد دوباره تلاش کنید.");
+    }
   };
 
   return (
@@ -101,12 +111,18 @@ function EditorInner() {
               بازگشایی معامله
             </Button>
           )}
-          <Button variant="danger" onClick={remove}>
-            حذف
+          <Button variant="danger" onClick={remove} disabled={deleting}>
+            {deleting ? "در حال حذف…" : "حذف"}
           </Button>
           <Button onClick={async () => { await saveNow(); router.push("/journals"); }}>ذخیره ژورنال</Button>
         </div>
       </div>
+
+      {deleteError && (
+        <p className="rounded-xl border border-loss/40 bg-loss/10 p-3 text-sm text-loss">
+          {deleteError}
+        </p>
+      )}
 
       {/* AI coach: deep review of this trade (kept near the top for visibility) */}
       <AICoachPanel
