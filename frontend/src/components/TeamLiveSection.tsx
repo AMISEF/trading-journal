@@ -4,7 +4,7 @@
  * برایند معاملات ربات الگو اسمارت — public landing-page showcase.
  *
  * Shows a *combined, anonymous* live view of the algo-bot accounts:
- *   • داشبورد معاملات  — one aggregated dashboard (each bot normalised to $1000)
+ *   • داشبورد معاملات  — one aggregated dashboard (the whole group normalised to $1000)
  *   • لیست ژورنال      — one merged journal list of all the bots' trades
  *   • تحلیل معاملات با هوش مصنوعی — the two combined team AI analyses
  *
@@ -93,29 +93,27 @@ const tooltipStyle = {
 
 type Tab = "dashboard" | "journal" | "ai" | "live";
 
-// The Jalali month the page opens on: the *current* one. The showcase is a
-// monthly result, so an all-time figure is never shown — every panel is scoped
-// to the selected month, and that month defaults to today's.
-const NOW_JALALI = getJalaliParts(new Date().toISOString());
-const CURRENT_JY = NOW_JALALI?.year ?? 1405;
-const CURRENT_JM = NOW_JALALI?.month ?? 5;
+type ShowcaseMonth = { jy: number; jm: number };
 
 const JALALI_MONTHS = [
   "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
   "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
 ];
 
-/** The month picker: this month plus the previous ones, newest first. */
-function monthOptions(count = 6): { jy: number; jm: number; label: string }[] {
-  const out: { jy: number; jm: number; label: string }[] = [];
-  let jy = CURRENT_JY;
-  let jm = CURRENT_JM;
-  for (let i = 0; i < count; i++) {
-    out.push({ jy, jm, label: `برایند ${JALALI_MONTHS[jm - 1]} ${toPersianDigits(jy)}` });
-    jm -= 1;
-    if (jm < 1) { jm = 12; jy -= 1; }
-  }
-  return out;
+// برایند فقط برای همین دو ماه منتشر می‌شود — تیر و مرداد ۱۴۰۵.
+// ماه‌های دیگر عمداً نمایش داده نمی‌شوند (فهرست دستی و صریح است،
+// نه تولیدشده از ماه جاری). برای افزودن ماه تازه، یک ردیف به این
+// فهرست اضافه کنید و DEFAULT_MONTH را به‌روز کنید.
+const SHOWCASE_MONTHS: ShowcaseMonth[] = [
+  { jy: 1405, jm: 4 }, // تیر
+  { jy: 1405, jm: 5 }, // مرداد
+];
+
+// حالت عادی (وقتی کاربر ماهی انتخاب نکرده): برایند مرداد.
+const DEFAULT_MONTH: ShowcaseMonth = { jy: 1405, jm: 5 };
+
+function monthLabel(m: ShowcaseMonth): string {
+  return `برایند ${JALALI_MONTHS[m.jm - 1]} ${toPersianDigits(m.jy)}`;
 }
 
 function monthRange(jy: number, jm: number): DateRange {
@@ -164,9 +162,9 @@ export function TeamLiveSection({
   const [hidden, setHidden] = useState(false);
   const [tab, setTab] = useState<Tab>("dashboard");
   // The showcase always shows ONE Jalali month — never an all-time total.
-  // It opens on the current month; the picker below switches to earlier ones.
-  const [month, setMonth] = useState({ jy: CURRENT_JY, jm: CURRENT_JM });
-  const months = useMemo(() => monthOptions(), []);
+  // Untouched, it shows مرداد; the picker below switches to تیر.
+  const [month, setMonth] = useState<ShowcaseMonth>(DEFAULT_MONTH);
+  const months = SHOWCASE_MONTHS;
   const range = useMemo(() => monthRange(month.jy, month.jm), [month]);
   const dashboardFn = useCallback(() => publicApi.teamDashboard(range), [range]);
   const tradesFn = useCallback(() => publicApi.teamTrades(range), [range]);
@@ -277,7 +275,7 @@ export function TeamLiveSection({
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4M8 2v4M3 10h18" />
               </svg>
-              {m.label}
+              {monthLabel(m)}
             </button>
           );
         })}
@@ -285,12 +283,12 @@ export function TeamLiveSection({
 
       <motion.div key={tab} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="mt-8">
         {tab === "dashboard" && (
-          <DashboardPanel summary={summary} onUpdated={onDataTick}
+          <DashboardPanel summary={summary} onUpdated={onDataTick} month={month}
                           dashboardFn={dashboardFn} tradesFn={tradesFn} />
         )}
         {tab === "journal" && <JournalPanel onUpdated={onDataTick} tradesFn={tradesFn} />}
         {tab === "ai" && <AIPanel isAdmin={isAdmin} onUpdated={onDataTick} />}
-        {tab === "live" && <LiveTradePanel onUpdated={onDataTick} range={range} />}
+        {tab === "live" && <LiveTradePanel onUpdated={onDataTick} range={range} month={month} />}
       </motion.div>
     </section>
   );
@@ -352,9 +350,9 @@ function PanelEmpty({ text }: { text: string }) {
   return <div className="rounded-3xl p-12 text-center text-sm text-white/60" style={glass()}>{text}</div>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
 // Dashboard panel
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
 function toDayTrades(rows: Trade[]): DayTradeItem[] {
   return rows.map((t) => ({
     id: t.id,
@@ -371,11 +369,13 @@ function toDayTrades(rows: Trade[]): DayTradeItem[] {
 function DashboardPanel({
   summary,
   onUpdated,
+  month,
   dashboardFn = publicApi.teamDashboard,
   tradesFn = publicApi.teamTrades,
 }: {
   summary: TeamSummary;
   onUpdated?: () => void;
+  month?: ShowcaseMonth;
   dashboardFn?: () => Promise<DashboardData>;
   tradesFn?: () => Promise<Trade[]>;
 }) {
@@ -448,7 +448,7 @@ function DashboardPanel({
       <div className="relative overflow-hidden rounded-3xl p-5" style={glass()}>
         <div className="mb-4 flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${T.sky})` }} />
-          <h3 className="text-sm font-bold">منحنی سرمایهٔ ترکیبی (شروع از {formatUsd(summary.totalInitialCapital, 0)})</h3>
+          <h3 className="text-sm font-bold">منحنی سرمایهٔ ترکیبی (شروع از {formatUsd(base, 0)})</h3>
         </div>
         <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={equity} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
@@ -479,11 +479,12 @@ function DashboardPanel({
         </div>
       </div>
 
-      {/* Daily PnL — Jalali calendar; day-click shows that day's trades */}
+      {/* Daily PnL — Jalali calendar pinned to the selected month; day-click shows that day's trades */}
       <DailyPnLCalendar
         pnlByDay={data.pnlByDay}
-        walletMargin={summary.totalInitialCapital}
+        walletMargin={base}
         trades={dayTrades}
+        month={month}
       />
 
       {/* Top symbols */}
@@ -618,9 +619,9 @@ function Donut({ data, centerTop, centerBottom, total }: { data: { name: string;
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
 // Journal panel (anonymous — merged bot trades)
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
 function pnlOf(t: Trade): number | null {
   if (t.source === "toobit" && t.realizedPnl != null) return t.realizedPnl;
   return t.calc?.realizedPnl ?? t.realizedPnl ?? null;
@@ -821,10 +822,10 @@ function StatusPill({ status, pnl }: { status: string; pnl: number | null }) {
   return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: `rgba(${rgb},0.16)`, color: `rgb(${rgb})` }}>{label}</span>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
 // Live-trade panel — one live trader's results (dashboard + calendar + journal)
-// ═══════════════════════════════════════════════════════════════════════════
-function LiveTradePanel({ onUpdated, range }: { onUpdated?: () => void; range: DateRange }) {
+// ════════════════════════════════════════════════════════════════════════
+function LiveTradePanel({ onUpdated, range, month }: { onUpdated?: () => void; range: DateRange; month?: ShowcaseMonth }) {
   const liveDash = useCallback(() => publicApi.liveDashboard(range), [range]);
   const liveTrades = useCallback(() => publicApi.liveTrades(range), [range]);
   const [summary, setSummary] = useState<TeamSummary | null>(null);
@@ -858,6 +859,7 @@ function LiveTradePanel({ onUpdated, range }: { onUpdated?: () => void; range: D
       <DashboardPanel
         summary={summary}
         onUpdated={onUpdated}
+        month={month}
         dashboardFn={liveDash}
         tradesFn={liveTrades}
       />
@@ -874,9 +876,9 @@ function LiveTradePanel({ onUpdated, range }: { onUpdated?: () => void; range: D
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
 // AI panel — combined team analyses (overall + institutional)
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
 function AIPanel({ isAdmin, onUpdated }: { isAdmin: boolean; onUpdated?: () => void }) {
   const [data, setData] = useState<TeamAIData | null>(null);
   const [error, setError] = useState(false);
@@ -948,12 +950,12 @@ function AIPanel({ isAdmin, onUpdated }: { isAdmin: boolean; onUpdated?: () => v
   return (
     <div className="space-y-5">
       <p className="text-center text-sm text-white/60">
-        تحلیل هوش مصنوعیِ مربیِ الگو اسمارت روی مجموعِ معاملات واقعیِ کل تیم (سرمایهٔ اولیهٔ هر حساب ۱۰۰۰ دلار).
+        تحلیل هوش مصنوعیِ مربیِ الگو اسمارت روی مجموعِ معاملاتِ واقعیِ کل تیم (سرمایهٔ اولیهٔ کل ۱۰۰۰ دلار).
       </p>
 
       {isAdmin && !data.enabled && (
         <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-300">
-          تحلیل هوش مصنوعی روی سرور فعال نشده است (کلید API تنظیم نشده).
+          تحلیل هوش مصنوعی روی سرور فعال نشده است (کلید API تنطیم نشده).
         </div>
       )}
 
@@ -1038,7 +1040,7 @@ function AISection({
   );
 }
 
-// ── shared ────────────────────────────────────────────────────────────────────
+// ── shared ──────────────────────────────────────────────────────────────────
 function shortDate(iso: string | null): string {
   if (!iso) return "";
   const jp = getJalaliParts(iso);
