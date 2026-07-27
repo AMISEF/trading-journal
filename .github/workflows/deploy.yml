@@ -7,6 +7,14 @@ on:
   push:
     branches:
       - main
+  # Lets a failed deploy be retried from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+# Never let two deploys build on the box at the same time: two concurrent
+# Next builds are the fastest way to run the VPS out of memory.
+concurrency:
+  group: deploy-trading-journal
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -18,6 +26,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 40m
           script_stop: true
           script: |
             set -e
@@ -25,24 +34,37 @@ jobs:
             cd /var/www/trading-journal
 
             echo "▶ Syncing to origin/main (hard reset so stray on-server edits never block the deploy)..."
+            PREV=$(git rev-parse HEAD 2>/dev/null || echo "")
             git fetch origin main
             git reset --hard origin/main
+            NEW=$(git rev-parse HEAD)
             # NOTE: only tracked files are reset — untracked files like backend/.env
             # and the uploads/ folder are left untouched (no git clean here).
             echo "▶ Last commit:"
             git log -1 --oneline
 
             # Which parts actually changed? Skip work that cannot be affected.
-            CHANGED=$(git diff --name-only HEAD@{1} HEAD 2>/dev/null || echo "all")
-            echo "▶ Changed paths: ${CHANGED:-<none>}"
+            # If the previous SHA is unknown or identical (a re-run after a failed
+            # deploy), rebuild everything — a re-run must never be a no-op.
+            if [ -z "$PREV" ] || [ "$PREV" = "$NEW" ]; then
+              CHANGED="all"
+            else
+              CHANGED=$(git diff --name-only "$PREV" "$NEW" 2>/dev/null || echo "all")
+              [ -z "$CHANGED" ] && CHANGED="all"
+            fi
+            echo "▶ Changed paths: $CHANGED"
             changed() { [ "$CHANGED" = "all" ] || echo "$CHANGED" | grep -q "^$1"; }
+
+            echo "▶ Memory before build:"
+            free -m || true
 
             # ───── Backend (FastAPI / uvicorn) ─────
             cd /var/www/trading-journal/backend
             python3 -m venv venv 2>/dev/null || true
-            # pip install is slow; only run it when the pinned deps actually moved.
-            if [ "$CHANGED" = "all" ] || echo "$CHANGED" | grep -q "backend/requirements.txt"; then
-              echo "▶ Backend: requirements changed — installing deps..."
+            # pip install is slow; run it when the pinned deps moved OR when the
+            # venv is missing/incomplete (self-heals a half-created venv).
+            if [ ! -x venv/bin/uvicorn ] || echo "$CHANGED" | grep -q "backend/requirements.txt"; then
+              echo "▶ Backend: installing deps..."
               ./venv/bin/pip install --upgrade pip
               ./venv/bin/pip install -r requirements.txt
             else
@@ -57,32 +79,46 @@ jobs:
 
             # ───── Frontend (Next.js) ─────
             cd /var/www/trading-journal/frontend
-            if [ "$CHANGED" = "all" ] || echo "$CHANGED" | grep -qE "frontend/(package.json|package-lock.json)"; then
-              echo "▶ Frontend: lockfile changed — installing deps..."
+            if [ ! -d node_modules ] || echo "$CHANGED" | grep -qE "frontend/(package.json|package-lock.json)"; then
+              echo "▶ Frontend: installing deps..."
               npm ci --prefer-offline --no-audit --fund=false
             else
               echo "▶ Frontend: deps unchanged — skipping npm install."
             fi
 
-            if changed "frontend/"; then
-              # Both builds get the same heap ceiling: the journal build was
-              # OOM-killed on this box, which left the process restart-looping.
-              export NODE_OPTIONS=--max-old-space-size=2048
+            # A Next build on this box has been OOM-killed before. Try the normal
+            # heap first and fall back to a smaller one: when the kernel kills the
+            # process, a *lower* ceiling is what lets the build finish.
+            build_try() {
+              label="$1"; shift
+              for heap in 2048 1024; do
+                echo "▶ Frontend ($label): building (heap=${heap}MB)..."
+                if NODE_OPTIONS=--max-old-space-size=$heap "$@"; then
+                  echo "  ✅ $label build OK"
+                  return 0
+                fi
+                echo "  ⚠ $label build failed with heap=${heap}MB"
+                free -m || true
+                dmesg 2>/dev/null | tail -n 5 | grep -i -E "killed process|out of memory" || true
+              done
+              echo "  ❌ $label build failed on every attempt"
+              return 1
+            }
 
-              # journal build (algohub.cryptosmart.site/journal — basePath=/journal, distDir=.next)
-              echo "▶ Frontend (journal): building..."
-              npm run build
+            if changed "frontend/"; then
+              # journal build (basePath=/journal, distDir=.next, port 3001)
+              build_try journal npm run build
               echo "▶ Frontend (journal): restarting PM2..."
               pm2 restart tj-frontend --update-env || pm2 start ecosystem.config.js --only tj-frontend
 
               # pnl build (pnl.cryptosmart.site — root, SITE_MODE=pnl, distDir=.next-pnl)
               # Built into a separate distDir so it never overwrites the journal build.
-              echo "▶ Frontend (pnl): building..."
-              NEXT_PUBLIC_SITE_MODE=pnl \
-              NEXT_PUBLIC_BASE_PATH= \
-              NEXT_PUBLIC_API_BASE=/api \
-              NEXT_DIST_DIR=.next-pnl \
-              npm run build
+              build_try pnl env \
+                NEXT_PUBLIC_SITE_MODE=pnl \
+                NEXT_PUBLIC_BASE_PATH= \
+                NEXT_PUBLIC_API_BASE=/api \
+                NEXT_DIST_DIR=.next-pnl \
+                npm run build
               echo "▶ Frontend (pnl): restarting PM2..."
               pm2 restart tj-pnl-frontend --update-env || pm2 start ecosystem.config.js --only tj-pnl-frontend
             else
@@ -92,10 +128,10 @@ jobs:
             # Both sites must answer before the deploy is called done.
             echo "▶ Health check..."
             for p in 3001 3012; do
-              for i in $(seq 1 20); do
+              for i in $(seq 1 30); do
                 code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$p/" || true)
                 [ "$code" = "200" ] && { echo "  ✅ port $p OK"; break; }
-                [ "$i" = "20" ] && { echo "  ❌ port $p not answering (last=$code)"; pm2 logs --lines 40 --nostream; exit 1; }
+                [ "$i" = "30" ] && { echo "  ❌ port $p not answering (last=$code)"; pm2 list || true; pm2 logs --lines 60 --nostream || true; exit 1; }
                 sleep 3
               done
             done
