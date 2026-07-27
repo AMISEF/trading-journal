@@ -7,10 +7,12 @@
 #     bash /var/www/trading-journal/deploy/remote_deploy.sh
 #
 # Useful switches:
-#     SKIP_PNL=1      build only the journal site (saves ~1 build worth of RAM)
-#     SKIP_BUILD=1    only restart PM2 + health check, no rebuild
-#     FORCE_DEPS=1    reinstall backend + frontend dependencies
-#     DEPLOY_TRACE=0  turn the per-command trace off
+#     SKIP_PNL=1            build only the journal site (saves a build's worth of RAM)
+#     SKIP_BUILD=1          only restart PM2 + health check, no rebuild
+#     FORCE_DEPS=1          reinstall backend + frontend dependencies
+#     SKIP_HEALTHCHECK=1    deploy without waiting on the HTTP probes
+#     JOURNAL_HEALTH_PATH   path the journal app is served under (default /journal)
+#     DEPLOY_TRACE=0        turn the per-command trace off
 #
 # Everything the CI does lives here, so a manual run and a CI run can never
 # drift apart.
@@ -22,6 +24,7 @@ ROOT="${ROOT:-/var/www/trading-journal}"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 STAMPS="$ROOT/.deploy-stamps"
+JOURNAL_HEALTH_PATH="${JOURNAL_HEALTH_PATH:-/journal}"
 
 step() { echo; echo "▶ $*"; }
 fail() { echo "❌ $*" >&2; exit 1; }
@@ -38,7 +41,7 @@ export PATH
 
 [ "${DEPLOY_TRACE:-1}" = "1" ] && set -x
 
-# ───────────────────── sanity checks ───────────────────────────────
+# ──────────────────── sanity checks ───────────────────────────────
 step "Environment"
 [ -d "$ROOT" ]     || fail "project directory $ROOT is missing"
 [ -d "$BACKEND" ]  || fail "backend directory $BACKEND is missing"
@@ -132,7 +135,7 @@ build_try() {
 if [ "${SKIP_BUILD:-0}" = "1" ]; then
   echo "  SKIP_BUILD=1 — no rebuild, restarting only"
 else
-  step "Frontend: journal build (basePath=/journal, distDir=.next, port 3001)"
+  step "Frontend: journal build (basePath=$JOURNAL_HEALTH_PATH, distDir=.next, port 3001)"
   build_try journal npm run build || fail "journal build failed on every heap size"
 fi
 
@@ -165,28 +168,49 @@ else
 fi
 
 # ───────────────────────── health check ─────────────────────────────
-check_port() {
-  local port="$1" i code=""
-  for i in $(seq 1 40); do
-    code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/" || true)"
-    if [ "$code" = "200" ]; then
-      echo "  ✅ port $port answered 200"
-      return 0
-    fi
+# The journal app is served under a basePath (/journal), so GET / on its port is
+# a 404 *by design*. Waiting for a 200 on / is what made the old check spin in
+# its sleep loop forever. Rules now:
+#   2xx / 3xx        → healthy
+#   404              → server is up, just not on this path (warn, do not fail)
+#   000 (refused)    → not listening yet, keep waiting
+#   5xx              → app is crashing, keep waiting then fail
+probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$1" || echo "000"; }
+
+check_site() {
+  local name="$1" port="$2" path="$3" i code="000" url
+  url="http://127.0.0.1:${port}${path}"
+  for i in $(seq 1 30); do
+    code="$(probe "$url")"
+    case "$code" in
+      2??|3??)
+        echo "  ✅ $name: $url → $code"
+        return 0
+        ;;
+      404)
+        echo "  ⚠ $name: $url → 404 (server is listening; check the basePath)"
+        return 0
+        ;;
+    esac
     sleep 3
   done
-  echo "  ❌ port $port never answered (last status: ${code:-none})"
+  echo "  ❌ $name: $url never became healthy (last status: $code)"
+  (command -v ss >/dev/null && ss -ltnp | grep -E ":(3001|3012|8001)" ) || true
   pm2 list || true
-  pm2 logs --lines 60 --nostream || true
+  pm2 logs "$name" --lines 60 --nostream || true
   return 1
 }
 
-step "Health check"
-check_port 3001 || fail "journal site (port 3001) is not serving"
-if [ "${SKIP_PNL:-0}" = "1" ]; then
-  echo "  SKIP_PNL=1 — skipping the port 3012 check"
+if [ "${SKIP_HEALTHCHECK:-0}" = "1" ]; then
+  step "Health check skipped (SKIP_HEALTHCHECK=1)"
 else
-  check_port 3012 || fail "pnl site (port 3012) is not serving"
+  step "Health check"
+  check_site tj-frontend 3001 "$JOURNAL_HEALTH_PATH" || fail "journal site (port 3001) is not serving"
+  if [ "${SKIP_PNL:-0}" = "1" ]; then
+    echo "  SKIP_PNL=1 — skipping the port 3012 check"
+  else
+    check_site tj-pnl-frontend 3012 "/" || fail "pnl site (port 3012) is not serving"
+  fi
 fi
 
 pm2 save
