@@ -6,12 +6,19 @@
 #
 #     bash /var/www/trading-journal/deploy/remote_deploy.sh
 #
+# It is incremental: the previously deployed commit is remembered in
+# .deploy-stamps/last-deployed-sha, so a backend-only push never pays for the
+# two Next builds (~2.5 min) and finishes in seconds.
+#
 # Useful switches:
+#     FORCE_BUILD=1         rebuild the frontend even if nothing there changed
+#     FORCE_ALL=1           treat every path as changed (full deploy)
+#     FORCE_DEPS=1          reinstall backend + frontend dependencies
 #     SKIP_PNL=1            build only the journal site (saves a build's worth of RAM)
 #     SKIP_BUILD=1          only restart PM2 + health check, no rebuild
-#     FORCE_DEPS=1          reinstall backend + frontend dependencies
 #     SKIP_HEALTHCHECK=1    deploy without waiting on the HTTP probes
 #     JOURNAL_HEALTH_PATH   path the journal app is served under (default /journal)
+#     DEPLOY_PREV_SHA       commit to diff against (CI passes the pre-sync HEAD)
 #     DEPLOY_TRACE=0        turn the per-command trace off
 #
 # Everything the CI does lives here, so a manual run and a CI run can never
@@ -24,7 +31,9 @@ ROOT="${ROOT:-/var/www/trading-journal}"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 STAMPS="$ROOT/.deploy-stamps"
+SHA_STAMP="$STAMPS/last-deployed-sha"
 JOURNAL_HEALTH_PATH="${JOURNAL_HEALTH_PATH:-/journal}"
+STARTED_AT=$(date +%s)
 
 step() { echo; echo "▶ $*"; }
 fail() { echo "❌ $*" >&2; exit 1; }
@@ -38,6 +47,7 @@ for d in /usr/local/bin /usr/local/sbin /snap/bin /root/.nvm/versions/node/*/bin
   [ -d "$d" ] && PATH="$d:$PATH"
 done
 export PATH
+export NEXT_TELEMETRY_DISABLED=1
 
 [ "${DEPLOY_TRACE:-1}" = "1" ] && set -x
 
@@ -50,21 +60,72 @@ command -v python3 >/dev/null || fail "python3 not found in PATH ($PATH)"
 command -v node    >/dev/null || fail "node not found in PATH ($PATH)"
 command -v npm     >/dev/null || fail "npm not found in PATH ($PATH)"
 command -v pm2     >/dev/null || fail "pm2 not found in PATH ($PATH)"
-node -v
-npm -v
-python3 --version
 git -C "$ROOT" log -1 --oneline
-free -m || true
-swapon --show || true
-df -h "$ROOT" || true
-
-# 2 sequential Next builds on a 3 GB box with no swap is the known failure mode.
-if ! swapon --show 2>/dev/null | grep -q .; then
-  echo "⚠ no swap configured — if a build dies with 'Killed', add 2 GB of swap:"
-  echo "    fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile"
-fi
 
 mkdir -p "$STAMPS"
+
+# ──────────────────── what actually changed? ──────────────────────
+# Keyed off commits, so a re-run of the same commit is a no-op instead of a
+# full rebuild. CI hands us the pre-sync HEAD; a manual run falls back to the
+# stamp written by the last successful deploy.
+NEW_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+PREV_SHA="${DEPLOY_PREV_SHA:-}"
+[ -z "$PREV_SHA" ] && [ -f "$SHA_STAMP" ] && PREV_SHA="$(cat "$SHA_STAMP")"
+
+CHANGED=""
+if [ "${FORCE_ALL:-0}" = "1" ]; then
+  CHANGED="all"
+elif [ -n "$PREV_SHA" ] && git -C "$ROOT" cat-file -e "${PREV_SHA}^{commit}" 2>/dev/null; then
+  if [ "$PREV_SHA" = "$NEW_SHA" ]; then
+    CHANGED=""
+  else
+    CHANGED="$(git -C "$ROOT" diff --name-only "$PREV_SHA" "$NEW_SHA" || echo all)"
+  fi
+else
+  CHANGED="all"
+fi
+
+changed_in() {
+  [ "$CHANGED" = "all" ] && return 0
+  echo "$CHANGED" | grep -qE "$1"
+}
+
+BACKEND_CHANGED=0
+FRONTEND_CHANGED=0
+changed_in '^backend/'  && BACKEND_CHANGED=1
+changed_in '^frontend/' && FRONTEND_CHANGED=1
+[ "${FORCE_BUILD:-0}" = "1" ] && FRONTEND_CHANGED=1
+[ "${FORCE_DEPS:-0}" = "1" ] && { BACKEND_CHANGED=1; FRONTEND_CHANGED=1; }
+
+set +x
+echo "  previous: ${PREV_SHA:-<unknown>}"
+echo "  current : $NEW_SHA"
+if [ "$CHANGED" = "all" ]; then
+  echo "  changed : (unknown history — full deploy)"
+elif [ -z "$CHANGED" ]; then
+  echo "  changed : nothing"
+else
+  echo "$CHANGED" | sed 's/^/  changed : /'
+fi
+echo "  plan    : backend=$BACKEND_CHANGED frontend=$FRONTEND_CHANGED"
+[ "${DEPLOY_TRACE:-1}" = "1" ] && set -x
+
+if [ "$BACKEND_CHANGED" = "0" ] && [ "$FRONTEND_CHANGED" = "0" ]; then
+  set +x
+  echo "$NEW_SHA" > "$SHA_STAMP"
+  echo
+  echo "✅ Nothing to deploy (no backend or frontend changes) — $(( $(date +%s) - STARTED_AT ))s"
+  exit 0
+fi
+
+# Memory report only matters when a Next build is about to run.
+if [ "$FRONTEND_CHANGED" = "1" ] && [ "${SKIP_BUILD:-0}" != "1" ]; then
+  free -m || true
+  if ! swapon --show 2>/dev/null | grep -q .; then
+    echo "⚠ no swap configured — if a build dies with 'Killed', add 2 GB of swap:"
+    echo "    fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile"
+  fi
+fi
 
 # Dependency installs are keyed off file hashes instead of git diffs, so a
 # manual run, a re-run and a fresh clone all behave the same way.
@@ -80,107 +141,122 @@ needs_install() {
 }
 write_stamp() { hash_of "$1" > "$(stamp_of "$2")"; }
 
-# ───────────────── backend (FastAPI / uvicorn, port 8001) ───────────────
-step "Backend: virtualenv"
-cd "$BACKEND"
-if [ ! -x venv/bin/python ]; then
-  echo "  creating venv..."
-  python3 -m venv venv
-fi
-if [ ! -x venv/bin/uvicorn ] || needs_install requirements.txt backend-requirements; then
-  step "Backend: installing dependencies"
-  ./venv/bin/pip install --upgrade pip
-  ./venv/bin/pip install -r requirements.txt
-  write_stamp requirements.txt backend-requirements
-else
-  echo "  dependencies unchanged — skipping pip install"
-fi
+FRESH_PM2=0
+PROBE_JOURNAL=0
+PROBE_PNL=0
 
-step "Backend: (re)starting PM2 process tj-backend"
-if pm2 describe tj-backend >/dev/null 2>&1; then
-  pm2 restart tj-backend --update-env
+restart_pm2() {
+  local name="$1"; shift
+  if pm2 describe "$name" >/dev/null 2>&1; then
+    pm2 restart "$name" --update-env
+  else
+    pm2 start "$@"
+    FRESH_PM2=1
+  fi
+}
+
+# ───────────────── backend (FastAPI / uvicorn, port 8001) ───────────────
+if [ "$BACKEND_CHANGED" = "1" ]; then
+  step "Backend: virtualenv"
+  cd "$BACKEND"
+  if [ ! -x venv/bin/python ]; then
+    echo "  creating venv..."
+    python3 -m venv venv
+  fi
+  if [ ! -x venv/bin/uvicorn ] || needs_install requirements.txt backend-requirements; then
+    step "Backend: installing dependencies"
+    ./venv/bin/pip install --upgrade pip
+    ./venv/bin/pip install -r requirements.txt
+    write_stamp requirements.txt backend-requirements
+  else
+    echo "  dependencies unchanged — skipping pip install"
+  fi
+
+  step "Backend: restarting PM2 process tj-backend"
+  restart_pm2 tj-backend ecosystem.config.js
 else
-  pm2 start ecosystem.config.js
+  echo "  backend unchanged — not touching tj-backend"
 fi
 
 # ──────────────────── frontend (Next.js, 3001 + 3012) ───────────────────
-step "Frontend: dependencies"
-cd "$FRONTEND"
-if [ ! -d node_modules ] || needs_install package-lock.json frontend-lock; then
-  echo "  installing node modules..."
-  npm ci --prefer-offline --no-audit --fund=false
-  write_stamp package-lock.json frontend-lock
-else
-  echo "  dependencies unchanged — skipping npm ci"
-fi
+if [ "$FRONTEND_CHANGED" = "1" ]; then
+  step "Frontend: dependencies"
+  cd "$FRONTEND"
+  if [ ! -d node_modules ] || needs_install package-lock.json frontend-lock; then
+    echo "  installing node modules..."
+    npm ci --prefer-offline --no-audit --fund=false
+    write_stamp package-lock.json frontend-lock
+  else
+    echo "  dependencies unchanged — skipping npm ci"
+  fi
 
-# The box has ~3 GB RAM and no swap, and this build has been OOM-killed before.
-# When the kernel kills node, a *lower* heap ceiling is what lets it finish.
-build_try() {
-  local label="$1"; shift
-  local heap
-  for heap in 2048 1536 1024; do
-    echo "  building $label (heap=${heap}MB)..."
-    if NODE_OPTIONS="--max-old-space-size=$heap" "$@"; then
-      echo "  ✅ $label build OK"
-      return 0
+  # The box has ~3 GB RAM and no swap, and this build has been OOM-killed before.
+  # When the kernel kills node, a *lower* heap ceiling is what lets it finish.
+  # The .next / .next-pnl caches are kept on purpose so builds stay incremental.
+  build_try() {
+    local label="$1"; shift
+    local heap
+    for heap in 2048 1536 1024; do
+      echo "  building $label (heap=${heap}MB)..."
+      if NODE_OPTIONS="--max-old-space-size=$heap" "$@"; then
+        echo "  ✅ $label build OK"
+        return 0
+      fi
+      echo "  ⚠ $label build failed at heap=${heap}MB"
+      free -m || true
+      dmesg 2>/dev/null | tail -n 8 || true
+    done
+    return 1
+  }
+
+  if [ "${SKIP_BUILD:-0}" = "1" ]; then
+    echo "  SKIP_BUILD=1 — no rebuild, restarting only"
+  else
+    step "Frontend: journal build (basePath=$JOURNAL_HEALTH_PATH, distDir=.next, port 3001)"
+    build_try journal npm run build || fail "journal build failed on every heap size"
+  fi
+
+  step "Frontend: restarting PM2 process tj-frontend"
+  restart_pm2 tj-frontend ecosystem.config.js --only tj-frontend
+  PROBE_JOURNAL=1
+
+  if [ "${SKIP_PNL:-0}" = "1" ]; then
+    echo "  SKIP_PNL=1 — skipping the pnl build and its restart"
+  else
+    if [ "${SKIP_BUILD:-0}" = "1" ]; then
+      echo "  SKIP_BUILD=1 — skipping the pnl build"
+    else
+      step "Frontend: pnl build (root path, SITE_MODE=pnl, distDir=.next-pnl, port 3012)"
+      build_try pnl env \
+        NEXT_PUBLIC_SITE_MODE=pnl \
+        NEXT_PUBLIC_BASE_PATH= \
+        NEXT_PUBLIC_API_BASE=/api \
+        NEXT_DIST_DIR=.next-pnl \
+        npm run build || fail "pnl build failed on every heap size"
     fi
-    echo "  ⚠ $label build failed at heap=${heap}MB"
-    free -m || true
-    dmesg 2>/dev/null | tail -n 8 || true
-  done
-  return 1
-}
-
-if [ "${SKIP_BUILD:-0}" = "1" ]; then
-  echo "  SKIP_BUILD=1 — no rebuild, restarting only"
+    step "Frontend: restarting PM2 process tj-pnl-frontend"
+    restart_pm2 tj-pnl-frontend ecosystem.config.js --only tj-pnl-frontend
+    PROBE_PNL=1
+  fi
 else
-  step "Frontend: journal build (basePath=$JOURNAL_HEALTH_PATH, distDir=.next, port 3001)"
-  build_try journal npm run build || fail "journal build failed on every heap size"
-fi
-
-step "Frontend: (re)starting PM2 process tj-frontend"
-if pm2 describe tj-frontend >/dev/null 2>&1; then
-  pm2 restart tj-frontend --update-env
-else
-  pm2 start ecosystem.config.js --only tj-frontend
-fi
-
-if [ "${SKIP_PNL:-0}" = "1" ]; then
-  echo "  SKIP_PNL=1 — skipping the pnl build"
-elif [ "${SKIP_BUILD:-0}" = "1" ]; then
-  echo "  SKIP_BUILD=1 — skipping the pnl build"
-else
-  step "Frontend: pnl build (root path, SITE_MODE=pnl, distDir=.next-pnl, port 3012)"
-  build_try pnl env \
-    NEXT_PUBLIC_SITE_MODE=pnl \
-    NEXT_PUBLIC_BASE_PATH= \
-    NEXT_PUBLIC_API_BASE=/api \
-    NEXT_DIST_DIR=.next-pnl \
-    npm run build || fail "pnl build failed on every heap size"
-fi
-
-step "Frontend: (re)starting PM2 process tj-pnl-frontend"
-if pm2 describe tj-pnl-frontend >/dev/null 2>&1; then
-  pm2 restart tj-pnl-frontend --update-env
-else
-  pm2 start ecosystem.config.js --only tj-pnl-frontend
+  echo "  frontend unchanged — no npm, no builds, no restarts"
 fi
 
 # ───────────────────────── health check ─────────────────────────────
+# Only the services that were actually restarted are probed, and the poll is
+# fast (1s) so a healthy deploy costs a second or two, not half a minute.
 # The journal app is served under a basePath (/journal), so GET / on its port is
-# a 404 *by design*. Waiting for a 200 on / is what made the old check spin in
-# its sleep loop forever. Rules now:
+# a 404 *by design*. Waiting for a 200 on / is what made the old check spin.
 #   2xx / 3xx        → healthy
 #   404              → server is up, just not on this path (warn, do not fail)
 #   000 (refused)    → not listening yet, keep waiting
 #   5xx              → app is crashing, keep waiting then fail
-probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$1" || echo "000"; }
+probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$1" || echo "000"; }
 
 check_site() {
   local name="$1" port="$2" path="$3" i code="000" url
   url="http://127.0.0.1:${port}${path}"
-  for i in $(seq 1 30); do
+  for i in $(seq 1 45); do
     code="$(probe "$url")"
     case "$code" in
       2??|3??)
@@ -192,7 +268,7 @@ check_site() {
         return 0
         ;;
     esac
-    sleep 3
+    sleep 1
   done
   echo "  ❌ $name: $url never became healthy (last status: $code)"
   (command -v ss >/dev/null && ss -ltnp | grep -E ":(3001|3012|8001)" ) || true
@@ -205,15 +281,21 @@ if [ "${SKIP_HEALTHCHECK:-0}" = "1" ]; then
   step "Health check skipped (SKIP_HEALTHCHECK=1)"
 else
   step "Health check"
-  check_site tj-frontend 3001 "$JOURNAL_HEALTH_PATH" || fail "journal site (port 3001) is not serving"
-  if [ "${SKIP_PNL:-0}" = "1" ]; then
-    echo "  SKIP_PNL=1 — skipping the port 3012 check"
-  else
+  if [ "$BACKEND_CHANGED" = "1" ]; then
+    check_site tj-backend 8001 "/api/public/demo/trades" || fail "backend (port 8001) is not serving"
+  fi
+  if [ "$PROBE_JOURNAL" = "1" ]; then
+    check_site tj-frontend 3001 "$JOURNAL_HEALTH_PATH" || fail "journal site (port 3001) is not serving"
+  fi
+  if [ "$PROBE_PNL" = "1" ]; then
     check_site tj-pnl-frontend 3012 "/" || fail "pnl site (port 3012) is not serving"
   fi
 fi
 
-pm2 save
+# Only needed when the process list itself changed.
+[ "$FRESH_PM2" = "1" ] && pm2 save
+
+echo "$NEW_SHA" > "$SHA_STAMP"
 set +x
 echo
-echo "✅ Deploy complete — https://trading-journal.cryptosmart.site + https://pnl.cryptosmart.site"
+echo "✅ Deploy complete in $(( $(date +%s) - STARTED_AT ))s — https://trading-journal.cryptosmart.site + https://pnl.cryptosmart.site"
