@@ -43,7 +43,7 @@ async def save_toobit_api_key(
     Records the registration time so the importer only brings in trades opened
     from now on — anything the user did before connecting is left out.
     """
-    plans.assert_can_use_toobit(user)  # gold-only feature
+    plans.assert_can_use_toobit(user)  # diamond-only feature
     first_time = not user.toobit_api_key_enc
     user.toobit_api_key_enc = crypto.encrypt(body.access_api_key)
     if body.secret_api_key:
@@ -127,7 +127,7 @@ async def sync_toobit_now(
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
     """Trigger an immediate Toobit futures import for the current user."""
-    plans.assert_can_use_toobit(user)  # gold-only feature
+    plans.assert_can_use_toobit(user)  # diamond-only feature
     if not (user.toobit_api_key_enc and user.toobit_secret_key_enc):
         raise HTTPException(status_code=400, detail="ابتدا Access API Key و Secret Key را ذخیره کنید.")
     try:

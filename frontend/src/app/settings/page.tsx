@@ -9,8 +9,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { DiamondIcon } from "@/components/DiamondIcon";
 import { Button } from "@/components/ui";
 import { settingsApi, passwordApi } from "@/lib/api";
+import { limitsOf, PLAN_BY_TIER } from "@/lib/plans";
 import { useAuth } from "@/store/auth";
 
 type TabKey = "toobit" | "password";
@@ -83,11 +85,12 @@ function ToobitTab() {
   const hasSecret = !!user?.hasToobitSecretKey;
   const connected = hasKey && hasSecret;
 
-  // Toobit connection is a gold-only feature.
-  const tier = (user?.subscriptionTier ?? "bronze").toLowerCase();
-  const isGold =
-    tier === "gold" &&
-    (!user?.subscriptionExpiresAt || new Date(user.subscriptionExpiresAt) > new Date());
+  // Toobit connection is a diamond-only feature. Read it from the shared plan
+  // catalogue instead of comparing tier strings here: `limitsOf` mirrors the
+  // backend quotas and already downgrades an expired subscription to bronze, so
+  // this gate can never drift from what the API will actually allow.
+  const canUseToobit = limitsOf(user).toobit;
+  const diamond = PLAN_BY_TIER.diamond;
 
   async function syncNow() {
     setSyncMsg("");
@@ -144,19 +147,35 @@ function ToobitTab() {
     }
   }
 
-  if (!isGold) {
+  if (!canUseToobit) {
     return (
-      <div className="tj-card space-y-4 p-5">
+      <div
+        className="tj-card space-y-4 p-5"
+        style={{ borderColor: `rgba(${diamond.tint},0.35)` }}
+      >
         <h2 className="text-base font-bold">اتصال پنل به صرافی توبیت</h2>
-        <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-4 text-sm leading-7 text-amber-700 dark:text-amber-300">
-          <div className="mb-1 font-bold">این قابلیت مخصوصِ پلن طلایی است</div>
-          <p>
-            اتصالِ پنل به صرافیِ توبیت و ثبتِ خودکارِ معاملاتِ فیوچرز فقط برای کاربرانِ
-            پلنِ <b>طلایی</b> فعال است. برای استفاده، اشتراکِ خود را به طلایی ارتقا دهید.
-          </p>
+        <div
+          className="flex items-start gap-4 rounded-xl p-4 text-sm leading-7"
+          style={{
+            border: `1px solid rgba(${diamond.tint},0.4)`,
+            background: `rgba(${diamond.tint},0.10)`,
+          }}
+        >
+          <DiamondIcon size={44} id="settings-toobit-lock" className="shrink-0" />
+          <div>
+            <div className="mb-1 font-bold" style={{ color: diamond.hex }}>
+              این قابلیت مخصوصِ پلن الماسی است
+            </div>
+            <p className="text-muted">
+              اتصالِ پنل به صرافیِ توبیت و ثبتِ خودکارِ معاملاتِ فیوچرز فقط برای کاربرانِ
+              پلنِ <b style={{ color: diamond.hex }}>الماسی</b> فعال است؛ در پلنِ الماسی
+              معاملاتِ فیوچرزِ شما خودکار وارد ژورنال می‌شوند و دیگر نیازی به ثبتِ دستی
+              نیست. برای استفاده، اشتراکِ خود را به الماسی ارتقا دهید.
+            </p>
+          </div>
         </div>
         <div className="flex justify-end">
-          <Button onClick={() => router.push("/subscription")}>ارتقا به طلایی</Button>
+          <Button onClick={() => router.push("/subscription")}>ارتقا به الماسی</Button>
         </div>
       </div>
     );
