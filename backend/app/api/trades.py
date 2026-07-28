@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,10 @@ from app.schemas.trade import TradeIn, TradeOut
 from app.services import balances, calc as calc_engine, plans
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 # Fields that can be set directly on the Trade model from TradeIn.
 _SCALAR_FIELDS = [
@@ -32,6 +38,21 @@ def _apply_fields(trade: Trade, data: dict) -> None:
     for field in _SCALAR_FIELDS:
         if field in data:
             setattr(trade, field, data[field])
+
+
+def _stamp_dates(trade: Trade) -> None:
+    """Keep every journal entry dated without asking the user to type anything.
+
+    ``open_date`` defaults to the moment the trade was recorded, and a trade that
+    is marked CLOSED without an explicit close date is stamped right then. Any
+    date the user *did* enter always wins — we only ever fill in blanks. Because
+    both the calendar and the daily PnL grouping key off ``close_date or
+    open_date``, this is what makes a freshly saved trade land on today's cell.
+    """
+    if trade.open_date is None:
+        trade.open_date = getattr(trade, "created_at", None) or _utcnow()
+    if trade.status == "CLOSED" and trade.close_date is None:
+        trade.close_date = _utcnow()
 
 
 def _apply_take_profits(trade: Trade, tps: list[dict]) -> None:
@@ -130,6 +151,8 @@ async def create_trade(
         status=data.get("status") or "PLANNED",
     )
     _apply_fields(trade, data)
+    # Stamp "now" as the open date unless the user supplied one.
+    _stamp_dates(trade)
     if take_profits is not None:
         _apply_take_profits(trade, take_profits)
     if entry_levels is not None:
@@ -186,6 +209,8 @@ async def update_trade(
     take_profits = data.pop("take_profits", None)
     entry_levels = data.pop("entry_levels", None)
     _apply_fields(trade, data)
+    # Backfill missing dates (legacy rows, or a trade just marked CLOSED).
+    _stamp_dates(trade)
     if take_profits is not None:
         _apply_take_profits(trade, take_profits)
     if entry_levels is not None:
