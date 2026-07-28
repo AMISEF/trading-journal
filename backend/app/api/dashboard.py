@@ -18,6 +18,17 @@ from app.services.sessions import session_for
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+def _trade_day(t) -> object | None:
+    """The day a trade belongs to on the calendar.
+
+    Close date first, then open date, and finally the row's creation time — the
+    moment the user recorded the journal entry. The last fallback keeps legacy
+    rows (saved before dates were stamped automatically) out of the "unknown"
+    bucket, so they still show up on the day they were written.
+    """
+    return t.close_date or t.open_date or getattr(t, "created_at", None)
+
+
 @router.get("/rr-debug")
 async def rr_debug(
     user: User = Depends(get_current_user),
@@ -171,7 +182,7 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
             rr_values.append(rr)
         balance += pnl
         pnls.append(pnl)
-        _d = t.close_date or t.open_date
+        _d = _trade_day(t)
         equity_curve.append({
             "number": t.number,
             "balance": balance,
@@ -232,7 +243,7 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
         )
         pnl = res["realizedPnl"]
         hist_balance += pnl
-        day = (t.close_date or t.open_date)
+        day = _trade_day(t)
         key = day.date().isoformat() if day else "unknown"
         by_day[key] += pnl
     pnl_by_day = [{"date": d, "pnl": v} for d, v in sorted(by_day.items())]
