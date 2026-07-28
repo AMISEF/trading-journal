@@ -7,14 +7,14 @@ import { cn } from "@/lib/utils";
 import NumberFlow from "@number-flow/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { DiamondIcon } from "@/components/DiamondIcon";
+import { TierIcon } from "@/components/TierIcon";
 import { faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
 import { PLANS, TIER_LABEL, TIER_TINT, effectiveTier } from "@/lib/plans";
 import { useAuth } from "@/store/auth";
 import type { User } from "@/lib/types";
 
-// ── Billing periods ───────────────────────────────────────────
+// ── Billing periods ─────────────────────────────────
 // `months` = calendar months of access. `paidMonths` = months actually billed
 // (the discount rule the product owner defined):
 //   • ۳ ماهه  → قیمت ۳ ماه خط می‌خورد، فقط ۲ ماه پرداخت می‌شود
@@ -39,7 +39,7 @@ const payPrice = (monthly: number, p: Period) => monthly * p.paidMonths;
 
 const round1000 = (n: number) => Math.round(n / 1000) * 1000;
 
-// ── Payment / activation details ────────────────────────────────
+// ── Payment / activation details ───────────────────────────────
 const SUPPORT_URL = "https://t.me/cryptosmart_sup";
 const PAY_ADDRESSES = [
   { net: "شبکهٔ TRC20 — ترون", value: "TKnDWJ6PXt7CAjXEEvUnoJbD9QwnCwGyCL" },
@@ -107,7 +107,7 @@ async function copyText(text: string) {
   document.body.removeChild(ta);
 }
 
-// ── Billing-period switch ──────────────────────────────────────
+// ── Billing-period switch ────────────────────────────────
 // A measured sliding indicator (no framer `layoutId`, which got stuck on the
 // first tab in RTL). The pill's position/width is read straight off the active
 // button, so it tracks every period reliably.
@@ -217,7 +217,7 @@ function CurrentPlanCard() {
         <div>
           <div className="text-xs font-medium text-gray-300">پلن فعلی شما</div>
           <div className="mt-1 flex items-center gap-2">
-            {tier === "diamond" && <DiamondIcon size={26} id="current-plan" animate={false} />}
+            <TierIcon tier={tier} size={28} id="current-plan" animate={false} />
             <span
               className="inline-flex h-8 items-center rounded-full px-3 text-sm font-extrabold"
               style={{ background: `rgba(${tint},0.2)`, color: `rgb(${tint})`, border: `1px solid rgba(${tint},0.4)` }}
@@ -577,8 +577,8 @@ function SubscriptionInner() {
                     <h3 className="text-2xl font-bold" style={{ color: `rgb(${plan.tint})` }}>
                       {plan.name}
                     </h3>
-                    {/* The diamond is the tier's whole identity — show it, not an emoji. */}
-                    {isDiamond && <DiamondIcon size={44} id="plan-card" />}
+                    {/* Each tier wears its own emblem — medal for the metals, gem for الماسی. */}
+                    <TierIcon tier={plan.tier} size={44} id="plan-card" />
                   </div>
 
                   {/* Price block */}
