@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Spinner } from "@/components/ui";
 import { PnlBreakdown } from "@/components/PnlBreakdown";
+import { DiamondIcon } from "@/components/DiamondIcon";
+import { TierIcon } from "@/components/TierIcon";
 import { adminApi, type AdminUserCreatePayload, type AdminUserUpdatePayload } from "@/lib/api";
 import { formatUsd, faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
@@ -31,11 +33,23 @@ type Modal =
   | { kind: "dashboard"; user: User };
 
 // ── Plan metadata (label + "R,G,B" tint) shared by the table + set-plan modal ──
+// Tints mirror frontend/src/lib/plans.ts so the admin panel and the customer
+// facing pages always speak about the same four tiers.
 const PLAN_META: Record<string, { label: string; tint: string }> = {
   bronze: { label: "برنزی", tint: "251,146,60" },
   silver: { label: "نقره‌ای", tint: "148,163,184" },
   gold: { label: "طلایی", tint: "251,191,36" },
+  diamond: { label: "الماسی", tint: "103,232,249" },
 };
+
+/** Tier emblem: the 3D diamond for the top tier, a medallion for the metals. */
+function PlanEmblem({ tier, size = 26, id }: { tier: string; size?: number; id: string }) {
+  if (tier === "diamond") return <DiamondIcon size={size} id={id} animate={false} />;
+  if (tier === "gold" || tier === "silver" || tier === "bronze") {
+    return <TierIcon tier={tier} size={size} id={id} animate={false} />;
+  }
+  return null;
+}
 
 function AdminUsers() {
   const router = useRouter();
@@ -85,7 +99,10 @@ function AdminUsers() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {users.map((u) => {
+              const meta = PLAN_META[u.subscriptionTier];
+              const tint = meta?.tint ?? PLAN_META.bronze.tint;
+              return (
               <tr key={u.id} className="border-b border-border/60 hover:bg-surface-2">
                 <td className="p-3 font-medium">
                   {u.firstName} {u.lastName}
@@ -101,14 +118,17 @@ function AdminUsers() {
                   <Badge tone={u.role === "ADMIN" ? "neutral" : "muted"}>{u.role}</Badge>
                 </td>
                 <td className="p-3">
+                  {/* Tinted from PLAN_META so a new tier never needs new classes. */}
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      u.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                      : u.subscriptionTier === "silver" ? "bg-slate-200 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
-                      : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                    }`}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={{
+                      background: `rgba(${tint},0.16)`,
+                      border: `1px solid rgba(${tint},0.35)`,
+                      color: `rgb(${tint})`,
+                    }}
                   >
-                    {{ bronze: "برنزی", silver: "نقره‌ای", gold: "طلایی" }[u.subscriptionTier] ?? u.subscriptionTier}
+                    <PlanEmblem tier={u.subscriptionTier} size={14} id={`row-${u.id}`} />
+                    {meta?.label ?? u.subscriptionTier}
                   </span>
                 </td>
                 <td className="p-3" dir="ltr">{formatUsd(u.currentBalance)}</td>
@@ -136,7 +156,8 @@ function AdminUsers() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -451,7 +472,7 @@ function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void
 }
 
 /* ─── Set subscription plan modal ─────────────────────────────────────────── */
-const PLAN_ORDER = ["bronze", "silver", "gold"] as const;
+const PLAN_ORDER = ["bronze", "silver", "gold", "diamond"] as const;
 const DURATIONS: { months: number | null; label: string }[] = [
   { months: 1, label: "۱ ماهه" },
   { months: 3, label: "۳ ماهه" },
@@ -522,7 +543,7 @@ function SetPlanModal({ user, onDone, onClose }: { user: User; onDone: () => voi
                 key={p}
                 type="button"
                 onClick={() => setPlan(p)}
-                className="rounded-2xl px-3 py-3 text-sm font-bold transition-all duration-200"
+                className="flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-bold transition-all duration-200"
                 style={{
                   background: active ? `rgba(${meta.tint},0.22)` : "var(--glass-bg)",
                   border: `1px solid rgba(${meta.tint},${active ? 0.6 : 0.2})`,
@@ -530,6 +551,7 @@ function SetPlanModal({ user, onDone, onClose }: { user: User; onDone: () => voi
                   boxShadow: active ? `0 10px 26px -12px rgba(${meta.tint},0.7)` : "none",
                 }}
               >
+                <PlanEmblem tier={p} size={22} id={`pick-${p}`} />
                 {meta.label}
               </button>
             );
