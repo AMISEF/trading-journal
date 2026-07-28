@@ -5,6 +5,12 @@ immediately (the model can take longer than a proxy/Cloudflare timeout). The
 client polls ``GET`` until ``status`` becomes ``DONE`` or ``ERROR``. Results are
 cached on the row (``trades.ai_analysis`` / ``users.ai_overall``) so the panel
 re-opens without spending another API call; ``POST`` regenerates.
+
+Every user-facing ``POST`` passes through ``app.services.plans`` first, which is
+the single source of truth for the subscription quotas (per-trade analysis,
+coach cooldown, institutional-report cooldown). The ``/admin/*`` variants
+deliberately skip those checks — an admin generating a report for a customer is
+not spending the customer's quota.
 """
 
 from __future__ import annotations
@@ -97,7 +103,9 @@ async def generate_trade_analysis(
     trade = await _load_trade(db, trade_id)
     if trade is None or trade.user_id != user.id:
         raise HTTPException(status_code=404, detail="معامله یافت نشد")
-    plans.assert_can_analyze_trade(user)
+    # The trade is passed in so the bronze "one analysis per trade" rule can be
+    # evaluated — re-running an already analysed trade is refused there.
+    plans.assert_can_analyze_trade(user, trade)
     return await _start_trade_job(db, trade)
 
 
@@ -351,7 +359,7 @@ async def _do_trade_chat(
     transactions = await crud.load_user_transactions(db, owner.id)
     context = ai_analysis.build_trade_summary(owner, all_trades, trade, transactions)
     if trade.ai_analysis:
-        context += "\n\n[تحلیل قبلیِ این معامله]\n" + trade.ai_analysis
+        context += "\n\n[تحلیل قبلیٔ این معامله]\n" + trade.ai_analysis
     history = list(trade.ai_chat or [])
     reply = await _run_chat(context, history, message, str(owner.id))
     trade.ai_chat = _chat_append(history, message, reply)
