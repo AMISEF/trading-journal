@@ -7,17 +7,20 @@ import { cn } from "@/lib/utils";
 import NumberFlow from "@number-flow/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { DiamondIcon } from "@/components/DiamondIcon";
 import { faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
+import { PLANS, TIER_LABEL, TIER_TINT, effectiveTier } from "@/lib/plans";
 import { useAuth } from "@/store/auth";
 import type { User } from "@/lib/types";
 
-// ── Billing periods ──────────────────────────────────────────────────────
+// ── Billing periods ───────────────────────────────────────────
 // `months` = calendar months of access. `paidMonths` = months actually billed
 // (the discount rule the product owner defined):
 //   • ۳ ماهه  → قیمت ۳ ماه خط می‌خورد، فقط ۲ ماه پرداخت می‌شود
 //   • ۶ ماهه  → قیمت ۶ ماه خط می‌خورد، فقط ۴ ماه پرداخت می‌شود
 //   • سالانه  → قیمت ۱۲ ماه خط می‌خورد، فقط ۸ ماه پرداخت می‌شود
+// Every plan — including الماسی — inherits the same rule from its monthly price.
 const PERIODS = [
   { key: "0", months: 1, paidMonths: 1, label: "ماهانه" },
   { key: "1", months: 3, paidMonths: 2, label: "۳ ماهه" },
@@ -36,57 +39,7 @@ const payPrice = (monthly: number, p: Period) => monthly * p.paidMonths;
 
 const round1000 = (n: number) => Math.round(n / 1000) * 1000;
 
-// ── Plans ─────────────────────────────────────────────────────────────
-// `tier` maps to the backend subscription tier; `tint` is the "R,G,B" wash used
-// across the glass card + selected-plan chrome.
-const plans = [
-  {
-    tier: "bronze",
-    name: "برنزی",
-    tint: "251,146,60", // orange
-    description: "برای شروع بدون ریسک — همین امروز ژورنالت رو بساز",
-    monthlyPrice: 0,
-    buttonText: "شروع رایگان",
-    popular: false,
-    includes: [
-      "ثبت تا ۵۰ معامله با تمام جزئیات (ورود، خروج، تصویر، چک‌لیست، احساسات)",
-      "داشبورد کامل و نمودار equity",
-      "همیشه رایگان",
-    ],
-  },
-  {
-    tier: "silver",
-    name: "نقره‌ای",
-    tint: "148,163,184", // slate
-    description: "برای تریدرهایی که می‌خوان از هر معامله درس بگیرن",
-    monthlyPrice: 349000,
-    buttonText: "ارتقا به نقره‌ای",
-    popular: false,
-    includes: [
-      "ثبت تا ۱۰۰ معامله با تمام جزئیات",
-      "تحلیل هوش مصنوعی روی تک‌تک معاملات",
-      "مربی هوش مصنوعی، هفته‌ای ۱ بار",
-    ],
-  },
-  {
-    tier: "gold",
-    name: "طلایی",
-    tint: "251,191,36", // amber
-    description: "انتخاب اکثر تریدرهای فعال — تحلیل روزانه، بدون سقف معامله",
-    monthlyPrice: 999000,
-    buttonText: "ارتقا به طلایی",
-    popular: true,
-    includes: [
-      "ثبت نامحدود معامله",
-      "تحلیل هوش مصنوعی روی تک‌تک معاملات",
-      "مربی هوش مصنوعی، هر روز ۱ بار",
-      "گزارش و تحلیل نهادی (Institutional) ژورنال، هفته‌ای ۱ بار",
-      "اتصال پنل به صرافی توبیت",
-    ],
-  },
-] as const;
-
-// ── Payment / activation details ───────────────────────────────────────
+// ── Payment / activation details ────────────────────────────────
 const SUPPORT_URL = "https://t.me/cryptosmart_sup";
 const PAY_ADDRESSES = [
   { net: "شبکهٔ TRC20 — ترون", value: "TKnDWJ6PXt7CAjXEEvUnoJbD9QwnCwGyCL" },
@@ -154,18 +107,7 @@ async function copyText(text: string) {
   document.body.removeChild(ta);
 }
 
-const TIER_LABEL: Record<string, string> = {
-  bronze: "برنزی",
-  silver: "نقره‌ای",
-  gold: "طلایی",
-};
-const TIER_TINT: Record<string, string> = {
-  bronze: "251,146,60",
-  silver: "148,163,184",
-  gold: "251,191,36",
-};
-
-// ── Billing-period switch ───────────────────────────────────────────────
+// ── Billing-period switch ──────────────────────────────────────
 // A measured sliding indicator (no framer `layoutId`, which got stuck on the
 // first tab in RTL). The pill's position/width is read straight off the active
 // button, so it tracks every period reliably.
@@ -246,9 +188,9 @@ function CurrentPlanCard() {
   const user = useAuth((s) => s.user);
   if (!user) return null;
 
-  const tier = (user.subscriptionTier || "bronze").toLowerCase();
-  const tint = TIER_TINT[tier] ?? TIER_TINT.bronze;
-  const label = TIER_LABEL[tier] ?? tier;
+  const tier = effectiveTier(user);
+  const tint = TIER_TINT[tier];
+  const label = TIER_LABEL[tier];
   const expires = user.subscriptionExpiresAt;
 
   // Remaining days (only meaningful for a paid, dated plan).
@@ -275,6 +217,7 @@ function CurrentPlanCard() {
         <div>
           <div className="text-xs font-medium text-gray-300">پلن فعلی شما</div>
           <div className="mt-1 flex items-center gap-2">
+            {tier === "diamond" && <DiamondIcon size={26} id="current-plan" animate={false} />}
             <span
               className="inline-flex h-8 items-center rounded-full px-3 text-sm font-extrabold"
               style={{ background: `rgba(${tint},0.2)`, color: `rgb(${tint})`, border: `1px solid rgba(${tint},0.4)` }}
@@ -580,15 +523,18 @@ function SubscriptionInner() {
         }}
       />
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 max-w-[1000px] gap-6 py-12 mx-auto px-4 sm:px-6 relative z-10">
-        {plans.map((plan, index) => {
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 max-w-[1320px] gap-6 py-12 mx-auto px-4 sm:px-6 relative z-10">
+        {PLANS.map((plan, index) => {
           const isFree = plan.monthlyPrice === 0;
+          const isDiamond = plan.tier === "diamond";
+          // Badged plans (طلایی / الماسی) get the stronger, filled chrome.
+          const featured = plan.badge !== null;
           const full = round1000(fullPrice(plan.monthlyPrice, period));
           const pay = round1000(payPrice(plan.monthlyPrice, period));
           const perMonth = round1000(pay / period.months);
           return (
             <TimelineContent
-              key={plan.name}
+              key={plan.tier}
               as="div"
               animationNum={3 + index}
               timelineRef={pricingRef}
@@ -597,9 +543,11 @@ function SubscriptionInner() {
               <div
                 className="group relative flex h-full flex-col overflow-hidden rounded-3xl p-6 text-white backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1.5"
                 style={{
-                  background: `linear-gradient(155deg, rgba(${plan.tint},0.16) 0%, rgba(${plan.tint},0.04) 45%, rgba(255,255,255,0.03) 100%)`,
-                  border: `1px solid rgba(${plan.tint},${plan.popular ? 0.5 : 0.28})`,
-                  boxShadow: plan.popular
+                  background: isDiamond
+                    ? `linear-gradient(155deg, rgba(${plan.tint},0.26) 0%, rgba(56,189,248,0.10) 40%, rgba(255,255,255,0.04) 100%)`
+                    : `linear-gradient(155deg, rgba(${plan.tint},0.16) 0%, rgba(${plan.tint},0.04) 45%, rgba(255,255,255,0.03) 100%)`,
+                  border: `1px solid rgba(${plan.tint},${featured ? 0.5 : 0.28})`,
+                  boxShadow: featured
                     ? `0 30px 80px -30px rgba(${plan.tint},0.7), inset 0 1px 0 rgba(255,255,255,0.14)`
                     : `0 20px 60px -30px rgba(${plan.tint},0.5), inset 0 1px 0 rgba(255,255,255,0.08)`,
                 }}
@@ -615,12 +563,12 @@ function SubscriptionInner() {
                   style={{ background: `linear-gradient(90deg, transparent, rgba(${plan.tint},0.9), transparent)` }}
                 />
 
-                {plan.popular && (
+                {plan.badge && (
                   <div
                     className="absolute -top-0 right-6 rounded-b-xl px-3 py-1 text-xs font-bold text-white shadow-lg"
                     style={{ background: `linear-gradient(to left, rgb(${plan.tint}), rgba(${plan.tint},0.6))` }}
                   >
-                    محبوب‌ترین
+                    {plan.badge}
                   </div>
                 )}
 
@@ -629,6 +577,8 @@ function SubscriptionInner() {
                     <h3 className="text-2xl font-bold" style={{ color: `rgb(${plan.tint})` }}>
                       {plan.name}
                     </h3>
+                    {/* The diamond is the tier's whole identity — show it, not an emoji. */}
+                    {isDiamond && <DiamondIcon size={44} id="plan-card" />}
                   </div>
 
                   {/* Price block */}
@@ -667,7 +617,7 @@ function SubscriptionInner() {
                       <>معادل {faNum(perMonth.toLocaleString("en-US"))} تومان در ماه</>
                     )}
                   </div>
-                  <p className="mt-2 h-10 text-sm text-gray-400">{plan.description}</p>
+                  <p className="mt-2 h-14 text-sm leading-7 text-gray-400">{plan.tagline}</p>
                 </div>
 
                 <div className="relative flex flex-grow flex-col pt-0">
@@ -684,8 +634,8 @@ function SubscriptionInner() {
                     }
                     className="mb-8 w-full rounded-xl p-3 text-sm font-bold text-white transition-all hover:opacity-90"
                     style={
-                      plan.popular
-                        ? { background: `linear-gradient(to right, rgb(${plan.tint}), rgba(${plan.tint},0.7))`, boxShadow: `0 10px 30px -10px rgba(${plan.tint},0.6)` }
+                      featured
+                        ? { background: `linear-gradient(to right, rgb(${plan.tint}), rgba(${plan.tint},0.7))`, boxShadow: `0 10px 30px -10px rgba(${plan.tint},0.6)`, color: isDiamond ? "#062b34" : undefined }
                         : { background: `rgba(${plan.tint},0.12)`, border: `1px solid rgba(${plan.tint},0.5)`, color: `rgb(${plan.tint})` }
                     }
                   >
@@ -694,7 +644,7 @@ function SubscriptionInner() {
 
                   <div className="flex-grow space-y-4 border-t border-white/10 pt-4">
                     <ul className="space-y-3">
-                      {plan.includes.map((feature, featureIndex) => (
+                      {plan.features.map((feature, featureIndex) => (
                         <li key={featureIndex} className="flex items-start gap-3">
                           <span
                             className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px]"
