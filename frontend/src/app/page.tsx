@@ -15,8 +15,10 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getToken, BASE_PATH } from "@/lib/api";
 import { HubNav } from "@/components/HubNav";
+import { DiamondIcon } from "@/components/DiamondIcon";
 import { LandingFooter } from "@/components/LandingFooter";
 import { PnlStandalonePage } from "@/components/PnlStandalonePage";
+import { PLANS as PLAN_CATALOG } from "@/lib/plans";
 
 const SITE_MODE = process.env.NEXT_PUBLIC_SITE_MODE || "";
 
@@ -48,7 +50,7 @@ const fadeUp = {
   }),
 };
 
-// ── Data ─────────────────────────────────────────────────────────────────────
+// ── Data ──────────────────────────────────────────────────────
 const FEATURES = [
   {
     title: "ثبت کامل هر معامله",
@@ -94,35 +96,26 @@ const FEATURES = [
   },
 ];
 
-const PLANS = [
-  {
-    name: "برنزی",
-    price: "رایگان",
-    unit: "همیشگی",
-    tint: C.brand300,
-    popular: false,
-    cta: "شروع رایگان",
-    features: ["ثبت تا ۵۰ معامله", "داشبورد کامل و نمودار equity"],
-  },
-  {
-    name: "نقره‌ای",
-    price: "۳۴۹٬۰۰۰",
-    unit: "تومان / ماه",
-    tint: C.gray500,
-    popular: false,
-    cta: "انتخاب نقره‌ای",
-    features: ["ثبت تا ۱۰۰ معامله", "تحلیل هوش مصنوعی معاملات", "مربی هوش مصنوعی هفتگی"],
-  },
-  {
-    name: "طلایی",
-    price: "۹۹۹٬۰۰۰",
-    unit: "تومان / ماه",
-    tint: C.accentLight,
-    popular: true,
-    cta: "انتخاب طلایی",
-    features: ["ثبت نامحدود معامله", "مربی هوش مصنوعی روزانه", "گزارش نهادی هفتگی", "اتصال پنل به صرافی توبیت"],
-  },
-];
+/** Latin digits + grouping → Persian digits with the Persian thousands mark. */
+const faPrice = (n: number) =>
+  n
+    .toLocaleString("en-US")
+    .replace(/,/g, "٬")
+    .replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
+
+// The landing pricing block is projected from the shared catalogue, so the
+// public page, the subscription page and the enforced quotas can never tell
+// three different stories.
+const PLANS = PLAN_CATALOG.map((p) => ({
+  tier: p.tier,
+  name: p.name,
+  price: p.monthlyPrice === 0 ? "رایگان" : faPrice(p.monthlyPrice),
+  unit: p.monthlyPrice === 0 ? "همیشگی" : "تومان / ماه",
+  tint: p.hex,
+  badge: p.badge,
+  cta: p.monthlyPrice === 0 ? "شروع رایگان" : `انتخاب ${p.name}`,
+  features: p.highlights,
+}));
 
 const NAV_LINKS = [
   { href: "#live", label: "برایند معاملات" },
@@ -429,73 +422,80 @@ function MarketingLanding() {
         <SectionHeading
           badge="پلن‌های اشتراک"
           title="سطح مناسب خودت را انتخاب کن"
-          subtitle="از پلن رایگان همیشگی تا دسترسی کامل و گزارش نهادی روزانه."
+          subtitle="از پلن رایگان همیشگی تا پلن الماسی — تحلیل نامحدود و اتصال مستقیم به صرافی."
         />
-        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {PLANS.map((p, i) => (
-            <motion.div
-              key={p.name}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, amount: 0.25 }}
-              custom={i}
-              variants={fadeUp}
-              className="group relative flex flex-col overflow-hidden rounded-3xl p-6 backdrop-blur-xl transition-all duration-300 hover:-translate-y-2"
-              style={{
-                background: `linear-gradient(155deg, ${p.tint}26 0%, ${p.tint}0d 45%, rgba(255,255,255,0.03) 100%)`,
-                border: `1px solid ${p.tint}${p.popular ? "88" : "3a"}`,
-                boxShadow: p.popular ? `0 34px 80px -30px ${p.tint}` : `0 24px 60px -34px ${p.tint}aa`,
-              }}
-            >
-              {p.popular && (
-                <div
-                  className="absolute -top-0 right-6 rounded-b-xl px-3 py-1 text-xs font-bold text-[#0b1e3d]"
-                  style={{ background: `linear-gradient(to left, ${p.tint}, ${C.accentGlow})` }}
-                >
-                  محبوب‌ترین
-                </div>
-              )}
-              <div
-                className="pointer-events-none absolute -left-8 -top-8 h-24 w-24 rounded-full opacity-50 blur-3xl"
-                style={{ background: `${p.tint}66` }}
-              />
-              <h3 className="relative text-xl font-extrabold" style={{ color: p.tint }}>
-                {p.name}
-              </h3>
-              <div className="relative mt-3 flex items-end gap-1.5">
-                <span className="text-3xl font-black tracking-tight" dir="ltr">
-                  {p.price}
-                </span>
-                <span className="mb-1 text-xs text-white/60">{p.unit}</span>
-              </div>
-
-              <ul className="relative mt-5 flex-grow space-y-3 border-t border-white/10 pt-5">
-                {p.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5 text-sm text-white/75">
-                    <span
-                      className="mt-0.5 grid h-4 w-4 flex-shrink-0 place-items-center rounded-full text-[10px]"
-                      style={{ background: `${p.tint}33`, color: p.tint }}
-                    >
-                      ✓
-                    </span>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                href="/register"
-                className="relative mt-6 w-full rounded-xl py-3 text-center text-sm font-bold transition-all"
-                style={
-                  p.popular
-                    ? { background: `linear-gradient(to right, ${p.tint}, ${C.accent})`, color: "#0b1e3d", boxShadow: `0 12px 30px -10px ${p.tint}` }
-                    : { background: `${p.tint}1f`, border: `1px solid ${p.tint}66`, color: p.tint }
-                }
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {PLANS.map((p, i) => {
+            const isDiamond = p.tier === "diamond";
+            const featured = p.badge !== null;
+            return (
+              <motion.div
+                key={p.tier}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true, amount: 0.25 }}
+                custom={i}
+                variants={fadeUp}
+                className="group relative flex flex-col overflow-hidden rounded-3xl p-6 backdrop-blur-xl transition-all duration-300 hover:-translate-y-2"
+                style={{
+                  background: `linear-gradient(155deg, ${p.tint}26 0%, ${p.tint}0d 45%, rgba(255,255,255,0.03) 100%)`,
+                  border: `1px solid ${p.tint}${featured ? "88" : "3a"}`,
+                  boxShadow: featured ? `0 34px 80px -30px ${p.tint}` : `0 24px 60px -34px ${p.tint}aa`,
+                }}
               >
-                {p.cta}
-              </Link>
-            </motion.div>
-          ))}
+                {p.badge && (
+                  <div
+                    className="absolute -top-0 right-6 rounded-b-xl px-3 py-1 text-xs font-bold text-[#0b1e3d]"
+                    style={{ background: `linear-gradient(to left, ${p.tint}, ${C.accentGlow})` }}
+                  >
+                    {p.badge}
+                  </div>
+                )}
+                <div
+                  className="pointer-events-none absolute -left-8 -top-8 h-24 w-24 rounded-full opacity-50 blur-3xl"
+                  style={{ background: `${p.tint}66` }}
+                />
+                <div className="relative flex items-start justify-between gap-2">
+                  <h3 className="text-xl font-extrabold" style={{ color: p.tint }}>
+                    {p.name}
+                  </h3>
+                  {isDiamond && <DiamondIcon size={38} id="landing-plan" />}
+                </div>
+                <div className="relative mt-3 flex items-end gap-1.5">
+                  <span className="text-3xl font-black tracking-tight" dir="ltr">
+                    {p.price}
+                  </span>
+                  <span className="mb-1 text-xs text-white/60">{p.unit}</span>
+                </div>
+
+                <ul className="relative mt-5 flex-grow space-y-3 border-t border-white/10 pt-5">
+                  {p.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-sm text-white/75">
+                      <span
+                        className="mt-0.5 grid h-4 w-4 flex-shrink-0 place-items-center rounded-full text-[10px]"
+                        style={{ background: `${p.tint}33`, color: p.tint }}
+                      >
+                        ✓
+                      </span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  href="/register"
+                  className="relative mt-6 w-full rounded-xl py-3 text-center text-sm font-bold transition-all"
+                  style={
+                    featured
+                      ? { background: `linear-gradient(to right, ${p.tint}, ${C.accent})`, color: "#0b1e3d", boxShadow: `0 12px 30px -10px ${p.tint}` }
+                      : { background: `${p.tint}1f`, border: `1px solid ${p.tint}66`, color: p.tint }
+                  }
+                >
+                  {p.cta}
+                </Link>
+              </motion.div>
+            );
+          })}
         </div>
         <p className="mt-6 text-center text-xs text-white/50">
           پلن‌های ۳، ۶ و ۱۲ ماهه با تخفیف ویژه هم موجودند — بعد از ورود، در بخش «مدیریت اشتراک».
@@ -559,4 +559,3 @@ function SectionHeading({ badge, title, subtitle }: { badge: string; title: stri
     </motion.div>
   );
 }
-
