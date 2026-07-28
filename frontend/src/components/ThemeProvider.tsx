@@ -2,11 +2,11 @@
 
 /**
  * ThemeProvider: exposes the current theme + a toggle via React context.
- * Reads the saved theme on mount and keeps <html class="dark"> in sync.
+ * Dark is the default; the saved choice is read on mount and <html class="dark">
+ * is kept in sync.
  */
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useState,
@@ -18,10 +18,10 @@ interface ThemeCtx {
   toggleTheme: () => void;
 }
 
-const Ctx = createContext<ThemeCtx>({ theme: "light", toggleTheme: () => {} });
+const Ctx = createContext<ThemeCtx>({ theme: "dark", toggleTheme: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>("dark");
 
   // Sync from localStorage on mount (the inline head script already applied
   // the class; here we just mirror it into React state).

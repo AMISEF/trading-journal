@@ -1,18 +1,18 @@
 /**
  * Theme helpers. Two themes: "light" and "dark" (Dark Ocean).
- * The choice is persisted in localStorage and applied by toggling the
- * "dark" class on <html> (Tailwind darkMode: "class").
+ * Dark is the default look of the app; the choice is persisted in localStorage
+ * and applied by toggling the "dark" class on <html> (Tailwind darkMode: "class").
  */
 
 export type Theme = "light" | "dark";
 
 export const THEME_KEY = "tj_theme";
 
-/** Read the saved theme, falling back to "light". */
+/** Read the saved theme. Anything but an explicit "light" means dark. */
 export function getStoredTheme(): Theme {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   const saved = window.localStorage.getItem(THEME_KEY);
-  return saved === "dark" ? "dark" : "light";
+  return saved === "light" ? "light" : "dark";
 }
 
 /** Apply a theme to <html> and persist the choice. */

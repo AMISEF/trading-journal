@@ -7,9 +7,9 @@ import { TelegramNav } from "@/components/TelegramNav";
 const isPnlSite = process.env.NEXT_PUBLIC_SITE_MODE === "pnl";
 
 export const metadata: Metadata = {
-  title: isPnlSite ? "برایند الگو اسمارت | Crypto Smart" : "ژورنال تریدینگ | Algo Hub",
+  title: isPnlSite ? "برآیند الگو اسمارت | Crypto Smart" : "ژورنال تریدینگ | Algo Hub",
   description: isPnlSite
-    ? "لایو معاملات و برایند سود و زیان ربات الگو اسمارت"
+    ? "لایو معاملات و برآیند سود و زیان ربات الگو اسمارت"
     : "پنل ژورنال معاملات کریپتو",
 };
 
@@ -17,7 +17,8 @@ export const metadata: Metadata = {
  * Root layout.
  * - dir="rtl" + lang="fa" for a right-to-left Persian UI.
  * - Vazirmatn loaded from a CDN (keeps the offline build clean).
- * - An inline script applies the saved theme BEFORE paint to avoid a flash.
+ * - <html> ships with the dark class: dark is the default theme, and an inline
+ *   script removes it before paint only for users who chose light.
  */
 export default function RootLayout({
   children,
@@ -25,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa" dir="rtl" suppressHydrationWarning>
+    <html lang="fa" dir="rtl" className="dark" suppressHydrationWarning>
       <head>
         <link
           rel="preconnect"
@@ -48,10 +49,11 @@ export default function RootLayout({
         <link rel="icon" href={`${BASE_PATH}/logo-icon.png`} />
         {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
-        {/* Apply theme before first paint (no flash of wrong theme). */}
+        {/* Dark by default; drop the class before first paint only if the user
+            explicitly picked the light theme (no flash of the wrong theme). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('tj_theme');if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`,
+            __html: `(function(){try{if(localStorage.getItem('tj_theme')==='light'){document.documentElement.classList.remove('dark');}}catch(e){}})();`,
           }}
         />
       </head>

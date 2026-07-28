@@ -118,12 +118,16 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   const SidebarContent = (
     <div className="flex h-full flex-col">
-      {/* Brand */}
+      {/* Brand + theme switch */}
       <div className="flex items-center gap-2 px-5 py-5">
         <Image src={`${BASE_PATH}/logo-icon.png`} alt="Algo Hub" width={36} height={36} className="rounded-xl" />
         <div>
           <div className="text-sm font-bold leading-tight">Algo Hub</div>
           <div className="text-xs text-muted">ژورنال تریدینگ</div>
+        </div>
+        {/* Sits next to the logo now that the page-top bar is gone. */}
+        <div className="ms-auto">
+          <ThemeToggle />
         </div>
       </div>
 
@@ -227,12 +231,12 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Content */}
+      {/* Content — no top bar: the theme switch lives beside the logo, and the
+          only thing left for mobile is a bare menu button (no bar, no box). */}
       <div className="md:pr-64">
-        {/* Mobile top bar */}
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface/90 px-4 py-3 backdrop-blur md:justify-end md:px-8">
+        <main className="p-4 pb-24 md:p-8 md:pb-8">
           <button
-            className="md:hidden rounded-lg border border-border bg-surface-2 p-2"
+            className="mb-3 rounded-lg border border-border bg-surface-2 p-2 md:hidden"
             onClick={() => setOpen(true)}
             aria-label="منو"
           >
@@ -240,10 +244,8 @@ function Shell({ children }: { children: React.ReactNode }) {
               <path d="M3 6h18M3 12h18M3 18h18" />
             </svg>
           </button>
-          <ThemeToggle />
-        </header>
-
-        <main className="p-4 pb-24 md:p-8 md:pb-8">{children}</main>
+          {children}
+        </main>
       </div>
 
       {/* نوار پایینیِ هاب (موبایل) */}

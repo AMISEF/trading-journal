@@ -77,6 +77,14 @@ async def init_db() -> None:
             # (NULL position id) are unaffected.
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_toobit_position "
             "ON trades (user_id, toobit_position_id) WHERE toobit_position_id IS NOT NULL",
+            # Dates are stamped automatically now, but rows written before that
+            # have an empty open_date, so they show "—" in the list and never
+            # reach a calendar cell. Adopt the row's creation time (the moment
+            # the user actually recorded the journal entry). The WHERE clause
+            # makes this a no-op on every later startup.
+            "UPDATE trades SET open_date = created_at WHERE open_date IS NULL",
+            "UPDATE trades SET close_date = COALESCE(updated_at, created_at) "
+            "WHERE close_date IS NULL AND status = 'CLOSED'",
         ]
         for stmt in migrations:
             await conn.execute(text(stmt))
