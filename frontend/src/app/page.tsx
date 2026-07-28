@@ -15,14 +15,14 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getToken, BASE_PATH } from "@/lib/api";
 import { HubNav } from "@/components/HubNav";
-import { DiamondIcon } from "@/components/DiamondIcon";
+import { TierIcon } from "@/components/TierIcon";
 import { LandingFooter } from "@/components/LandingFooter";
 import { PnlStandalonePage } from "@/components/PnlStandalonePage";
 import { PLANS as PLAN_CATALOG } from "@/lib/plans";
 
 const SITE_MODE = process.env.NEXT_PUBLIC_SITE_MODE || "";
 
-// ── Brand palette (from the design tokens the product owner provided) ─────────
+// ── Brand palette (from the design tokens the product owner provided) ─────
 const C = {
   deep: "#0b1e3d",
   dark900: "#162F55",
@@ -50,7 +50,7 @@ const fadeUp = {
   }),
 };
 
-// ── Data ──────────────────────────────────────────────────────
+// ── Data ──────────────────────────────────────────
 const FEATURES = [
   {
     title: "ثبت کامل هر معامله",
@@ -426,7 +426,6 @@ function MarketingLanding() {
         />
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((p, i) => {
-            const isDiamond = p.tier === "diamond";
             const featured = p.badge !== null;
             return (
               <motion.div
@@ -459,7 +458,8 @@ function MarketingLanding() {
                   <h3 className="text-xl font-extrabold" style={{ color: p.tint }}>
                     {p.name}
                   </h3>
-                  {isDiamond && <DiamondIcon size={38} id="landing-plan" />}
+                  {/* Medal for the metal tiers, gem for الماسی. */}
+                  <TierIcon tier={p.tier} size={38} id="landing-plan" />
                 </div>
                 <div className="relative mt-3 flex items-end gap-1.5">
                   <span className="text-3xl font-black tracking-tight" dir="ltr">
