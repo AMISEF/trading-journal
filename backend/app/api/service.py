@@ -33,7 +33,7 @@ from app.services import plans
 router = APIRouter(prefix="/api/service", tags=["service"])
 
 # The tiers an admin may assign, ordered cheapest first.
-ASSIGNABLE_TIERS = ["bronze", "silver", "gold"]
+ASSIGNABLE_TIERS = ["bronze", "silver", "gold", "diamond"]
 # Durations offered in the bot (months).
 DURATIONS = [1, 3, 6, 12]
 
@@ -48,7 +48,7 @@ async def require_service_token(
         raise HTTPException(status_code=403, detail="Invalid service token")
 
 
-# ── schemas ──────────────────────────────────────────────────────────────────
+# ── schemas ────────────────────────────────────────────────────
 class ServiceUser(CamelModel):
     id: int
     email: str
@@ -63,7 +63,7 @@ class SetPlanIn(CamelModel):
     duration_months: int | None = None
 
 
-# ── user lookup + plan assignment ────────────────────────────────────────────
+# ── user lookup + plan assignment ───────────────────────────────────
 def _to_service_user(u: User) -> ServiceUser:
     name = " ".join(x for x in [getattr(u, "first_name", None),
                                 getattr(u, "last_name", None)] if x) or None
@@ -122,7 +122,7 @@ async def set_plan(user_id: int, body: SetPlanIn,
     return _to_service_user(target)
 
 
-# ── statistics ───────────────────────────────────────────────────────────────
+# ── statistics ─────────────────────────────────────────────────
 _PERIODS = {"day": 1, "week": 7, "month": 30}
 
 
