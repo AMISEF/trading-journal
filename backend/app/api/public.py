@@ -403,14 +403,15 @@ async def _aggregate_dashboard(
 
     avg_rr = (sum(rr_values) / len(rr_values)) if rr_values else None
 
-    win_pnls = [p for p in pnls if p > 0]
-    loss_pnls = [p for p in pnls if p < 0]
+    win_pnls = [p for p in pnls if dashboard_stats.is_win(p)]
+    loss_pnls = [p for p in pnls if dashboard_stats.is_loss(p)]
     wins = len(win_pnls)
-    win_rate = (wins / closed_count) if closed_count else None
+    # وین‌ریت فقط بین سودده و زیان‌ده؛ سربه‌سرها در مخرج نمی‌آیند.
+    win_rate = dashboard_stats.win_rate(pnls)
     win_loss = {
         "win": wins,
         "loss": len(loss_pnls),
-        "breakeven": sum(1 for p in pnls if p == 0),
+        "breakeven": sum(1 for p in pnls if dashboard_stats.is_breakeven(p)),
         "avgWin": (sum(win_pnls) / len(win_pnls)) if win_pnls else None,
         "avgLoss": (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None,
     }

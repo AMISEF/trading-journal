@@ -4,11 +4,52 @@ Given a chronologically-ordered list of CLOSED trades and their realised PnLs
 (plus the starting balance), compute the metrics the basic dashboard didn't
 have: max drawdown, longest win/loss streaks (with their aggregate PnL),
 per-direction win rates, and the best/worst symbols (each with a win rate).
+
+This module also owns :func:`win_rate`, the single definition of win rate used
+everywhere in the app — see its docstring for the rule.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
+
+
+def is_win(pnl: float) -> bool:
+    """سودده: هر معامله‌ای که با سودِ بزرگ‌تر از صفر بسته شده باشد.
+
+    معامله‌ای که بخشی از آن سیو سود شده و بقیه ریسک‌فری (روی نقطهٔ ورود) بسته
+    شده، سودِ همان بخشِ سیوشده را دارد، پس اینجا «سودده» است — نه سربه‌سر.
+    """
+    return pnl > 0
+
+
+def is_loss(pnl: float) -> bool:
+    return pnl < 0
+
+
+def is_breakeven(pnl: float) -> bool:
+    """سربه‌سر: معامله‌ای که نه سود داشته نه زیان و با صفر دلار بسته شده."""
+    return pnl == 0
+
+
+def win_rate(pnls: Iterable[float]) -> float | None:
+    """وین‌ریت = تعداد سودده ÷ (تعداد سودده + تعداد زیان‌ده).
+
+    معاملاتِ سربه‌سر (سود/زیانِ دقیقاً صفر) در مخرج نمی‌آیند، چون نه برد
+    بوده‌اند نه باخت و نباید نسبت را رقیق کنند. اگر هیچ معاملهٔ برد/باختی نباشد
+    (هیچ معامله‌ای یا فقط سربه‌سر) خروجی None است، یعنی «قابل محاسبه نیست».
+
+    این تنها تعریفِ وین‌ریت در کلِ برنامه است؛ همهٔ داشبوردها، آمارِ جهت و نماد،
+    و تحلیل‌های هوش مصنوعی از همین استفاده می‌کنند.
+    """
+    wins = losses = 0
+    for p in pnls:
+        if is_win(p):
+            wins += 1
+        elif is_loss(p):
+            losses += 1
+    decided = wins + losses
+    return (wins / decided) if decided else None
 
 
 def _streak(pnls: list[float], want_win: bool) -> dict:
@@ -48,33 +89,39 @@ def compute_extra(closed: list[Any], pnls: list[float], start_balance: float) ->
     loss_streak = _streak(pnls, False)
 
     # --- Per-direction win rates ---
-    long_n = long_w = short_n = short_w = 0
+    long_n = long_w = long_d = short_n = short_w = short_d = 0
     for t, p in zip(closed, pnls):
         if t.direction == "LONG":
             long_n += 1
-            long_w += 1 if p > 0 else 0
+            long_w += 1 if is_win(p) else 0
+            long_d += 1 if not is_breakeven(p) else 0
         elif t.direction == "SHORT":
             short_n += 1
-            short_w += 1 if p > 0 else 0
+            short_w += 1 if is_win(p) else 0
+            short_d += 1 if not is_breakeven(p) else 0
+    # `long`/`short` stay the FULL counts (that is what the pie chart shows);
+    # only the win-rate denominators drop the break-even trades.
     direction_stats = {
         "long": long_n,
         "short": short_n,
         "longWins": long_w,
         "shortWins": short_w,
-        "longWinRate": (long_w / long_n) if long_n else None,
-        "shortWinRate": (short_w / short_n) if short_n else None,
+        "longWinRate": (long_w / long_d) if long_d else None,
+        "shortWinRate": (short_w / short_d) if short_d else None,
     }
 
     # --- Per-symbol PnL / count / win rate ---
     sym: dict[str, dict] = {}
     for t, p in zip(closed, pnls):
         s = t.symbol or "?"
-        d = sym.setdefault(s, {"symbol": s, "pnl": 0.0, "count": 0, "wins": 0})
+        d = sym.setdefault(s, {"symbol": s, "pnl": 0.0, "count": 0, "wins": 0,
+                               "decided": 0})
         d["pnl"] += p
-        d["count"] += 1
-        d["wins"] += 1 if p > 0 else 0
+        d["count"] += 1                       # همهٔ معاملات (ستون «تعداد»)
+        d["wins"] += 1 if is_win(p) else 0
+        d["decided"] += 0 if is_breakeven(p) else 1   # مخرجِ وین‌ریت
     for d in sym.values():
-        d["winRate"] = (d["wins"] / d["count"]) if d["count"] else None
+        d["winRate"] = (d["wins"] / d["decided"]) if d["decided"] else None
     by_pnl = sorted(sym.values(), key=lambda x: x["pnl"], reverse=True)
     top_symbols = by_pnl[:5]
     worst_symbols = list(reversed(by_pnl[-5:])) if len(by_pnl) > 5 else list(reversed(by_pnl))

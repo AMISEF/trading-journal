@@ -33,7 +33,7 @@ from app.core.config import settings
 from app.models.trade import Trade
 from app.models.user import User
 from app.models.wallet_transaction import WalletTransaction
-from app.services import balances
+from app.services import balances, dashboard_stats
 from app.services.sessions import session_for
 
 
@@ -388,9 +388,9 @@ def build_overall_summary(
         rr = calc.get("rrAchieved")
         if rr is not None:
             rrs.append(rr)
-        if pnl > 0:
+        if dashboard_stats.is_win(pnl):
             wins += 1
-        elif pnl < 0:
+        elif dashboard_stats.is_loss(pnl):
             losses += 1
         else:
             breakeven += 1
@@ -424,12 +424,14 @@ def build_overall_summary(
         )
 
     n = len(closed)
-    win_pnls = [p for p in pnls if p > 0]
-    loss_pnls = [p for p in pnls if p < 0]
+    win_pnls = [p for p in pnls if dashboard_stats.is_win(p)]
+    loss_pnls = [p for p in pnls if dashboard_stats.is_loss(p)]
     gross_profit = sum(win_pnls)
     gross_loss = sum(-p for p in loss_pnls)
     profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
-    win_rate = (wins / n * 100) if n else None
+    # وین‌ریت فقط بین معاملات سودده و زیان‌ده؛ سربه‌سرها در مخرج نمی‌آیند.
+    _wr = dashboard_stats.win_rate(pnls)
+    win_rate = (_wr * 100) if _wr is not None else None
     avg_win = (sum(win_pnls) / len(win_pnls)) if win_pnls else None
     avg_loss = (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None
     avg_rr = (sum(rrs) / len(rrs)) if rrs else None
@@ -691,12 +693,13 @@ def build_institutional_summary(
     end_equity = equity
     net_profit = end_equity - start_equity
     net_return = (net_profit / start_equity * 100) if start_equity else 0.0
-    gross_profit = sum(p for p in pnls if p > 0)
-    gross_loss = sum(-p for p in pnls if p < 0)
+    gross_profit = sum(p for p in pnls if dashboard_stats.is_win(p))
+    gross_loss = sum(-p for p in pnls if dashboard_stats.is_loss(p))
     profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
-    wins = [p for p in pnls if p > 0]
-    losses = [p for p in pnls if p < 0]
-    win_rate = (len(wins) / n * 100) if n else 0.0
+    wins = [p for p in pnls if dashboard_stats.is_win(p)]
+    losses = [p for p in pnls if dashboard_stats.is_loss(p)]
+    # وین‌ریت فقط بین معاملات سودده و زیان‌ده؛ سربه‌سرها در مخرج نمی‌آیند.
+    win_rate = (dashboard_stats.win_rate(pnls) or 0.0) * 100
     avg_win = (sum(wins) / len(wins)) if wins else 0.0
     avg_loss = (sum(losses) / len(losses)) if losses else 0.0
     reward_risk = (avg_win / abs(avg_loss)) if avg_loss else None
@@ -710,11 +713,12 @@ def build_institutional_summary(
     def _side_stats(side_pnls: list[float]) -> str:
         if not side_pnls:
             return "بدون معامله"
-        w = [p for p in side_pnls if p > 0]
-        gl = sum(-p for p in side_pnls if p < 0)
-        gp = sum(p for p in side_pnls if p > 0)
+        w = [p for p in side_pnls if dashboard_stats.is_win(p)]
+        gl = sum(-p for p in side_pnls if dashboard_stats.is_loss(p))
+        gp = sum(p for p in side_pnls if dashboard_stats.is_win(p))
         pf = (gp / gl) if gl > 0 else float("inf")
-        wr = len(w) / len(side_pnls) * 100
+        # مخرجِ وین‌ریت فقط سودده + زیان‌ده (بدون سربه‌سر)
+        wr = (dashboard_stats.win_rate(side_pnls) or 0.0) * 100
         avg = sum(side_pnls) / len(side_pnls)
         pf_txt = "∞" if pf == float("inf") else _fmt(pf)
         return (
