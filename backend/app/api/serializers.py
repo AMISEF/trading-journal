@@ -26,7 +26,10 @@ def user_to_out(
         phone=user.phone,
         wallet_margin=user.wallet_margin,
         current_balance=balances.current_balance(user, trades, transactions),
+        # userGroup = گروهِ اصلی (سازگاری با کدِ قدیمی)،
+        # userGroups = همهٔ گروه‌هایی که کاربر عضوشان است.
         user_group=user.user_group,
+        user_groups=user.user_groups,
         is_demo=bool(getattr(user, "is_demo", False)),
         capital_reset_date=user.capital_reset_date,
         subscription_tier=user.subscription_tier,

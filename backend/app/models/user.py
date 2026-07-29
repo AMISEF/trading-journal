@@ -2,14 +2,64 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    String,
+    Text,
+    false,
+    not_,
+    or_,
+)
+from sqlalchemy.ext.hybrid import Comparator, hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.services import groups as groups_svc
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class _GroupMembership(Comparator):
+    """مقایسهٔ «عضویت» روی ستونِ چندگروهیِ `user_group`.
+
+    ستون یک لیستِ کاما-جدا نگه می‌دارد («CRYPTOSMART_TEAM,LIVE_TRADE»)، پس
+    برابریِ ساده دیگر معنا ندارد. این Comparator کاری می‌کند که
+    `User.user_group == groups.LIVE_TRADE_GROUP` به «عضوِ لایو ترید است»
+    ترجمه شود، بنابراین همهٔ کوئری‌های موجود (مثلاً showcaseِ عمومی) بدون هیچ
+    تغییری درست کار می‌کنند و کاربر می‌تواند هم‌زمان عضوِ چند گروه باشد.
+    """
+
+    __hash__ = Comparator.__hash__
+
+    def _matches(self, group: str):
+        col = self.expression
+        # چهار حالتِ ممکنِ قرارگیریِ نام در لیست: تنها عضو، اول، آخر، وسط.
+        return or_(
+            col == group,
+            col.like(f"{group},%"),
+            col.like(f"%,{group}"),
+            col.like(f"%,{group},%"),
+        )
+
+    def __eq__(self, other):  # noqa: D105 - SQL expression, not a bool
+        if other is None:
+            return or_(self.expression.is_(None), self.expression == "")
+        return self._matches(str(other))
+
+    def __ne__(self, other):  # noqa: D105
+        return not_(self.__eq__(other))
+
+    def in_(self, other):
+        clauses = [self.__eq__(value) for value in other]
+        return or_(*clauses) if clauses else false()
+
+    def notin_(self, other):
+        return not_(self.in_(other))
 
 
 class User(Base):
@@ -32,8 +82,36 @@ class User(Base):
     # Starting wallet/margin balance the user enters manually.
     wallet_margin: Mapped[float] = mapped_column(Float, default=1000.0)
 
-    # Optional group membership (e.g. "CRYPTOSMART_TEAM").
-    user_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # عضویتِ گروه‌های نمایشی — چندگانه. مقدارِ خامِ ستون یک لیستِ کاما-جدا است
+    # («CRYPTOSMART_TEAM», «LIVE_TRADE», یا «CRYPTOSMART_TEAM,LIVE_TRADE»)، پس
+    # یک کاربر می‌تواند هم‌زمان عضوِ تیم کریپتو اسمارت و لایو ترید باشد.
+    # نامِ ستون در دیتابیس همان user_group است تا هیچ مهاجرتی لازم نشود.
+    user_group_raw: Mapped[str | None] = mapped_column(
+        "user_group", String(50), nullable=True
+    )
+
+    @hybrid_property
+    def user_group(self) -> str | None:
+        """گروهِ اصلی (برای نمایش و سازگاری با کدِ قدیمیِ تک‌گروهی)."""
+        return groups_svc.primary(self.user_group_raw)
+
+    @user_group.setter
+    def user_group(self, value: str | None) -> None:
+        """مقدارِ تک‌گروهیِ قدیمی: کلِ عضویت‌ها را با همین یک گروه جایگزین می‌کند."""
+        self.user_group_raw = groups_svc.serialize(groups_svc.parse(value))
+
+    @user_group.comparator
+    def user_group(cls):  # noqa: N805 - hybrid comparator signature
+        return _GroupMembership(cls.user_group_raw)
+
+    @property
+    def user_groups(self) -> list[str]:
+        """همهٔ گروه‌هایی که کاربر عضوشان است."""
+        return groups_svc.parse(self.user_group_raw)
+
+    @user_groups.setter
+    def user_groups(self, value) -> None:
+        self.user_group_raw = groups_svc.serialize(value)
 
     # Marks the single showcase/demo account whose journal the «ایجاد دمو»
     # button renders read-only. Independent of user_group, so a demo account can

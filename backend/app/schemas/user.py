@@ -23,7 +23,11 @@ class UserOut(CamelModel):
     wallet_margin: float
     # currentBalance = walletMargin + sum(realizedPnl of CLOSED, unlocked trades).
     current_balance: float
+    # گروهِ اصلی (سازگاریِ عقب‌رو با کلاینت‌های قدیمی).
     user_group: str | None = None
+    # همهٔ گروه‌هایی که کاربر عضوشان است؛ یک کاربر می‌تواند هم‌زمان عضوِ
+    # «تیم کریپتو اسمارت» و «لایو ترید» باشد.
+    user_groups: list[str] = []
     is_demo: bool = False
     capital_reset_date: datetime | None = None
     subscription_tier: str
