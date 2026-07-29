@@ -184,7 +184,9 @@ export interface DashboardData {
   avgLeverage?: number | null;
   avgLeverageLong?: number | null;
   avgLeverageShort?: number | null;
-  winRate: number;
+  /** سودده ÷ (سودده + زیان‌ده) — معاملات سربه‌سر در مخرج نمی‌آیند؛ اگر هیچ
+   *  معاملهٔ سودده یا زیان‌ده‌ای نباشد null است. */
+  winRate: number | null;
   currentBalance: number;
   equityCurve: { number: number; balance: number; pnl: number; date: string | null }[];
   pnlByDay: { date: string; pnl: number }[];
@@ -217,8 +219,11 @@ export interface DashboardData {
 export interface SymbolStat {
   symbol: string;
   pnl: number;
+  /** همهٔ معاملات این نماد (ستون «تعداد»). */
   count: number;
   wins?: number;
+  /** مخرجِ وین‌ریت: فقط سودده + زیان‌ده. */
+  decided?: number;
   winRate?: number | null;
 }
 

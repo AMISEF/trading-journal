@@ -206,11 +206,13 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
     avg_rr = (sum(rr_values) / len(rr_values)) if rr_values else None
 
     # --- Win / loss distribution ---
-    win_pnls = [p for p in pnls if p > 0]
-    loss_pnls = [p for p in pnls if p < 0]
-    breakeven_count = sum(1 for p in pnls if p == 0)
+    win_pnls = [p for p in pnls if dashboard_stats.is_win(p)]
+    loss_pnls = [p for p in pnls if dashboard_stats.is_loss(p)]
+    breakeven_count = sum(1 for p in pnls if dashboard_stats.is_breakeven(p))
     wins = len(win_pnls)
-    win_rate = (wins / closed_count) if closed_count else None
+    # وین‌ریت فقط بین معاملات سودده و زیان‌ده سنجیده می‌شود؛ سربه‌سرها در مخرج
+    # نمی‌آیند (تعریف واحد در dashboard_stats.win_rate).
+    win_rate = dashboard_stats.win_rate(pnls)
     avg_win = (sum(win_pnls) / len(win_pnls)) if win_pnls else None
     avg_loss = (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else None
     win_loss = {
