@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Paginator, Spinner, StatusDot, usePagination } from "@/components/ui";
 import { AICoachPanel } from "@/components/AICoachPanel";
-import { adminApi, aiApi } from "@/lib/api";
+import http, { adminApi, aiApi } from "@/lib/api";
 import {
   faNum,
   formatPct,
@@ -15,7 +15,13 @@ import {
   pnlColorClass,
 } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
-import type { Trade, User } from "@/lib/types";
+import {
+  CRYPTOSMART_TEAM_GROUP,
+  LIVE_TRADE_GROUP,
+  isGroupMember,
+  type Trade,
+  type User,
+} from "@/lib/types";
 
 export default function AdminUserTradesPage() {
   return (
@@ -62,11 +68,17 @@ function Inner() {
     );
   }, [trades, search]);
 
-  const handleSetGroup = async (group: string | null) => {
+  /**
+   * عضویتِ کاربر در یک گروه را روشن/خاموش می‌کند و به بقیهٔ گروه‌ها دست نمی‌زند؛
+   * پس یک کاربر می‌تواند هم‌زمان عضوِ «تیم کریپتو اسمارت» و «لایو ترید» باشد.
+   */
+  const handleGroupMembership = async (group: string, member: boolean) => {
     setGroupBusy(true);
     setGroupError("");
     try {
-      const updated = await adminApi.setGroup(userId, group);
+      const updated = await http
+        .post<User>(`/admin/users/${userId}/groups`, { group, member })
+        .then((r) => r.data);
       setUser(updated);
     } catch {
       setGroupError("خطا در تغییر گروه");
@@ -138,8 +150,9 @@ function Inner() {
 
   if (!trades) return <Spinner label="در حال بارگذاری ژورنال‌ها…" />;
 
-  const isCryptoTeam = user?.userGroup === "CRYPTOSMART_TEAM";
-  const isLiveTrade = user?.userGroup === "LIVE_TRADE";
+  // عضویت‌ها مستقل‌اند: هر دو می‌توانند هم‌زمان فعال باشند.
+  const isCryptoTeam = isGroupMember(user, CRYPTOSMART_TEAM_GROUP);
+  const isLiveTrade = isGroupMember(user, LIVE_TRADE_GROUP);
 
   const pnl = (t: Trade) => t.calc?.realizedPnl ?? t.realizedPnl ?? null;
   const rr  = (t: Trade) => t.calc?.rrAchieved  ?? t.rrAchieved  ?? null;
@@ -214,6 +227,11 @@ function Inner() {
               Cryptosmart Team
             </span>
           )}
+          {isLiveTrade && (
+            <span className="mr-2 rounded-full bg-sky-500/15 px-2.5 py-0.5 text-sm font-semibold text-sky-500">
+              لایو ترید
+            </span>
+          )}
         </h1>
         <input
           className="tj-input w-48"
@@ -225,27 +243,26 @@ function Inner() {
 
       {/* Cryptosmart Team management */}
       <div className="tj-card p-4 space-y-3">
-        <div className="text-sm font-semibold">مدیریت گروه Cryptosmart Team</div>
-        <div className="flex flex-wrap gap-2 items-center">
-          {isCryptoTeam ? (
-            <button
-              type="button"
-              disabled={groupBusy}
-              onClick={() => handleSetGroup(null)}
-              className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50"
-            >
-              {groupBusy ? "…" : "حذف از Cryptosmart Team"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={groupBusy}
-              onClick={() => handleSetGroup("CRYPTOSMART_TEAM")}
-              className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50"
-            >
-              {groupBusy ? "…" : "افزودن به Cryptosmart Team"}
-            </button>
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          مدیریت گروه Cryptosmart Team
+          {isCryptoTeam && (
+            <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+              عضو تیم کریپتو اسمارت
+            </span>
           )}
+        </div>
+        <p className="text-xs text-muted">
+          عضویت در این گروه مستقل از «لایو ترید» است؛ یک کاربر می‌تواند هم‌زمان عضوِ هر دو گروه باشد و در هر دو تبِ برایند نمایش داده شود.
+        </p>
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            type="button"
+            disabled={groupBusy}
+            onClick={() => handleGroupMembership(CRYPTOSMART_TEAM_GROUP, !isCryptoTeam)}
+            className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+          >
+            {groupBusy ? "…" : isCryptoTeam ? "حذف از Cryptosmart Team" : "افزودن به Cryptosmart Team"}
+          </button>
           <button
             type="button"
             disabled={groupBusy}
@@ -282,29 +299,18 @@ function Inner() {
           )}
         </div>
         <p className="text-xs text-muted">
-          کاربرانِ این گروه در تبِ «برایند لایو ترید» (بخش برایند ربات) با داشبورد، تقویم و ژورنالِ
-          معاملات نمایش داده می‌شوند. سرمایهٔ نمایشی روی ۱۰۰۰ دلار نرمال می‌شود.
+          کاربرانِ این گروه در تبِ «برایند لایو ترید» با داشبورد، تقویم و ژورنالِ معاملات نمایش داده می‌شوند.
+          افزودن یا حذفِ این گروه روی عضویتِ Cryptosmart Team هیچ اثری ندارد.
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {isLiveTrade ? (
-            <button
-              type="button"
-              disabled={groupBusy}
-              onClick={() => handleSetGroup(null)}
-              className="rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50 disabled:opacity-50"
-            >
-              {groupBusy ? "…" : "حذف از لایو ترید"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={groupBusy}
-              onClick={() => handleSetGroup("LIVE_TRADE")}
-              className="rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50 disabled:opacity-50"
-            >
-              {groupBusy ? "…" : "افزودن به لایو ترید"}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={groupBusy}
+            onClick={() => handleGroupMembership(LIVE_TRADE_GROUP, !isLiveTrade)}
+            className="rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+          >
+            {groupBusy ? "…" : isLiveTrade ? "حذف از لایو ترید" : "افزودن به لایو ترید"}
+          </button>
         </div>
       </div>
 
@@ -363,12 +369,13 @@ function Inner() {
           {user && (
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                user.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                user.subscriptionTier === "diamond" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+                : user.subscriptionTier === "gold" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                 : user.subscriptionTier === "silver" ? "bg-slate-200 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
                 : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
               }`}
             >
-              {{ bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی" }[user.subscriptionTier] ?? user.subscriptionTier}
+              {{ bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[user.subscriptionTier] ?? user.subscriptionTier}
             </span>
           )}
           {user?.subscriptionExpiresAt && (
@@ -391,7 +398,7 @@ function Inner() {
             <option value={12}>۱۲</option>
           </select>
 
-          {(["bronze", "silver", "gold"] as const).map((p) => (
+          {(["bronze", "silver", "gold", "diamond"] as const).map((p) => (
             <button
               key={p}
               type="button"
@@ -399,7 +406,7 @@ function Inner() {
               onClick={() => handleSetPlan(p)}
               className="rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary-soft disabled:opacity-40"
             >
-              {planBusy ? "…" : { bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی" }[p]}
+              {planBusy ? "…" : { bronze: "برنزی (رایگان)", silver: "نقره‌ای", gold: "طلایی", diamond: "الماسی" }[p]}
             </button>
           ))}
         </div>

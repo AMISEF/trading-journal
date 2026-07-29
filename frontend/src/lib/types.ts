@@ -9,6 +9,10 @@ export type TradeStatus = "PLANNED" | "OPEN" | "CLOSED";
 export type ExitType = "RISK_FREE" | "LAST_TP" | "STOP_LOSS" | "TRAILING_STOP" | "NOT_ACTIVATED";
 export type ReasonKind = "entry" | "exit";
 
+/** Showcase groups a user can belong to (a user may be in several at once). */
+export const CRYPTOSMART_TEAM_GROUP = "CRYPTOSMART_TEAM";
+export const LIVE_TRADE_GROUP = "LIVE_TRADE";
+
 /** Authenticated user. */
 export interface User {
   id: string;
@@ -20,7 +24,10 @@ export interface User {
   phone: string | null;
   walletMargin: number;
   currentBalance: number;
+  /** گروهِ اصلی — فقط برای نمایش/سازگاری؛ برای بررسیِ عضویت از userGroups استفاده کنید. */
   userGroup: string | null;
+  /** همهٔ گروه‌هایی که کاربر عضوشان است (ممکن است هم تیم کریپتو اسمارت و هم لایو ترید باشد). */
+  userGroups?: string[];
   /** True for the single site demo account (rendered by the «ایجاد دمو» button). */
   isDemo?: boolean;
   capitalResetDate: string | null;
@@ -36,6 +43,13 @@ export interface User {
   /** Last successful Toobit sync time (ISO), and last sync error if any. */
   toobitSyncedAt?: string | null;
   toobitSyncError?: string | null;
+}
+
+/** آیا کاربر عضوِ این گروه نمایشی است؟ (مقدارِ تک‌گروهیِ قدیمی را هم پوشش می‌دهد.) */
+export function isGroupMember(user: User | null | undefined, group: string): boolean {
+  if (!user) return false;
+  const groups = user.userGroups ?? (user.userGroup ? [user.userGroup] : []);
+  return groups.includes(group);
 }
 
 /** A single take-profit target. */
