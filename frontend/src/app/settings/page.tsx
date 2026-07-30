@@ -17,7 +17,7 @@ import { ExchangeLogo } from "@/components/ExchangeLogo";
 import { Button } from "@/components/ui";
 import { exchangesApi, passwordApi, type ExchangeStatus } from "@/lib/api";
 import { EXCHANGES } from "@/lib/exchanges";
-import { limitsOf, PLAN_BY_TIER } from "@/lib/plans";
+import { effectiveTier, limitsOf, PLAN_BY_TIER } from "@/lib/plans";
 import { useAuth } from "@/store/auth";
 
 type TabKey = "profile" | "api";
@@ -102,8 +102,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function ProfileTab() {
-  const user = useAuth((s) => s.user) as any;
-  const plan = PLAN_BY_TIER[(user?.subscriptionTier as string) || "bronze"] ?? PLAN_BY_TIER.bronze;
+  const authUser = useAuth((s) => s.user);
+  const user = authUser as any;
+  // `effectiveTier` already downgrades an expired paid plan to bronze, exactly
+  // like the server does, so the badge never over-promises.
+  const plan = PLAN_BY_TIER[effectiveTier(authUser)];
 
   const groups: string[] = Array.isArray(user?.userGroups)
     ? user.userGroups
@@ -140,7 +143,7 @@ function ProfileTab() {
 
           <div>
             <Row label="پلن اشتراک">
-              <span style={{ color: plan.hex }}>{plan.faName ?? plan.name}</span>
+              <span style={{ color: plan.hex }}>{plan.name}</span>
             </Row>
             <Row label="انقضای اشتراک">{faDate(user?.subscriptionExpiresAt)}</Row>
             <Row label="سرمایهٔ ثبت‌شده">
@@ -419,7 +422,7 @@ function ExchangeCard({
     try {
       const res = await exchangesApi.syncNow(row.slug);
       onChanged(res.exchanges);
-      setMsg(`همگام‌سازی انجام شد (${res.touched} معامله بروزرسانی شد).`);
+      setMsg(`همگام‌سازی انجام شد (${res.touched} معامله به‌روزرسانی شد).`);
     } catch (e: any) {
       setError(e?.response?.data?.detail || "همگام‌سازی ناموفق بود.");
     } finally {
