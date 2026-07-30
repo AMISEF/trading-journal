@@ -22,6 +22,7 @@ from app.api import (
     auth,
     calc,
     dashboard,
+    exchanges as exchanges_router,
     export,
     groups as groups_router,
     market,
@@ -57,19 +58,42 @@ async def _toobit_sync_loop():
         await asyncio.sleep(max(15, settings.TOOBIT_SYNC_INTERVAL))
 
 
+async def _exchange_sync_loop():
+    """Background poller for every other exchange (LBank / XT / Ourbit / WEEX).
+
+    Runs on the same cadence as the Toobit loop but offset by a few seconds so
+    both never hammer the database at the exact same moment.
+    """
+    import asyncio
+    import logging
+
+    from app.db.session import AsyncSessionLocal
+    from app.services import exchange_sync
+
+    log = logging.getLogger("app.exchanges")
+    await asyncio.sleep(20)
+    while True:
+        try:
+            await exchange_sync.sync_all_users(AsyncSessionLocal)
+        except Exception:  # noqa: BLE001 - the loop must never die
+            log.exception("exchange sync pass failed")
+        await asyncio.sleep(max(15, settings.TOOBIT_SYNC_INTERVAL))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run once on startup: ensure the uploads folder and DB tables exist, and
-    start the Toobit futures sync poller."""
+    start the futures sync pollers (Toobit + the other exchanges)."""
     import asyncio
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     await init_db()
-    task = None
+    tasks = []
     if settings.TOOBIT_SYNC_ENABLED:
-        task = asyncio.create_task(_toobit_sync_loop())
+        tasks.append(asyncio.create_task(_toobit_sync_loop()))
+        tasks.append(asyncio.create_task(_exchange_sync_loop()))
     yield
-    if task is not None:
+    for task in tasks:
         task.cancel()
 
 
@@ -110,6 +134,7 @@ app.include_router(uploads.router)
 app.include_router(wallet.router)
 app.include_router(ai.router)
 app.include_router(settings_router.router)
+app.include_router(exchanges_router.router)
 app.include_router(password.auth_router)
 app.include_router(password.settings_router)
 app.include_router(public.router)

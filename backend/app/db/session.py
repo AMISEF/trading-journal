@@ -31,7 +31,16 @@ async def init_db() -> None:
     from sqlalchemy import text
 
     # Import models so they register with Base.metadata.
-    from app.models import user, trade, template, wallet_transaction, auth_code, team_ai, demo_snapshot  # noqa: F401
+    from app.models import (  # noqa: F401
+        auth_code,
+        demo_snapshot,
+        exchange_credential,
+        team_ai,
+        template,
+        trade,
+        user,
+        wallet_transaction,
+    )
     from app.db.base import Base
 
     async with engine.begin() as conn:
@@ -77,6 +86,15 @@ async def init_db() -> None:
             # (NULL position id) are unaffected.
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_toobit_position "
             "ON trades (user_id, toobit_position_id) WHERE toobit_position_id IS NOT NULL",
+            # Multi-exchange credentials (LBank / XT / Ourbit / WEEX). create_all
+            # builds the table; these guards cover installs where an older,
+            # narrower version of the table already exists.
+            "ALTER TABLE exchange_credentials ADD COLUMN IF NOT EXISTS passphrase_enc TEXT",
+            "ALTER TABLE exchange_credentials ADD COLUMN IF NOT EXISTS key_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE exchange_credentials ADD COLUMN IF NOT EXISTS synced_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE exchange_credentials ADD COLUMN IF NOT EXISTS sync_error TEXT",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_exchange_credential_user_ex "
+            "ON exchange_credentials (user_id, exchange)",
             # Dates are stamped automatically now, but rows written before that
             # have an empty open_date, so they show "—" in the list and never
             # reach a calendar cell. Adopt the row's creation time (the moment
