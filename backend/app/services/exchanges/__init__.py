@@ -7,6 +7,13 @@ entry.  The registry is the single source of truth shared by:
 * ``app/services/exchange_sync.py`` -> the generic 60s sync worker
 * the frontend (``frontend/src/lib/exchanges.ts`` mirrors ``slug``/``color``)
 
+Colours follow each exchange's official brand guide:
+    Toobit  blue            #0059FB
+    LBank   yellow + black  #FFCC00 / #0B0B0B
+    XT.COM  green           #00C853
+    Ourbit  purple          #7B4DFF
+    WEEX    yellow + black  #D8AE15 / #151515
+
 ``toobit`` is listed here too so the UI can render all exchanges from one
 list, but it keeps using the legacy ``users.toobit_*`` columns and the
 battle-tested ``app/services/toobit_sync.py`` worker.  ``client_cls`` is
@@ -31,6 +38,10 @@ class ExchangeMeta:
     slug: str
     label: str
     color: str
+    #: Secondary (dark) brand colour — the black half of yellow/black brands.
+    ink: str = "#0B0B0B"
+    #: True when the official identity is "colour on black".
+    dark_plate: bool = False
     needs_passphrase: bool = False
     legacy: bool = False
     client_cls: Optional[Type[BaseExchangeClient]] = None
@@ -52,7 +63,8 @@ EXCHANGES: Dict[str, ExchangeMeta] = {
     "toobit": ExchangeMeta(
         slug="toobit",
         label="Toobit",
-        color="#F5C542",
+        color="#0059FB",
+        ink="#04122e",
         legacy=True,
         client_cls=None,
         docs_url="https://toobit-docs.github.io/",
@@ -60,7 +72,9 @@ EXCHANGES: Dict[str, ExchangeMeta] = {
     "lbank": ExchangeMeta(
         slug="lbank",
         label="LBank",
-        color="#00C8B4",
+        color="#FFCC00",
+        ink="#0B0B0B",
+        dark_plate=True,
         client_cls=LbankClient,
         base_env="LBANK_BASE_URL",
         default_base="https://lbkperp.lbank.com",
@@ -69,7 +83,8 @@ EXCHANGES: Dict[str, ExchangeMeta] = {
     "xt": ExchangeMeta(
         slug="xt",
         label="XT.COM",
-        color="#0052FF",
+        color="#00C853",
+        ink="#04180d",
         client_cls=XtClient,
         base_env="XT_BASE_URL",
         default_base="https://fapi.xt.com",
@@ -79,6 +94,7 @@ EXCHANGES: Dict[str, ExchangeMeta] = {
         slug="ourbit",
         label="Ourbit",
         color="#7B4DFF",
+        ink="#160a33",
         client_cls=OurbitClient,
         base_env="OURBIT_BASE_URL",
         default_base="https://futures.ourbit.com",
@@ -87,7 +103,9 @@ EXCHANGES: Dict[str, ExchangeMeta] = {
     "weex": ExchangeMeta(
         slug="weex",
         label="WEEX",
-        color="#00E0A1",
+        color="#D8AE15",
+        ink="#151515",
+        dark_plate=True,
         needs_passphrase=True,
         client_cls=WeexClient,
         base_env="WEEX_BASE_URL",
@@ -118,6 +136,8 @@ def public_meta() -> List[dict]:
                 "slug": meta.slug,
                 "label": meta.label,
                 "color": meta.color,
+                "ink": meta.ink,
+                "darkPlate": meta.dark_plate,
                 "needsPassphrase": meta.needs_passphrase,
                 "legacy": meta.legacy,
                 "docsUrl": meta.docs_url,
