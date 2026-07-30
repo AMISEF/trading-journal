@@ -17,9 +17,10 @@ export const metadata: Metadata = {
  * Root layout.
  * - dir="rtl" + lang="fa" for a right-to-left Persian UI.
  * - Dana (Persian) + Montserrat (Latin) loaded from a CDN.
- * - <html> ships with the default theme (Dark Ocean); an inline script applies
- *   the user's saved theme before first paint, so there is never a flash of
- *   the wrong colours. Themes: light | soft | barbie | dark | ocean | classic.
+ * - <html> ships with the default theme (classic dark); an inline script
+ *   applies the user's saved theme before first paint, so there is never a
+ *   flash of the wrong colours.
+ *   Themes: light | soft | barbie | dark | ocean | classic.
  */
 export default function RootLayout({
   children,
@@ -27,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa" dir="rtl" className="dark" data-theme="ocean" suppressHydrationWarning>
+    <html lang="fa" dir="rtl" className="dark" data-theme="classic" suppressHydrationWarning>
       <head>
         <link
           rel="preconnect"
@@ -51,11 +52,11 @@ export default function RootLayout({
         {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
         {/* Apply the saved theme before first paint (no flash of wrong colours).
-            "dark" is a legacy value for the old default; "blue" was replaced by
-            the classic palette. */}
+            Default is the classic palette; "blue" is a legacy value that the
+            classic theme replaced. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d={light:0,soft:0,barbie:0,dark:1,ocean:1,classic:1};var t=localStorage.getItem('tj_theme');if(t==='dark')t='ocean';if(t==='blue')t='classic';if(!(t in d))t='ocean';var r=document.documentElement;r.setAttribute('data-theme',t);if(d[t]){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var d={light:0,soft:0,barbie:0,dark:1,ocean:1,classic:1};var t=localStorage.getItem('tj_theme');if(t==='blue')t='classic';if(!(t in d))t='classic';var r=document.documentElement;r.setAttribute('data-theme',t);if(d[t]){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`,
           }}
         />
       </head>

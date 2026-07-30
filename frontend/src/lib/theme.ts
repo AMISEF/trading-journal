@@ -6,7 +6,7 @@
  *   barbie  — باربی گرل     #FFF0F6  (pastel pink)
  *   dark    — دارک           #2B3136  (Gray 900)
  *   ocean   — دارک اوشن     #162F55  (Dark 900 — Deep Background)
- *   classic — تم کلاسیک     #0A1622  (the site's previous dark palette)
+ *   classic — تم کلاسیک     #0A1622  (the site's original dark palette, DEFAULT)
  *
  * The choice is persisted in localStorage and applied to <html> as:
  *   - `data-theme="<id>"`  → selects the CSS variable block in globals.css
@@ -18,8 +18,8 @@ export type Theme = "light" | "soft" | "barbie" | "dark" | "ocean" | "classic";
 
 export const THEME_KEY = "tj_theme";
 
-/** Default look of the app (unchanged: Dark Ocean). */
-export const DEFAULT_THEME: Theme = "ocean";
+/** Default look of the app: the classic (original) dark palette. */
+export const DEFAULT_THEME: Theme = "classic";
 
 export interface ThemeOption {
   id: Theme;
@@ -63,7 +63,6 @@ export function themeOption(theme: Theme): ThemeOption {
  */
 export function normalizeTheme(value: string | null | undefined): Theme {
   if (!value) return DEFAULT_THEME;
-  if (value === "dark") return "ocean"; // legacy alias of the old default
   if (value === "blue") return "classic"; // Blue Dark → classic palette
   return (BY_ID[value]?.id as Theme) ?? DEFAULT_THEME;
 }

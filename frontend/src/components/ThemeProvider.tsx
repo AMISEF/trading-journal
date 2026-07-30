@@ -2,8 +2,8 @@
 
 /**
  * ThemeProvider: exposes the current theme + a setter via React context.
- * Dark Ocean is the default; the saved choice is read on mount and
- * <html data-theme="…" class="dark?"> is kept in sync.
+ * The classic dark palette is the default; the saved choice is read on mount
+ * and <html data-theme="…" class="dark?"> is kept in sync.
  */
 import { createContext, useContext, useEffect, useState } from "react";
 import {
@@ -19,7 +19,7 @@ interface ThemeCtx {
   /** True when the active theme needs light text. */
   isDark: boolean;
   setTheme: (theme: Theme) => void;
-  /** Kept for backwards compatibility: flips between light and Dark Ocean. */
+  /** Kept for backwards compatibility: flips between light and the default. */
   toggleTheme: () => void;
 }
 
@@ -44,7 +44,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     applyTheme(next);
   };
 
-  const toggleTheme = () => setTheme(isDarkTheme(theme) ? "light" : "ocean");
+  const toggleTheme = () =>
+    setTheme(isDarkTheme(theme) ? "light" : DEFAULT_THEME);
 
   return (
     <Ctx.Provider
