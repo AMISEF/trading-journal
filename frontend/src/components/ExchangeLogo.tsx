@@ -4,13 +4,14 @@
  * Exchange logos.
  *
  * The official artwork lives in `frontend/public` (toobit.png, Lbank.png,
- * XT.webp, ourbit.png, weex.png) and is rendered here on top of a plate drawn
- * in the exchange's own brand colour:
+ * XT.webp, ourbit.png, weex.png) and is rendered here inside a CIRCULAR badge
+ * drawn in the exchange's own brand colour, so all five look consistent no
+ * matter what shape/padding the source file has:
  *
- *   Toobit  blue plate           #0059FB
+ *   Toobit  blue circle          #0059FB
  *   LBank   yellow on black      #FFCC00 / #0B0B0B
- *   XT.COM  green plate          #00C853
- *   Ourbit  purple plate         #7B4DFF
+ *   XT.COM  green circle         #00C853
+ *   Ourbit  purple circle        #7B4DFF
  *   WEEX    yellow on black      #D8AE15 / #151515
  *
  * Performance notes:
@@ -39,16 +40,20 @@ export function ExchangeLogo({ slug, size = 34, className = "" }: Props) {
   const [broken, setBroken] = useState(false);
   if (!brand) return null;
 
-  const inner = Math.round(size * 0.68);
+  // Inside a circle the usable area is smaller than in a square, so the
+  // artwork is inset a little more to keep it clear of the ring.
+  const inner = Math.round(size * 0.62);
 
   return (
     <span
-      className={`inline-grid shrink-0 place-items-center overflow-hidden rounded-xl ${className}`}
+      className={`inline-grid shrink-0 place-items-center overflow-hidden ${className}`}
       style={{
         width: size,
         height: size,
+        borderRadius: "9999px",
         background: brand.darkPlate ? brand.ink : `rgba(${brand.tint},0.14)`,
         border: `1px solid rgba(${brand.tint},${brand.darkPlate ? 0.9 : 0.5})`,
+        boxShadow: `0 0 0 1px rgba(${brand.tint},0.12), 0 2px 8px rgba(${brand.tint},0.18)`,
       }}
       title={brand.label}
     >
@@ -63,7 +68,12 @@ export function ExchangeLogo({ slug, size = 34, className = "" }: Props) {
           loading="lazy"
           decoding="async"
           onError={() => setBroken(true)}
-          style={{ width: inner, height: inner, objectFit: "contain" }}
+          style={{
+            width: inner,
+            height: inner,
+            objectFit: "contain",
+            borderRadius: "9999px",
+          }}
         />
       )}
     </span>
@@ -86,8 +96,8 @@ export function ExchangeGlyph({
   if (!brand) return null;
   const c = brand.hex;
   const common = {
-    width: Math.round(size * 0.7),
-    height: Math.round(size * 0.7),
+    width: Math.round(size * 0.62),
+    height: Math.round(size * 0.62),
     viewBox: "0 0 48 48",
     "aria-hidden": true as const,
     focusable: "false" as const,
@@ -183,7 +193,7 @@ export function ExchangeTag({
           height={12}
           loading="lazy"
           decoding="async"
-          style={{ width: 12, height: 12, objectFit: "contain" }}
+          style={{ width: 12, height: 12, objectFit: "contain", borderRadius: "9999px" }}
         />
       )}
       {brand.label}
