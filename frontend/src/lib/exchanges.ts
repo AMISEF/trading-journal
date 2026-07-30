@@ -5,6 +5,13 @@
  * and the value stored in `Trade.source`, so a journal row can be coloured and
  * tagged straight from its source field.
  *
+ * Colours follow each exchange's official brand guide:
+ *   Toobit  -> blue            #0059FB
+ *   LBank   -> yellow + black  #FFCC00 / #0B0B0B
+ *   XT.COM  -> green           #00C853
+ *   Ourbit  -> purple          #7B4DFF
+ *   WEEX    -> yellow + black  #D8AE15 / #151515
+ *
  * `tint` is the same colour as `hex` but as bare "r,g,b" numbers, so it can be
  * dropped into `rgba(var,alpha)` for soft borders/backgrounds — the pattern the
  * rest of the app already uses for plan colours.
@@ -15,12 +22,20 @@ export type ExchangeSlug = "toobit" | "lbank" | "xt" | "ourbit" | "weex";
 export interface ExchangeBrand {
   slug: ExchangeSlug;
   label: string;
-  /** Brand colour. */
+  /** Primary brand colour. */
   hex: string;
   /** Same colour as "r,g,b" for rgba() composition. */
   tint: string;
   /** Readable text colour on top of a solid `hex` chip. */
   on: string;
+  /**
+   * Secondary brand colour — the dark half of the identity. Brands whose guide
+   * pairs the primary colour with black (LBank, WEEX) get a true black plate so
+   * the mark reads exactly like the official logo.
+   */
+  ink: string;
+  /** True when the official identity is "colour on black". */
+  darkPlate: boolean;
   needsPassphrase: boolean;
   docsUrl: string;
   /** Short Persian hint shown under the card. */
@@ -31,9 +46,11 @@ export const EXCHANGES: Record<ExchangeSlug, ExchangeBrand> = {
   toobit: {
     slug: "toobit",
     label: "Toobit",
-    hex: "#F5C542",
-    tint: "245,197,66",
-    on: "#1a1400",
+    hex: "#0059FB",
+    tint: "0,89,251",
+    on: "#ffffff",
+    ink: "#04122e",
+    darkPlate: false,
     needsPassphrase: false,
     docsUrl: "https://toobit-docs.github.io/",
     hint: "در پنل توبیت کلید API بسازید و فقط دسترسیِ Read روی Futures را فعال کنید.",
@@ -41,9 +58,11 @@ export const EXCHANGES: Record<ExchangeSlug, ExchangeBrand> = {
   lbank: {
     slug: "lbank",
     label: "LBank",
-    hex: "#00C8B4",
-    tint: "0,200,180",
-    on: "#00201d",
+    hex: "#FFCC00",
+    tint: "255,204,0",
+    on: "#0B0B0B",
+    ink: "#0B0B0B",
+    darkPlate: true,
     needsPassphrase: false,
     docsUrl: "https://www.lbank.com/docs/contract.html",
     hint: "در LBank از بخش API Management کلید بسازید و حتماً نوعِ امضا را HmacSHA256 انتخاب کنید.",
@@ -51,9 +70,11 @@ export const EXCHANGES: Record<ExchangeSlug, ExchangeBrand> = {
   xt: {
     slug: "xt",
     label: "XT.COM",
-    hex: "#0052FF",
-    tint: "0,82,255",
-    on: "#ffffff",
+    hex: "#00C853",
+    tint: "0,200,83",
+    on: "#04180d",
+    ink: "#04180d",
+    darkPlate: false,
     needsPassphrase: false,
     docsUrl: "https://doc.xt.com/",
     hint: "در XT کلیدِ Futures بسازید؛ دسترسیِ فقط‌خواندنی کافی است.",
@@ -64,6 +85,8 @@ export const EXCHANGES: Record<ExchangeSlug, ExchangeBrand> = {
     hex: "#7B4DFF",
     tint: "123,77,255",
     on: "#ffffff",
+    ink: "#160a33",
+    darkPlate: false,
     needsPassphrase: false,
     docsUrl: "https://www.ourbit.com/",
     hint: "در Ourbit از بخش API کلید بسازید و دسترسیِ Futures Read را فعال کنید.",
@@ -71,9 +94,11 @@ export const EXCHANGES: Record<ExchangeSlug, ExchangeBrand> = {
   weex: {
     slug: "weex",
     label: "WEEX",
-    hex: "#00E0A1",
-    tint: "0,224,161",
-    on: "#00231a",
+    hex: "#D8AE15",
+    tint: "216,174,21",
+    on: "#151515",
+    ink: "#151515",
+    darkPlate: true,
     needsPassphrase: true,
     docsUrl: "https://www.weex.com/api-doc/contract/intro",
     hint: "WEEX علاوه بر API Key و Secret، یک Passphrase هم می‌دهد که وارد کردنِ آن الزامی است.",
