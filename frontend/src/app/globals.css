@@ -5,17 +5,18 @@
 /*
  * Theme tokens as CSS variables — Crypto Smart palette.
  *
- * Six selectable themes, applied through `data-theme` on <html>
+ * Seven selectable themes, applied through `data-theme` on <html>
  * (see src/lib/theme.ts). The `dark` class is kept in sync for Tailwind
  * `dark:` utilities. Order matters: the [data-theme] blocks come AFTER
  * `:root` / `.dark` so they always win.
  *
- *   light    روشن         #F3F6F9
- *   soft     روشن ملایم   #BFC7CE
- *   barbie   باربی گرل    #FFF0F6  (pastel pink)
- *   dark     دارک          #2B3136
- *   ocean    دارک اوشن    #162F55  (default)
- *   classic  تم کلاسیک    #0A1622  (the site's previous dark palette)
+ *   light       روشن         #F3F6F9
+ *   soft        روشن ملایم   #BFC7CE
+ *   barbie      باربی گرل    #FFE4F1  (shades of pink)
+ *   cinderella  سیندرلا      #EEE6FF  (shades of purple)
+ *   dark        دارک          #2B3136
+ *   ocean       دارک اوشن    #162F55
+ *   classic     تم کلاسیک    #0A1622  (default)
  *
  * Text colours are chosen per theme so contrast always stays readable:
  * dark text on the light themes, light text on the dark ones.
@@ -48,29 +49,29 @@
 
 /* Legacy fallback: the `dark` class alone (before data-theme is applied). */
 .dark {
-  --bg: #162f55;
-  --surface: #1b3f70;
-  --surface-2: #214e8a;
-  --border: #2d63b0;
-  --text: #f3f6f9;
-  --muted: #bfc7ce;
+  --bg: #0a1622;
+  --surface: #0f2336;
+  --surface-2: #16304a;
+  --border: #1e3a52;
+  --text: #e6eef7;
+  --muted: #8aa0b8;
 
-  --primary: #4ed9cc;
-  --primary-soft: rgba(78, 217, 204, 0.16);
+  --primary: #38bdf8;
+  --primary-soft: #0c3a52;
 
-  --profit: #4ed9cc;
-  --profit-soft: rgba(78, 217, 204, 0.16);
-  --loss: #ff8a80;
-  --loss-soft: rgba(255, 138, 128, 0.16);
-  --neutral: #6f95c8;
+  --profit: #22c55e;
+  --profit-soft: #0d3322;
+  --loss: #f87171;
+  --loss-soft: #3a1414;
+  --neutral: #38bdf8;
 
-  --glass-bg: rgba(255, 255, 255, 0.05);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.09);
   --glass-shadow: 0 18px 54px -22px rgba(0, 0, 0, 0.7);
   --glass-blur: 20px;
 
-  --gradient-color: #19c3b3;
-  --sparkles-color: #a6f0e8;
+  --gradient-color: #8350e8;
+  --sparkles-color: #ffffff;
 }
 
 /* ── 1. روشن — Very Light Background #F3F6F9 ──────────────────────── */
@@ -127,34 +128,65 @@
   --sparkles-color: #128f84;
 }
 
-/* ── 3. باربی گرل — pastel pink #FFF0F6 ───────────────────────── */
+/* ── 3. باربی گرل — shades of pink ─────────────────────────────
+ * blush #FFE4F1 → petal #FFF3F8 → candy #FFCCE4 → rose #F79BC6 → magenta #D6156F
+ * ───────────────────────────────────────────────────────── */
 [data-theme="barbie"] {
-  --bg: #fff0f6;
-  --surface: #ffffff;
-  --surface-2: #ffe1ee;
-  --border: #f9c3da;
-  --text: #4a1230;
-  --muted: #8a4b69;
+  --bg: #ffe4f1;
+  --surface: #fff3f8;
+  --surface-2: #ffcce4;
+  --border: #f79bc6;
+  --text: #4a0f2e;
+  --muted: #93325f;
 
-  --primary: #d81b73;
-  --primary-soft: #ffd6e8;
+  --primary: #d6156f;
+  --primary-soft: #ffc2dd;
 
-  --profit: #0f8f7e;
-  --profit-soft: #ccefe9;
-  --loss: #d92552;
-  --loss-soft: #ffd7e0;
-  --neutral: #d81b73;
+  --profit: #a3197a;
+  --profit-soft: #f6cfe9;
+  --loss: #e0344f;
+  --loss-soft: #ffd4dc;
+  --neutral: #d6156f;
 
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.8);
-  --glass-shadow: 0 14px 44px -18px rgba(216, 27, 115, 0.35);
+  --glass-bg: rgba(255, 243, 248, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-shadow: 0 14px 44px -18px rgba(214, 21, 111, 0.4);
   --glass-blur: 18px;
 
   --gradient-color: #ff6fae;
-  --sparkles-color: #d81b73;
+  --sparkles-color: #d6156f;
 }
 
-/* ── 4. دارک — Gray 900 #2B3136 ─────────────────────────────── */
+/* ── 4. سیندرلا — shades of purple ─────────────────────────────
+ * lilac #EEE6FF → mist #F7F3FF → wisteria #DCCBFF → amethyst #B18CFF → royal #6D28D9
+ * ───────────────────────────────────────────────────────── */
+[data-theme="cinderella"] {
+  --bg: #eee6ff;
+  --surface: #f7f3ff;
+  --surface-2: #dccbff;
+  --border: #b18cff;
+  --text: #2b1259;
+  --muted: #6b4aa8;
+
+  --primary: #6d28d9;
+  --primary-soft: #ddceff;
+
+  --profit: #7b2ff7;
+  --profit-soft: #e2d6ff;
+  --loss: #c02a86;
+  --loss-soft: #f7d4ea;
+  --neutral: #6d28d9;
+
+  --glass-bg: rgba(247, 243, 255, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-shadow: 0 14px 44px -18px rgba(109, 40, 217, 0.38);
+  --glass-blur: 18px;
+
+  --gradient-color: #8350e8;
+  --sparkles-color: #6d28d9;
+}
+
+/* ── 5. دارک — Gray 900 #2B3136 ─────────────────────────────── */
 [data-theme="dark"] {
   --bg: #2b3136;
   --surface: #343b41;
@@ -181,7 +213,7 @@
   --sparkles-color: #a6f0e8;
 }
 
-/* ── 5. دارک اوشن — Deep Background #162F55 (default) ────────────── */
+/* ── 6. دارک اوشن — Deep Background #162F55 ────────────────────── */
 [data-theme="ocean"] {
   --bg: #162f55;
   --surface: #1b3f70;
@@ -208,7 +240,7 @@
   --sparkles-color: #a6f0e8;
 }
 
-/* ── 6. تم کلاسیک — تمِ قبلیِ سایت (deep blue-teal) #0A1622 ───────── */
+/* ── 7. تم کلاسیک — تمِ اصلیِ سایت (deep blue-teal) #0A1622 — default ─── */
 [data-theme="classic"] {
   --bg: #0a1622;
   --surface: #0f2336;
@@ -247,6 +279,26 @@ body {
   /* Latin glyphs resolve to Montserrat; Persian glyphs fall through to Dana. */
   font-family: "Montserrat", "Dana", Vazirmatn, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Barbie / Cinderella get a soft tinted gradient instead of a flat colour. */
+[data-theme="barbie"] body {
+  background-image: radial-gradient(
+      1200px 600px at 100% 0%,
+      rgba(255, 143, 196, 0.35),
+      transparent 60%
+    ),
+    radial-gradient(900px 500px at 0% 100%, rgba(214, 21, 111, 0.16), transparent 60%);
+  background-attachment: fixed;
+}
+[data-theme="cinderella"] body {
+  background-image: radial-gradient(
+      1200px 600px at 100% 0%,
+      rgba(177, 140, 255, 0.38),
+      transparent 60%
+    ),
+    radial-gradient(900px 500px at 0% 100%, rgba(109, 40, 217, 0.16), transparent 60%);
+  background-attachment: fixed;
 }
 
 /* Smooth theme transition for backgrounds/borders/text. */
@@ -364,7 +416,8 @@ body {
 :root,
 [data-theme="light"],
 [data-theme="soft"],
-[data-theme="barbie"] {
+[data-theme="barbie"],
+[data-theme="cinderella"] {
   color-scheme: light;
 }
 .dark,
@@ -408,11 +461,20 @@ body {
 /* روی دسکتاپ (ساید‌بارِ ژورنال) مخفی می‌شود */
 @media (min-width: 768px) { .hub-nav { display: none; } }
 
-/* در تمِ باربی گرل، نوارِ هاب هم صورتی می‌شود. */
+/* در تمِ باربی گرل، نوارِ هاب صورتی می‌شود. */
 [data-theme="barbie"] .hub-nav__item:hover,
-[data-theme="barbie"] .hub-nav__item.is-active { color: #d81b73; }
+[data-theme="barbie"] .hub-nav__item.is-active { color: #d6156f; }
 [data-theme="barbie"] .hub-nav__item.is-active .hub-nav__icon {
   color: #ffffff;
-  background: linear-gradient(135deg, #ff9ecb 0%, #ff5fa8 45%, #d81b73 100%);
-  box-shadow: 0 10px 22px -8px rgba(216, 27, 115, .7);
+  background: linear-gradient(135deg, #ff9ecb 0%, #ff5fa8 45%, #d6156f 100%);
+  box-shadow: 0 10px 22px -8px rgba(214, 21, 111, .7);
+}
+
+/* در تمِ سیندرلا، نوارِ هاب بنفش می‌شود. */
+[data-theme="cinderella"] .hub-nav__item:hover,
+[data-theme="cinderella"] .hub-nav__item.is-active { color: #6d28d9; }
+[data-theme="cinderella"] .hub-nav__item.is-active .hub-nav__icon {
+  color: #ffffff;
+  background: linear-gradient(135deg, #c4a6ff 0%, #9061f9 45%, #6d28d9 100%);
+  box-shadow: 0 10px 22px -8px rgba(109, 40, 217, .7);
 }

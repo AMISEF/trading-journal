@@ -20,7 +20,7 @@ export const metadata: Metadata = {
  * - <html> ships with the default theme (classic dark); an inline script
  *   applies the user's saved theme before first paint, so there is never a
  *   flash of the wrong colours.
- *   Themes: light | soft | barbie | dark | ocean | classic.
+ *   Themes: light | soft | barbie | cinderella | dark | ocean | classic.
  */
 export default function RootLayout({
   children,
@@ -56,7 +56,7 @@ export default function RootLayout({
             classic theme replaced. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d={light:0,soft:0,barbie:0,dark:1,ocean:1,classic:1};var t=localStorage.getItem('tj_theme');if(t==='blue')t='classic';if(!(t in d))t='classic';var r=document.documentElement;r.setAttribute('data-theme',t);if(d[t]){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var d={light:0,soft:0,barbie:0,cinderella:0,dark:1,ocean:1,classic:1};var t=localStorage.getItem('tj_theme');if(t==='blue')t='classic';if(!(t in d))t='classic';var r=document.documentElement;r.setAttribute('data-theme',t);if(d[t]){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`,
           }}
         />
       </head>
