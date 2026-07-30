@@ -1,21 +1,31 @@
 "use client";
 
 /**
- * Inline SVG marks for the supported exchanges.
+ * Exchange logos.
  *
- * Self-contained (no network requests, no image assets) so the settings page
- * and the journal list render instantly and work offline. Each mark is drawn
- * with the exchange's official palette:
+ * The official artwork lives in `frontend/public` (toobit.png, Lbank.png,
+ * XT.webp, ourbit.png, weex.png) and is rendered here on top of a plate drawn
+ * in the exchange's own brand colour:
  *
- *   Toobit  blue on a blue-tinted plate
- *   LBank   yellow on black  (official yellow/black identity)
- *   XT.COM  green on a green-tinted plate
- *   Ourbit  purple on a purple-tinted plate
- *   WEEX    yellow on black  (official yellow/black identity)
+ *   Toobit  blue plate           #0059FB
+ *   LBank   yellow on black      #FFCC00 / #0B0B0B
+ *   XT.COM  green plate          #00C853
+ *   Ourbit  purple plate         #7B4DFF
+ *   WEEX    yellow on black      #D8AE15 / #151515
  *
- * The marks are decorative — `aria-hidden` — the label is always next to them.
+ * Performance notes:
+ *  - every file is tiny (1.6–24 KB) and is rendered at its real display size,
+ *  - `loading="lazy"` + `decoding="async"` keep them off the critical path,
+ *  - `next/image` is used the same way as the app logo so the `/journal`
+ *    base path is applied automatically (images are `unoptimized` in
+ *    next.config.js, so the raw file is served — no optimizer round-trip),
+ *  - if a file is ever missing the component falls back to a vector mark, so
+ *    the UI never shows a broken image.
  */
+import Image from "next/image";
+import { useState } from "react";
 import { EXCHANGES, type ExchangeSlug } from "@/lib/exchanges";
+import { BASE_PATH } from "@/lib/api";
 
 interface Props {
   slug: ExchangeSlug | string;
@@ -26,121 +36,104 @@ interface Props {
 export function ExchangeLogo({ slug, size = 34, className = "" }: Props) {
   const key = (slug || "").toLowerCase() as ExchangeSlug;
   const brand = EXCHANGES[key];
+  const [broken, setBroken] = useState(false);
+  if (!brand) return null;
+
+  const inner = Math.round(size * 0.68);
+
+  return (
+    <span
+      className={`inline-grid shrink-0 place-items-center overflow-hidden rounded-xl ${className}`}
+      style={{
+        width: size,
+        height: size,
+        background: brand.darkPlate ? brand.ink : `rgba(${brand.tint},0.14)`,
+        border: `1px solid rgba(${brand.tint},${brand.darkPlate ? 0.9 : 0.5})`,
+      }}
+      title={brand.label}
+    >
+      {broken ? (
+        <ExchangeGlyph slug={key} size={size} />
+      ) : (
+        <Image
+          src={`${BASE_PATH}${brand.logo}`}
+          alt={`${brand.label} logo`}
+          width={inner}
+          height={inner}
+          loading="lazy"
+          decoding="async"
+          onError={() => setBroken(true)}
+          style={{ width: inner, height: inner, objectFit: "contain" }}
+        />
+      )}
+    </span>
+  );
+}
+
+/**
+ * Vector fallback — a lightweight monogram in the brand colour, used only when
+ * the logo file cannot be loaded.
+ */
+export function ExchangeGlyph({
+  slug,
+  size = 34,
+}: {
+  slug: ExchangeSlug | string;
+  size?: number;
+}) {
+  const key = (slug || "").toLowerCase() as ExchangeSlug;
+  const brand = EXCHANGES[key];
   if (!brand) return null;
   const c = brand.hex;
-  const dark = brand.darkPlate;
   const common = {
-    width: size,
-    height: size,
+    width: Math.round(size * 0.7),
+    height: Math.round(size * 0.7),
     viewBox: "0 0 48 48",
-    className,
     "aria-hidden": true as const,
     focusable: "false" as const,
   };
 
-  // Yellow/black brands get a solid black plate (that IS their identity);
-  // the others get a soft tint of their own colour.
-  const plate = dark ? (
-    <>
-      <rect x="0" y="0" width="48" height="48" rx="12" fill={brand.ink} />
-      <rect
-        x="0.75"
-        y="0.75"
-        width="46.5"
-        height="46.5"
-        rx="11.25"
-        fill="none"
-        stroke={c}
-        strokeOpacity="0.9"
-        strokeWidth="1.5"
-      />
-    </>
-  ) : (
-    <>
-      <rect x="0" y="0" width="48" height="48" rx="12" fill={c} opacity="0.14" />
-      <rect
-        x="0.75"
-        y="0.75"
-        width="46.5"
-        height="46.5"
-        rx="11.25"
-        fill="none"
-        stroke={c}
-        strokeOpacity="0.5"
-        strokeWidth="1.5"
-      />
-    </>
-  );
-
   switch (key) {
     case "toobit":
-      // Bold "T" with the rising candle of the Toobit mark — blue identity.
       return (
         <svg {...common}>
-          {plate}
-          <path d="M12 15h20" stroke={c} strokeWidth="3.6" strokeLinecap="round" />
-          <path d="M22 15v19" stroke={c} strokeWidth="3.6" strokeLinecap="round" />
-          <rect x="30" y="21" width="5.4" height="13" rx="1.8" fill={c} />
-          <path d="M32.7 17.5v3.5M32.7 34v3.2" stroke={c} strokeWidth="2.1" strokeLinecap="round" />
+          <path d="M8 12h24" stroke={c} strokeWidth="4.2" strokeLinecap="round" />
+          <path d="M20 12v24" stroke={c} strokeWidth="4.2" strokeLinecap="round" />
+          <rect x="31" y="19" width="6" height="15" rx="2" fill={c} />
         </svg>
       );
     case "lbank":
-      // "L" + ledger bars, yellow on black.
       return (
         <svg {...common}>
-          {plate}
-          <path
-            d="M13 12.5v22.5h9.5"
-            stroke={c}
-            strokeWidth="3.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-          <rect x="26" y="22" width="3.6" height="13" rx="1.4" fill={c} />
-          <rect x="32.5" y="17" width="3.6" height="18" rx="1.4" fill={c} opacity="0.8" />
+          <path d="M11 10v26h11" stroke={c} strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <rect x="27" y="20" width="4" height="16" rx="1.6" fill={c} />
+          <rect x="34" y="14" width="4" height="22" rx="1.6" fill={c} opacity="0.8" />
         </svg>
       );
     case "xt":
-      // Interlocked "X" + "T" — XT green.
       return (
         <svg {...common}>
-          {plate}
-          <path d="M11.5 14l11.5 20M23 14L11.5 34" stroke={c} strokeWidth="3.6" strokeLinecap="round" />
-          <path d="M26.5 14h11M32 14v20" stroke={c} strokeWidth="3.6" strokeLinecap="round" />
+          <path d="M9 12l13 24M22 12L9 36" stroke={c} strokeWidth="4.2" strokeLinecap="round" />
+          <path d="M26 12h13M32.5 12v24" stroke={c} strokeWidth="4.2" strokeLinecap="round" />
         </svg>
       );
     case "ourbit":
-      // "O" ring with an orbiting dot — Ourbit purple.
       return (
         <svg {...common}>
-          {plate}
-          <circle cx="21.5" cy="24.5" r="9" fill="none" stroke={c} strokeWidth="3.6" />
-          <circle cx="34" cy="15.5" r="3.8" fill={c} />
-          <path d="M28.5 18.5l2.8 -2" stroke={c} strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+          <circle cx="21" cy="25" r="11" fill="none" stroke={c} strokeWidth="4.2" />
+          <circle cx="36" cy="13" r="4.5" fill={c} />
         </svg>
       );
     case "weex":
-      // "W" stroke with a rising tail, yellow on black.
       return (
         <svg {...common}>
-          {plate}
           <path
-            d="M10.5 14.5l4.6 19.5L21.8 22l6.7 12L33 14.5"
+            d="M8 12l5.5 24L22 21l8.5 15L36 12"
             fill="none"
             stroke={c}
-            strokeWidth="3.3"
+            strokeWidth="4"
             strokeLinecap="round"
             strokeLinejoin="round"
-          />
-          <path
-            d="M35 22.5l3.2 -3.2v7"
-            fill="none"
-            stroke={c}
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0.85"
           />
         </svg>
       );
@@ -153,9 +146,12 @@ export function ExchangeLogo({ slug, size = 34, className = "" }: Props) {
 export function ExchangeTag({
   slug,
   className = "",
+  withLogo = false,
 }: {
   slug: ExchangeSlug | string;
   className?: string;
+  /** Show the tiny official logo inside the chip as well. */
+  withLogo?: boolean;
 }) {
   const key = (slug || "").toLowerCase() as ExchangeSlug;
   const brand = EXCHANGES[key];
@@ -163,7 +159,7 @@ export function ExchangeTag({
   return (
     <span
       dir="ltr"
-      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${className}`}
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${className}`}
       style={
         brand.darkPlate
           ? {
@@ -179,6 +175,17 @@ export function ExchangeTag({
       }
       title={`این معامله از صرافی ${brand.label} همگام‌سازی شده است`}
     >
+      {withLogo && (
+        <Image
+          src={`${BASE_PATH}${brand.logo}`}
+          alt=""
+          width={12}
+          height={12}
+          loading="lazy"
+          decoding="async"
+          style={{ width: 12, height: 12, objectFit: "contain" }}
+        />
+      )}
       {brand.label}
     </span>
   );
