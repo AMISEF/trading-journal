@@ -409,6 +409,57 @@ export const settingsApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Exchange API keys (Toobit / LBank / XT / Ourbit / WEEX)
+// ---------------------------------------------------------------------------
+export interface ExchangeStatus {
+  slug: string;
+  label: string;
+  color: string;
+  needsPassphrase: boolean;
+  legacy: boolean;
+  docsUrl: string;
+  connected: boolean;
+  apiKeyMasked: string | null;
+  hasSecret: boolean;
+  keyAt: string | null;
+  syncedAt: string | null;
+  syncError: string | null;
+}
+
+export interface ExchangesResponse {
+  canUse: boolean;
+  syncIntervalSeconds: number;
+  exchanges: ExchangeStatus[];
+}
+
+export const exchangesApi = {
+  list: () =>
+    http.get<ExchangesResponse>("/settings/exchanges").then((r) => r.data),
+  saveKey: (
+    slug: string,
+    payload: { apiKey: string; secretKey: string; passphrase?: string }
+  ) =>
+    http
+      .put<{ exchanges: ExchangeStatus[] }>(`/settings/exchanges/${slug}/api-key`, payload)
+      .then((r) => r.data),
+  deleteKey: (slug: string) =>
+    http
+      .delete<{ exchanges: ExchangeStatus[] }>(`/settings/exchanges/${slug}/api-key`)
+      .then((r) => r.data),
+  syncNow: (slug: string) =>
+    http
+      .post<{ touched: number; exchanges: ExchangeStatus[] }>(
+        `/settings/exchanges/${slug}/sync`,
+        {}
+      )
+      .then((r) => r.data),
+  debug: (slug: string) =>
+    http
+      .get<Record<string, unknown>>(`/settings/exchanges/${slug}/debug`)
+      .then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
 // Subscription
 // ---------------------------------------------------------------------------
 export const subscriptionApi = {
