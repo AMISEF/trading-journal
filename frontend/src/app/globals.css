@@ -5,19 +5,20 @@
 /*
  * Theme tokens as CSS variables — Crypto Smart palette.
  *
- * Five selectable themes, applied through `data-theme` on <html>
+ * Six selectable themes, applied through `data-theme` on <html>
  * (see src/lib/theme.ts). The `dark` class is kept in sync for Tailwind
  * `dark:` utilities. Order matters: the [data-theme] blocks come AFTER
  * `:root` / `.dark` so they always win.
  *
  *   light    روشن         #F3F6F9
  *   soft     روشن ملایم   #BFC7CE
+ *   barbie   باربی گرل    #FFF0F6  (pastel pink)
  *   dark     دارک          #2B3136
  *   ocean    دارک اوشن    #162F55  (default)
  *   classic  تم کلاسیک    #0A1622  (the site's previous dark palette)
  *
  * Text colours are chosen per theme so contrast always stays readable:
- * dark text on the two light themes, light text on the three dark ones.
+ * dark text on the light themes, light text on the dark ones.
  */
 :root {
   --bg: #f3f6f9;
@@ -126,7 +127,34 @@
   --sparkles-color: #128f84;
 }
 
-/* ── 3. دارک — Gray 900 #2B3136 ─────────────────────────────── */
+/* ── 3. باربی گرل — pastel pink #FFF0F6 ───────────────────────── */
+[data-theme="barbie"] {
+  --bg: #fff0f6;
+  --surface: #ffffff;
+  --surface-2: #ffe1ee;
+  --border: #f9c3da;
+  --text: #4a1230;
+  --muted: #8a4b69;
+
+  --primary: #d81b73;
+  --primary-soft: #ffd6e8;
+
+  --profit: #0f8f7e;
+  --profit-soft: #ccefe9;
+  --loss: #d92552;
+  --loss-soft: #ffd7e0;
+  --neutral: #d81b73;
+
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.8);
+  --glass-shadow: 0 14px 44px -18px rgba(216, 27, 115, 0.35);
+  --glass-blur: 18px;
+
+  --gradient-color: #ff6fae;
+  --sparkles-color: #d81b73;
+}
+
+/* ── 4. دارک — Gray 900 #2B3136 ─────────────────────────────── */
 [data-theme="dark"] {
   --bg: #2b3136;
   --surface: #343b41;
@@ -153,7 +181,7 @@
   --sparkles-color: #a6f0e8;
 }
 
-/* ── 4. دارک اوشن — Deep Background #162F55 (default) ────────────── */
+/* ── 5. دارک اوشن — Deep Background #162F55 (default) ────────────── */
 [data-theme="ocean"] {
   --bg: #162f55;
   --surface: #1b3f70;
@@ -180,7 +208,7 @@
   --sparkles-color: #a6f0e8;
 }
 
-/* ── 5. تم کلاسیک — تمِ قبلیِ سایت (deep blue-teal) #0A1622 ───────── */
+/* ── 6. تم کلاسیک — تمِ قبلیِ سایت (deep blue-teal) #0A1622 ───────── */
 [data-theme="classic"] {
   --bg: #0a1622;
   --surface: #0f2336;
@@ -335,7 +363,8 @@ body {
    active theme so light themes never render dark widgets and vice-versa. */
 :root,
 [data-theme="light"],
-[data-theme="soft"] {
+[data-theme="soft"],
+[data-theme="barbie"] {
   color-scheme: light;
 }
 .dark,
@@ -378,3 +407,12 @@ body {
 .hub-nav__item.is-active .hub-nav__icon svg { width: 26px; height: 26px; }
 /* روی دسکتاپ (ساید‌بارِ ژورنال) مخفی می‌شود */
 @media (min-width: 768px) { .hub-nav { display: none; } }
+
+/* در تمِ باربی گرل، نوارِ هاب هم صورتی می‌شود. */
+[data-theme="barbie"] .hub-nav__item:hover,
+[data-theme="barbie"] .hub-nav__item.is-active { color: #d81b73; }
+[data-theme="barbie"] .hub-nav__item.is-active .hub-nav__icon {
+  color: #ffffff;
+  background: linear-gradient(135deg, #ff9ecb 0%, #ff5fa8 45%, #d81b73 100%);
+  box-shadow: 0 10px 22px -8px rgba(216, 27, 115, .7);
+}

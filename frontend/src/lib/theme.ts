@@ -1,8 +1,9 @@
 /**
- * Theme helpers — five selectable themes based on the Crypto Smart palette.
+ * Theme helpers — six selectable themes based on the Crypto Smart palette.
  *
  *   light   — روشن          #F3F6F9  (Very Light Background)
  *   soft    — روشن ملایم    #BFC7CE  (Base Gray)
+ *   barbie  — باربی گرل     #FFF0F6  (pastel pink)
  *   dark    — دارک           #2B3136  (Gray 900)
  *   ocean   — دارک اوشن     #162F55  (Dark 900 — Deep Background)
  *   classic — تم کلاسیک     #0A1622  (the site's previous dark palette)
@@ -10,10 +11,10 @@
  * The choice is persisted in localStorage and applied to <html> as:
  *   - `data-theme="<id>"`  → selects the CSS variable block in globals.css
  *   - the `dark` class      → kept in sync for Tailwind `dark:` utilities
- *     (added for every dark theme, removed for the two light ones).
+ *     (added for every dark theme, removed for the light ones).
  */
 
-export type Theme = "light" | "soft" | "dark" | "ocean" | "classic";
+export type Theme = "light" | "soft" | "barbie" | "dark" | "ocean" | "classic";
 
 export const THEME_KEY = "tj_theme";
 
@@ -35,6 +36,7 @@ export interface ThemeOption {
 export const THEMES: ThemeOption[] = [
   { id: "light", label: "روشن", swatch: "#F3F6F9", swatchOn: "#2B3136", isDark: false },
   { id: "soft", label: "روشن ملایم", swatch: "#BFC7CE", swatchOn: "#1F262B", isDark: false },
+  { id: "barbie", label: "باربی گرل", swatch: "#FFC2DE", swatchOn: "#8A1F52", isDark: false },
   { id: "dark", label: "دارک", swatch: "#2B3136", swatchOn: "#F3F6F9", isDark: true },
   { id: "ocean", label: "دارک اوشن", swatch: "#162F55", swatchOn: "#F3F6F9", isDark: true },
   { id: "classic", label: "تم کلاسیک", swatch: "#0A1622", swatchOn: "#38BDF8", isDark: true },
