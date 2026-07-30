@@ -5,12 +5,19 @@
  * Table with columns: checkbox, #, نماد, جهت, VOL, TF, تاریخ, زمان, R:R انتظار,
  * R:R کسب, نتیجه, تگ‌ها, وضعیت.
  * Features: search, status/tag filter, sort, group, table/card toggle, bulk delete.
+ *
+ * Imported trades are colour-coded by their exchange (Toobit / LBank / XT /
+ * Ourbit / WEEX): the row (or card) takes that exchange's brand wash and a
+ * matching tag sits next to the symbol, so the origin of every trade is obvious
+ * at a glance.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Button, Paginator, Spinner, StatusDot, usePagination } from "@/components/ui";
 import { exportUrl, tradesApi, publicApi } from "@/lib/api";
+import { brandOf } from "@/lib/exchanges";
+import { ExchangeTag } from "@/components/ExchangeLogo";
 import { useAuth } from "@/store/auth";
 import { DemoTradesPanel } from "@/components/DemoTradesPanel";
 import type { Trade, TradeStatus } from "@/lib/types";
@@ -155,7 +162,11 @@ function JournalsInner() {
     // Delete sequentially (not in parallel) so the server's renumbering
     // logic runs one at a time and produces a consistent gap-free sequence.
     const ids = [...selected];
-    for (const id of ids) await tradesApi.remove(id);
+    try {
+      for (const id of ids) await tradesApi.remove(id);
+    } catch {
+      setError("حذف برخی معاملات ناموفق بود.");
+    }
     // Re-fetch so trade numbers are up to date after renumbering.
     const refreshed = await tradesApi.list();
     setTrades(refreshed);
@@ -452,9 +463,9 @@ function statusLabel(s: TradeStatus) {
 }
 
 function pnlOf(t: Trade) {
-  // Imported Toobit trades carry the exchange's exact realized PnL (fees
-  // included); prefer it over the price-derived recomputation.
-  if (t.source === "toobit" && t.realizedPnl != null) return t.realizedPnl;
+  // Trades imported from an exchange carry that exchange's exact realized PnL
+  // (fees included); prefer it over the price-derived recomputation.
+  if (brandOf(t.source) && t.realizedPnl != null) return t.realizedPnl;
   return t.calc?.realizedPnl ?? t.realizedPnl ?? null;
 }
 function pctOf(t: Trade) {
@@ -522,21 +533,32 @@ function TradeTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((t) => (
+          {rows.map((t) => {
+            const brand = brandOf(t.source);
+            const isSelected = selected.has(t.id);
+            return (
             <tr
               key={t.id}
               className={`border-b border-white/5 transition-colors ${
-                selected.has(t.id)
+                isSelected
                   ? "bg-primary-soft"
-                  : t.source === "toobit"
-                    ? "bg-sky-400/10 hover:bg-sky-400/20 backdrop-blur-sm"
+                  : brand
+                    ? "backdrop-blur-sm"
                     : "hover:bg-white/5"
               }`}
+              style={
+                !isSelected && brand
+                  ? {
+                      background: `rgba(${brand.tint},0.10)`,
+                      boxShadow: `inset 3px 0 0 0 rgba(${brand.tint},0.85)`,
+                    }
+                  : undefined
+              }
             >
               <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
-                  checked={selected.has(t.id)}
+                  checked={isSelected}
                   onChange={() => onToggle(t.id)}
                   className="cursor-pointer"
                 />
@@ -549,11 +571,7 @@ function TradeTable({
               </td>
               <td className="cursor-pointer p-3 text-center font-medium" dir="ltr" onClick={() => onOpen(t.id)}>
                 {t.symbol || "—"}
-                {t.source === "toobit" && (
-                  <span className="ml-1 inline-block rounded-md border border-sky-400/40 bg-sky-400/15 px-1.5 py-0.5 align-middle text-[9px] font-bold text-sky-500">
-                    toobit
-                  </span>
-                )}
+                {brand && <ExchangeTag slug={brand.slug} className="ml-1 align-middle" />}
               </td>
               <td className="cursor-pointer p-3 text-center" onClick={() => onOpen(t.id)}>
                 <DirCell dir={t.direction} />
@@ -592,7 +610,8 @@ function TradeTable({
                 <StatusDot status={t.status} pnl={pnlOf(t)} exitType={t.exitType} />
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -604,7 +623,12 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {rows.map((t) => {
         const pnl = pnlOf(t);
-        const rgb = pnl != null && pnl > 0
+        const brand = brandOf(t.source);
+        // An imported trade wears its exchange's colour; a manual one keeps the
+        // profit/loss pastel wash.
+        const rgb = brand
+          ? brand.tint
+          : pnl != null && pnl > 0
           ? TINTS.mint
           : pnl != null && pnl < 0
           ? TINTS.rose
@@ -625,11 +649,7 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
             <div className="flex items-center gap-2">
               <StatusDot status={t.status} pnl={pnlOf(t)} exitType={t.exitType} />
               <span className="font-bold" dir="ltr">{t.symbol || "—"}</span>
-              {t.source === "toobit" && (
-                <span className="rounded-md border border-sky-400/40 bg-sky-400/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-500">
-                  toobit
-                </span>
-              )}
+              {brand && <ExchangeTag slug={brand.slug} />}
               <span className="text-xs text-muted">#{faNum(t.number)}</span>
               {t.tradeNumber != null && (
                 <span className="text-xs font-medium text-primary" dir="ltr">ش.{faNum(t.tradeNumber)}</span>
