@@ -16,9 +16,10 @@ export const metadata: Metadata = {
 /**
  * Root layout.
  * - dir="rtl" + lang="fa" for a right-to-left Persian UI.
- * - Vazirmatn loaded from a CDN (keeps the offline build clean).
- * - <html> ships with the dark class: dark is the default theme, and an inline
- *   script removes it before paint only for users who chose light.
+ * - Dana (Persian) + Montserrat (Latin) loaded from a CDN.
+ * - <html> ships with the default theme (Dark Ocean); an inline script applies
+ *   the user's saved theme before first paint, so there is never a flash of
+ *   the wrong colours. Themes: light | soft | dark | ocean | blue.
  */
 export default function RootLayout({
   children,
@@ -26,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa" dir="rtl" className="dark" suppressHydrationWarning>
+    <html lang="fa" dir="rtl" className="dark" data-theme="ocean" suppressHydrationWarning>
       <head>
         <link
           rel="preconnect"
@@ -49,11 +50,11 @@ export default function RootLayout({
         <link rel="icon" href={`${BASE_PATH}/logo-icon.png`} />
         {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
-        {/* Dark by default; drop the class before first paint only if the user
-            explicitly picked the light theme (no flash of the wrong theme). */}
+        {/* Apply the saved theme before first paint (no flash of wrong colours).
+            "dark" is a legacy value that used to mean Dark Ocean. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(localStorage.getItem('tj_theme')==='light'){document.documentElement.classList.remove('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var d={light:0,soft:0,dark:1,ocean:1,blue:1};var t=localStorage.getItem('tj_theme');if(t==='dark')t='ocean';if(!(t in d))t='ocean';var r=document.documentElement;r.setAttribute('data-theme',t);if(d[t]){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`,
           }}
         />
       </head>

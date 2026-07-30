@@ -3,62 +3,207 @@
 @tailwind utilities;
 
 /*
- * Theme tokens as CSS variables.
- * :root = Light theme. .dark = "Dark Ocean" theme.
- * Tailwind colors in tailwind.config.ts reference these via var(--token).
+ * Theme tokens as CSS variables — Crypto Smart palette.
+ *
+ * Five selectable themes, applied through `data-theme` on <html>
+ * (see src/lib/theme.ts). The `dark` class is kept in sync for Tailwind
+ * `dark:` utilities. Order matters: the [data-theme] blocks come AFTER
+ * `:root` / `.dark` so they always win.
+ *
+ *   light  روشن         #F3F6F9
+ *   soft   روشن ملایم   #BFC7CE
+ *   dark   دارک          #2B3136
+ *   ocean  دارک اوشن    #162F55  (default)
+ *   blue   بلو دارک      #2D63B0
+ *
+ * Text colours are chosen per theme so contrast always stays readable:
+ * dark text on the two light themes, light text on the three dark ones.
  */
 :root {
-  --bg: #f4f6fb;
+  --bg: #f3f6f9;
   --surface: #ffffff;
-  --surface-2: #eef1f7;
-  --border: #dde2ec;
-  --text: #1a2233;
-  --muted: #6b7488;
+  --surface-2: #e9eef4;
+  --border: #dce2e7;
+  --text: #2b3136;
+  --muted: #5a646d;
 
-  --primary: #2563eb; /* blue = neutral / primary */
-  --primary-soft: #dbeafe;
+  --primary: #2d63b0;
+  --primary-soft: #dce2e7;
 
-  --profit: #16a34a; /* green */
-  --profit-soft: #dcfce7;
-  --loss: #dc2626; /* red */
-  --loss-soft: #fee2e2;
-  --neutral: #2563eb; /* blue */
+  --profit: #128f84;
+  --profit-soft: #d6f3ef;
+  --loss: #d4483b;
+  --loss-soft: #fbe0dd;
+  --neutral: #2d63b0;
 
-  /* Glassmorphism (light) */
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.7);
-  --glass-shadow: 0 12px 40px -16px rgba(90, 105, 150, 0.3);
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-shadow: 0 12px 40px -16px rgba(22, 47, 85, 0.28);
   --glass-blur: 18px;
 
-  --gradient-color: #8350e8;
-  --sparkles-color: #8350e8;
+  --gradient-color: #2d63b0;
+  --sparkles-color: #19c3b3;
 }
 
-/* Dark Ocean: deep blue-teal palette. */
+/* Legacy fallback: the `dark` class alone (before data-theme is applied). */
 .dark {
-  --bg: #0a1622;
-  --surface: #0f2336;
-  --surface-2: #16304a;
-  --border: #1e3a52;
-  --text: #e6eef7;
-  --muted: #8aa0b8;
+  --bg: #162f55;
+  --surface: #1b3f70;
+  --surface-2: #214e8a;
+  --border: #2d63b0;
+  --text: #f3f6f9;
+  --muted: #bfc7ce;
 
-  --primary: #38bdf8;
-  --primary-soft: #0c3a52;
+  --primary: #4ed9cc;
+  --primary-soft: rgba(78, 217, 204, 0.16);
 
-  --profit: #22c55e;
-  --profit-soft: #0d3322;
-  --loss: #f87171;
-  --loss-soft: #3a1414;
-  --neutral: #38bdf8;
+  --profit: #4ed9cc;
+  --profit-soft: rgba(78, 217, 204, 0.16);
+  --loss: #ff8a80;
+  --loss-soft: rgba(255, 138, 128, 0.16);
+  --neutral: #6f95c8;
 
-  /* Glassmorphism (dark) */
-  --glass-bg: rgba(255, 255, 255, 0.04);
-  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
   --glass-shadow: 0 18px 54px -22px rgba(0, 0, 0, 0.7);
   --glass-blur: 20px;
 
-  --gradient-color: #8350e8;
+  --gradient-color: #19c3b3;
+  --sparkles-color: #a6f0e8;
+}
+
+/* ── 1. روشن — Very Light Background #F3F6F9 ──────────────────────── */
+[data-theme="light"] {
+  --bg: #f3f6f9;
+  --surface: #ffffff;
+  --surface-2: #e9eef4;
+  --border: #dce2e7;
+  --text: #2b3136;
+  --muted: #5a646d;
+
+  --primary: #2d63b0;
+  --primary-soft: #dce2e7;
+
+  --profit: #128f84;
+  --profit-soft: #d6f3ef;
+  --loss: #d4483b;
+  --loss-soft: #fbe0dd;
+  --neutral: #2d63b0;
+
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-shadow: 0 12px 40px -16px rgba(22, 47, 85, 0.28);
+  --glass-blur: 18px;
+
+  --gradient-color: #2d63b0;
+  --sparkles-color: #19c3b3;
+}
+
+/* ── 2. روشن ملایم — Base Gray #BFC7CE ─────────────────────────── */
+[data-theme="soft"] {
+  --bg: #bfc7ce;
+  --surface: #e7ebef;
+  --surface-2: #d3dae0;
+  --border: #a7b2bb;
+  --text: #1f262b;
+  --muted: #4c555d;
+
+  --primary: #1b3f70;
+  --primary-soft: #cddaea;
+
+  --profit: #0f7c72;
+  --profit-soft: #cdeeea;
+  --loss: #b93b30;
+  --loss-soft: #f4d7d4;
+  --neutral: #1b3f70;
+
+  --glass-bg: rgba(255, 255, 255, 0.45);
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-shadow: 0 12px 40px -18px rgba(22, 47, 85, 0.4);
+  --glass-blur: 16px;
+
+  --gradient-color: #1b3f70;
+  --sparkles-color: #128f84;
+}
+
+/* ── 3. دارک — Gray 900 #2B3136 ─────────────────────────────── */
+[data-theme="dark"] {
+  --bg: #2b3136;
+  --surface: #343b41;
+  --surface-2: #3f474e;
+  --border: #4d565e;
+  --text: #f3f6f9;
+  --muted: #bfc7ce;
+
+  --primary: #4ed9cc;
+  --primary-soft: rgba(78, 217, 204, 0.16);
+
+  --profit: #4ed9cc;
+  --profit-soft: rgba(78, 217, 204, 0.16);
+  --loss: #ff8a80;
+  --loss-soft: rgba(255, 138, 128, 0.16);
+  --neutral: #6f95c8;
+
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 18px 54px -22px rgba(0, 0, 0, 0.65);
+  --glass-blur: 20px;
+
+  --gradient-color: #19c3b3;
+  --sparkles-color: #a6f0e8;
+}
+
+/* ── 4. دارک اوشن — Deep Background #162F55 (default) ────────────── */
+[data-theme="ocean"] {
+  --bg: #162f55;
+  --surface: #1b3f70;
+  --surface-2: #214e8a;
+  --border: #2d63b0;
+  --text: #f3f6f9;
+  --muted: #bfc7ce;
+
+  --primary: #4ed9cc;
+  --primary-soft: rgba(78, 217, 204, 0.18);
+
+  --profit: #4ed9cc;
+  --profit-soft: rgba(78, 217, 204, 0.18);
+  --loss: #ff8a80;
+  --loss-soft: rgba(255, 138, 128, 0.18);
+  --neutral: #6f95c8;
+
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 18px 54px -22px rgba(3, 12, 26, 0.8);
+  --glass-blur: 20px;
+
+  --gradient-color: #19c3b3;
+  --sparkles-color: #a6f0e8;
+}
+
+/* ── 5. بلو دارک — Hover / Active State #2D63B0 ─────────────────── */
+[data-theme="blue"] {
+  --bg: #2d63b0;
+  --surface: #24528f;
+  --surface-2: #3872bf;
+  --border: #6f95c8;
+  --text: #f3f6f9;
+  --muted: #dce2e7;
+
+  --primary: #a6f0e8;
+  --primary-soft: rgba(166, 240, 232, 0.2);
+
+  --profit: #a6f0e8;
+  --profit-soft: rgba(166, 240, 232, 0.2);
+  --loss: #ffb3ab;
+  --loss-soft: rgba(255, 179, 171, 0.2);
+  --neutral: #f3f6f9;
+
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 18px 54px -22px rgba(9, 30, 62, 0.75);
+  --glass-blur: 18px;
+
+  --gradient-color: #a6f0e8;
   --sparkles-color: #ffffff;
 }
 
@@ -102,9 +247,9 @@ body {
   border-radius: 1rem;
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────
  * Glassmorphism + pastel design system (used by the dashboard).
- * ────────────────────────────────────────────────────────────────────────── */
+ * ───────────────────────────────────────────────────────── */
 .glass {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -160,7 +305,7 @@ body {
   animation: spin-slow 6s linear infinite;
 }
 
-/* Form inputs share a consistent look across both themes. */
+/* Form inputs share a consistent look across every theme. */
 .tj-input {
   width: 100%;
   background-color: var(--surface-2);
@@ -169,6 +314,10 @@ body {
   padding: 0.55rem 0.8rem;
   color: var(--text);
   outline: none;
+}
+.tj-input::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
 }
 .tj-input:focus {
   border-color: var(--primary);
@@ -180,6 +329,20 @@ body {
   font-size: 0.85rem;
   color: var(--muted);
   margin-bottom: 0.35rem;
+}
+
+/* Native controls (date pickers, dropdown arrows, scroll gutters) follow the
+   active theme so light themes never render dark widgets and vice-versa. */
+:root,
+[data-theme="light"],
+[data-theme="soft"] {
+  color-scheme: light;
+}
+.dark,
+[data-theme="dark"],
+[data-theme="ocean"],
+[data-theme="blue"] {
+  color-scheme: dark;
 }
 
 /* ============================================================
