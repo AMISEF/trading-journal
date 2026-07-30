@@ -10,11 +10,11 @@
  * `dark:` utilities. Order matters: the [data-theme] blocks come AFTER
  * `:root` / `.dark` so they always win.
  *
- *   light  روشن         #F3F6F9
- *   soft   روشن ملایم   #BFC7CE
- *   dark   دارک          #2B3136
- *   ocean  دارک اوشن    #162F55  (default)
- *   blue   بلو دارک      #2D63B0
+ *   light    روشن         #F3F6F9
+ *   soft     روشن ملایم   #BFC7CE
+ *   dark     دارک          #2B3136
+ *   ocean    دارک اوشن    #162F55  (default)
+ *   classic  تم کلاسیک    #0A1622  (the site's previous dark palette)
  *
  * Text colours are chosen per theme so contrast always stays readable:
  * dark text on the two light themes, light text on the three dark ones.
@@ -180,30 +180,30 @@
   --sparkles-color: #a6f0e8;
 }
 
-/* ── 5. بلو دارک — Hover / Active State #2D63B0 ─────────────────── */
-[data-theme="blue"] {
-  --bg: #2d63b0;
-  --surface: #24528f;
-  --surface-2: #3872bf;
-  --border: #6f95c8;
-  --text: #f3f6f9;
-  --muted: #dce2e7;
+/* ── 5. تم کلاسیک — تمِ قبلیِ سایت (deep blue-teal) #0A1622 ───────── */
+[data-theme="classic"] {
+  --bg: #0a1622;
+  --surface: #0f2336;
+  --surface-2: #16304a;
+  --border: #1e3a52;
+  --text: #e6eef7;
+  --muted: #8aa0b8;
 
-  --primary: #a6f0e8;
-  --primary-soft: rgba(166, 240, 232, 0.2);
+  --primary: #38bdf8;
+  --primary-soft: #0c3a52;
 
-  --profit: #a6f0e8;
-  --profit-soft: rgba(166, 240, 232, 0.2);
-  --loss: #ffb3ab;
-  --loss-soft: rgba(255, 179, 171, 0.2);
-  --neutral: #f3f6f9;
+  --profit: #22c55e;
+  --profit-soft: #0d3322;
+  --loss: #f87171;
+  --loss-soft: #3a1414;
+  --neutral: #38bdf8;
 
-  --glass-bg: rgba(255, 255, 255, 0.1);
-  --glass-border: rgba(255, 255, 255, 0.2);
-  --glass-shadow: 0 18px 54px -22px rgba(9, 30, 62, 0.75);
-  --glass-blur: 18px;
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-shadow: 0 18px 54px -22px rgba(0, 0, 0, 0.7);
+  --glass-blur: 20px;
 
-  --gradient-color: #a6f0e8;
+  --gradient-color: #8350e8;
   --sparkles-color: #ffffff;
 }
 
@@ -341,7 +341,7 @@ body {
 .dark,
 [data-theme="dark"],
 [data-theme="ocean"],
-[data-theme="blue"] {
+[data-theme="classic"] {
   color-scheme: dark;
 }
 

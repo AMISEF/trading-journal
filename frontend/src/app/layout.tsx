@@ -19,7 +19,7 @@ export const metadata: Metadata = {
  * - Dana (Persian) + Montserrat (Latin) loaded from a CDN.
  * - <html> ships with the default theme (Dark Ocean); an inline script applies
  *   the user's saved theme before first paint, so there is never a flash of
- *   the wrong colours. Themes: light | soft | dark | ocean | blue.
+ *   the wrong colours. Themes: light | soft | dark | ocean | classic.
  */
 export default function RootLayout({
   children,
@@ -51,10 +51,11 @@ export default function RootLayout({
         {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
         {/* Apply the saved theme before first paint (no flash of wrong colours).
-            "dark" is a legacy value that used to mean Dark Ocean. */}
+            "dark" is a legacy value for the old default; "blue" was replaced by
+            the classic palette. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d={light:0,soft:0,dark:1,ocean:1,blue:1};var t=localStorage.getItem('tj_theme');if(t==='dark')t='ocean';if(!(t in d))t='ocean';var r=document.documentElement;r.setAttribute('data-theme',t);if(d[t]){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var d={light:0,soft:0,dark:1,ocean:1,classic:1};var t=localStorage.getItem('tj_theme');if(t==='dark')t='ocean';if(t==='blue')t='classic';if(!(t in d))t='ocean';var r=document.documentElement;r.setAttribute('data-theme',t);if(d[t]){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`,
           }}
         />
       </head>

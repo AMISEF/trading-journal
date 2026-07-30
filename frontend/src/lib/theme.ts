@@ -1,11 +1,11 @@
 /**
  * Theme helpers — five selectable themes based on the Crypto Smart palette.
  *
- *   light  — روشن          #F3F6F9  (Very Light Background)
- *   soft   — روشن ملایم    #BFC7CE  (Base Gray)
- *   dark   — دارک           #2B3136  (Gray 900)
- *   ocean  — دارک اوشن     #162F55  (Dark 900 — Deep Background)
- *   blue   — بلو دارک       #2D63B0  (Hover / Active State)
+ *   light   — روشن          #F3F6F9  (Very Light Background)
+ *   soft    — روشن ملایم    #BFC7CE  (Base Gray)
+ *   dark    — دارک           #2B3136  (Gray 900)
+ *   ocean   — دارک اوشن     #162F55  (Dark 900 — Deep Background)
+ *   classic — تم کلاسیک     #0A1622  (the site's previous dark palette)
  *
  * The choice is persisted in localStorage and applied to <html> as:
  *   - `data-theme="<id>"`  → selects the CSS variable block in globals.css
@@ -13,7 +13,7 @@
  *     (added for every dark theme, removed for the two light ones).
  */
 
-export type Theme = "light" | "soft" | "dark" | "ocean" | "blue";
+export type Theme = "light" | "soft" | "dark" | "ocean" | "classic";
 
 export const THEME_KEY = "tj_theme";
 
@@ -37,7 +37,7 @@ export const THEMES: ThemeOption[] = [
   { id: "soft", label: "روشن ملایم", swatch: "#BFC7CE", swatchOn: "#1F262B", isDark: false },
   { id: "dark", label: "دارک", swatch: "#2B3136", swatchOn: "#F3F6F9", isDark: true },
   { id: "ocean", label: "دارک اوشن", swatch: "#162F55", swatchOn: "#F3F6F9", isDark: true },
-  { id: "blue", label: "بلو دارک", swatch: "#2D63B0", swatchOn: "#F3F6F9", isDark: true },
+  { id: "classic", label: "تم کلاسیک", swatch: "#0A1622", swatchOn: "#38BDF8", isDark: true },
 ];
 
 const BY_ID: Record<string, ThemeOption> = THEMES.reduce(
@@ -56,12 +56,13 @@ export function themeOption(theme: Theme): ThemeOption {
 
 /**
  * Normalise anything coming from localStorage.
- * Legacy values: "dark" used to mean Dark Ocean — it is now its own theme, so
- * the old stored value maps to `ocean` to keep existing users' look identical.
+ * Legacy values: "dark" used to be the only dark theme (the classic palette),
+ * and "blue" was a short-lived Blue Dark theme that the classic one replaced.
  */
 export function normalizeTheme(value: string | null | undefined): Theme {
   if (!value) return DEFAULT_THEME;
-  if (value === "dark") return "ocean"; // legacy alias
+  if (value === "dark") return "ocean"; // legacy alias of the old default
+  if (value === "blue") return "classic"; // Blue Dark → classic palette
   return (BY_ID[value]?.id as Theme) ?? DEFAULT_THEME;
 }
 
