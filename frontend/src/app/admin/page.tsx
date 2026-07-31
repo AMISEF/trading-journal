@@ -8,13 +8,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Spinner } from "@/components/ui";
-import { PnlBreakdown } from "@/components/PnlBreakdown";
 import { DiamondIcon } from "@/components/DiamondIcon";
 import { TierIcon } from "@/components/TierIcon";
 import { adminApi, type AdminUserCreatePayload, type AdminUserUpdatePayload } from "@/lib/api";
 import { formatUsd, faNum } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
-import type { User, DashboardData } from "@/lib/types";
+import type { User } from "@/lib/types";
 
 export default function AdminPage() {
   return (
@@ -29,8 +28,7 @@ type Modal =
   | { kind: "edit"; user: User }
   | { kind: "delete"; user: User }
   | { kind: "reset"; user: User }
-  | { kind: "plan"; user: User }
-  | { kind: "dashboard"; user: User };
+  | { kind: "plan"; user: User };
 
 // ── Plan metadata (label + "R,G,B" tint) shared by the table + set-plan modal ──
 // Tints mirror frontend/src/lib/plans.ts so the admin panel and the customer
@@ -135,10 +133,12 @@ function AdminUsers() {
                 <td className="p-3">{formatJalaliDate(u.createdAt)}</td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">
-                    <ActionBtn color="green" onClick={() => router.push(`/admin/users/${u.id}`)}>
+                    <ActionBtn color="green" onClick={() => router.push(`/admin/users/${u.id}?tab=manage`)}>
                       ژورنال
                     </ActionBtn>
-                    <ActionBtn color="blue" onClick={() => setModal({ kind: "dashboard", user: u })}>
+                    {/* داشبوردِ کامل (همان چیزی که خودِ کاربر می‌بیند) در صفحهٔ
+                        پروفایل باز می‌شود، نه در یک مودالِ خلاصه. */}
+                    <ActionBtn color="blue" onClick={() => router.push(`/admin/users/${u.id}?tab=dashboard`)}>
                       داشبورد
                     </ActionBtn>
                     <ActionBtn color="cyan" onClick={() => setModal({ kind: "plan", user: u })}>
@@ -168,7 +168,6 @@ function AdminUsers() {
       {modal?.kind === "delete" && <DeleteUserModal user={modal.user} onDone={refresh} onClose={close} />}
       {modal?.kind === "reset" && <ResetPasswordModal user={modal.user} onClose={close} />}
       {modal?.kind === "plan" && <SetPlanModal user={modal.user} onDone={refresh} onClose={close} />}
-      {modal?.kind === "dashboard" && <UserDashboardModal user={modal.user} onClose={close} />}
     </div>
   );
 }
@@ -610,93 +609,3 @@ function SetPlanModal({ user, onDone, onClose }: { user: User; onDone: () => voi
   );
 }
 
-/* ─── User dashboard modal ────────────────────────────────────────────────── */
-function UserDashboardModal({ user, onClose }: { user: User; onClose: () => void }) {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    adminApi
-      .userDashboard(user.id)
-      .then(setData)
-      .catch(() => setErr("بارگذاری داشبورد با خطا مواجه شد."));
-  }, [user.id]);
-
-  return (
-    <Modal wide title={`داشبورد: ${user.firstName} ${user.lastName}`} onClose={onClose}>
-      {err ? (
-        <p className="text-sm text-loss">{err}</p>
-      ) : !data ? (
-        <Spinner label="در حال بارگذاری…" />
-      ) : (
-        <div className="space-y-6">
-          {/* KPI grid */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <KpiBox label="موجودی فعلی" value={formatUsd(data.currentBalance)} color="94,234,212" />
-            <KpiBox label="کل معاملات" value={faNum(data.tradeCount)} color="167,139,250" />
-            <KpiBox label="نرخ موفقیت" value={data.winRate != null ? `${faNum(Math.round(data.winRate * 100))}٪` : "—"} color="52,211,153" />
-            <KpiBox label="میانگین RR" value={data.avgRr != null ? faNum(Number(data.avgRr.toFixed(2))) : "—"} color="251,191,36" />
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <KpiBox label="معاملات بسته" value={faNum(data.closedCount)} color="125,211,252" />
-            <KpiBox label="ضریب سود" value={data.profitFactor != null ? faNum(Number(data.profitFactor.toFixed(2))) : "—"} color="244,114,182" />
-            <KpiBox label="انضباط چک‌لیست" value={data.checklistDiscipline != null ? `${faNum(Math.round(data.checklistDiscipline * 100))}٪` : "—"} color="251,146,160" />
-          </div>
-
-          {/* Direction stats */}
-          <div className="tj-card p-4">
-            <h3 className="mb-3 font-semibold text-sm">آمار جهت معاملات</h3>
-            <div className="flex gap-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-profit">{faNum(data.directionStats.long)}</div>
-                <div className="text-xs text-muted mt-1">لانگ</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-loss">{faNum(data.directionStats.short)}</div>
-                <div className="text-xs text-muted mt-1">شورت</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Daily / weekly / monthly PnL breakdown */}
-          <PnlBreakdown pnlByDay={data.pnlByDay} />
-
-          {/* Top symbols */}
-          {data.topSymbols.length > 0 && (
-            <div className="tj-card p-4">
-              <h3 className="mb-3 font-semibold text-sm">برترین نمادها</h3>
-              <div className="space-y-2">
-                {data.topSymbols.map((s) => (
-                  <div key={s.symbol} className="flex items-center justify-between text-sm">
-                    <span dir="ltr" className="font-medium">{s.symbol}</span>
-                    <div className="flex gap-4 text-muted text-xs">
-                      <span>{faNum(s.count)} معامله</span>
-                      <span className={s.pnl >= 0 ? "text-profit font-medium" : "text-loss font-medium"}>
-                        {formatUsd(s.pnl)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-function KpiBox({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div
-      className="rounded-2xl p-4 text-center"
-      style={{
-        background: `linear-gradient(135deg, rgba(${color},0.18) 0%, rgba(${color},0.05) 100%)`,
-        border: `1px solid rgba(${color},0.28)`,
-      }}
-    >
-      <div className="text-xl font-bold" dir="ltr">{value}</div>
-      <div className="mt-1 text-xs text-muted">{label}</div>
-    </div>
-  );
-}

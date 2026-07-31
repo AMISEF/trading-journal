@@ -14,6 +14,9 @@ import type {
   CalcPreviewRequest,
   ChecklistTemplate,
   DashboardData,
+  LeagueBoard,
+  LeagueMeta,
+  LeaguePeriod,
   MarketPrice,
   MarketSymbol,
   ReasonKind,
@@ -253,6 +256,19 @@ export const adminApi = {
     http.get<Trade>(`/admin/trades/${id}`).then((r) => r.data),
   deleteTrade: (id: string) =>
     http.delete(`/admin/trades/${id}`).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// لیگ تریدرها (Traders League)
+// ---------------------------------------------------------------------------
+export const leagueApi = {
+  /** معیارها، بازه‌ها و «دورهٔ جاری» هر بازه. */
+  meta: () => http.get<LeagueMeta>("/league/meta").then((r) => r.data),
+  /** لیدربردِ یک دوره. `key` خالی = دورهٔ جاری. */
+  board: (period: LeaguePeriod, metric: string, key?: string | null) =>
+    http
+      .get<LeagueBoard>("/league", { params: { period, metric, ...(key ? { key } : {}) } })
+      .then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------

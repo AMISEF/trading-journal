@@ -1,17 +1,27 @@
 "use client";
 
-/** Admin: a single user's journals. Click a journal -> read-only view. */
+/**
+ * پروفایل کاملِ یک تریدر برای ادمین. دو تب دارد:
+ *
+ *   • «داشبورد» — عیناً همان داشبوردی که خودِ کاربر می‌بیند، چون از همان
+ *     کامپوننتِ مشترکِ `DashboardView` رسم می‌شود، نه یک خلاصهٔ جداگانه.
+ *   • «ژورنال و مدیریت» — گروه‌ها، اشتراک، گزارش‌های هوش مصنوعی و فهرست معاملات.
+ *
+ * ردیف‌های «لیگ تریدرها» هم به همین صفحه لینک می‌دهند.
+ */
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Badge, Paginator, Spinner, StatusDot, usePagination } from "@/components/ui";
 import { AICoachPanel } from "@/components/AICoachPanel";
+import { DashboardView } from "@/components/DashboardView";
 import http, { adminApi, aiApi } from "@/lib/api";
 import {
   faNum,
   formatPct,
   formatRatio,
   formatSignedUsd,
+  formatUsd,
   pnlColorClass,
 } from "@/lib/format";
 import { formatJalaliDate } from "@/lib/jalali";
@@ -19,6 +29,7 @@ import {
   CRYPTOSMART_TEAM_GROUP,
   LIVE_TRADE_GROUP,
   isGroupMember,
+  type DashboardData,
   type Trade,
   type User,
 } from "@/lib/types";
@@ -31,10 +42,19 @@ export default function AdminUserTradesPage() {
   );
 }
 
+/** تبِ فعالِ صفحه. با `?tab=` در URL هم قابل تنظیم است (لینکِ لیگ از آن استفاده می‌کند). */
+type ProfileTab = "dashboard" | "manage";
+
 function Inner() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const userId = String(params.id);
+  const [tab, setTab] = useState<ProfileTab>(
+    searchParams.get("tab") === "manage" ? "manage" : "dashboard",
+  );
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dashboardError, setDashboardError] = useState("");
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [search, setSearch] = useState("");
@@ -53,6 +73,12 @@ function Inner() {
       const u = users.find((u) => String(u.id) === userId);
       if (u) setUser(u);
     }).catch(() => {});
+    // همان اندپوینتی که داشبوردِ خودِ کاربر را می‌سازد، پس ادمین دقیقاً همان
+    // اعداد و همان نمودارها را می‌بیند.
+    adminApi
+      .userDashboard(userId)
+      .then(setDashboard)
+      .catch(() => setDashboardError("بارگذاری داشبورد این کاربر با خطا مواجه شد."));
   }, [userId]);
 
   const filtered = useMemo(() => {
@@ -216,7 +242,7 @@ function Inner() {
       </button>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">
-          ژورنال‌های کاربر
+          پروفایل تریدر
           {user && (
             <span className="mr-2 text-base font-normal text-muted">
               {user.firstName} {user.lastName}
@@ -233,14 +259,64 @@ function Inner() {
             </span>
           )}
         </h1>
-        <input
-          className="tj-input w-48"
-          placeholder="جستجو (نماد یا شماره)"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); pagination.setPage(1); }}
-        />
+        {tab === "manage" && (
+          <input
+            className="tj-input w-48"
+            placeholder="جستجو (نماد یا شماره)"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); pagination.setPage(1); }}
+          />
+        )}
       </div>
 
+      {/* مشخصات کامل کاربر — در لیگ فقط نام کاربری دیده می‌شود، اینجا همه‌چیز. */}
+      {user && (
+        <div className="tj-card grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <Fact label="نام و نام خانوادگی" value={`${user.firstName} ${user.lastName}`} />
+          <Fact label="نام کاربری" value={`@${user.username}`} ltr />
+          <Fact label="ایمیل" value={user.email} ltr />
+          <Fact label="شماره تماس" value={user.phone || "—"} ltr />
+          <Fact label="نقش" value={user.role} ltr />
+          <Fact label="موجودی فعلی" value={formatUsd(user.currentBalance)} ltr />
+          <Fact label="سرمایهٔ پایه" value={formatUsd(user.walletMargin)} ltr />
+          <Fact label="تاریخ عضویت" value={formatJalaliDate(user.createdAt)} />
+        </div>
+      )}
+
+      {/* تب‌ها */}
+      <div className="flex flex-wrap gap-2">
+        {([
+          ["dashboard", "داشبورد کامل"],
+          ["manage", "ژورنال و مدیریت"],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+              tab === key
+                ? "bg-primary text-white"
+                : "border border-border bg-surface-2 text-muted hover:text-text"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── تب داشبورد: همان داشبوردِ خودِ کاربر ── */}
+      {tab === "dashboard" && (
+        dashboardError ? (
+          <p className="text-sm text-loss">{dashboardError}</p>
+        ) : !dashboard ? (
+          <Spinner label="در حال بارگذاری داشبورد کاربر…" />
+        ) : (
+          <DashboardView data={dashboard} />
+        )
+      )}
+
+      {tab === "manage" && (
+      <div className="space-y-5">
       {/* Cryptosmart Team management */}
       <div className="tj-card p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
@@ -559,6 +635,18 @@ function Inner() {
           )}
         </>
       )}
+      </div>
+      )}
+    </div>
+  );
+}
+
+/** یک قلمِ اطلاعاتِ کاربر در کارتِ مشخصات. */
+function Fact({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-2 px-3 py-2">
+      <div className="text-[11px] text-muted">{label}</div>
+      <div className="font-semibold" dir={ltr ? "ltr" : undefined}>{value}</div>
     </div>
   );
 }
