@@ -44,6 +44,16 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    href: "/league",
+    label: "لیگ تریدرها",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 21h8M12 17v4M6 4h12v5a6 6 0 0 1-12 0z" />
+        <path d="M18 5h2a2 2 0 0 1 0 4h-2M6 5H4a2 2 0 0 0 0 4h2" />
+      </svg>
+    ),
+  },
+  {
     href: "/trading-plan",
     label: "تریدینگ پلن",
     icon: (

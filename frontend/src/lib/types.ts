@@ -241,6 +241,82 @@ export interface SymbolStat {
   winRate?: number | null;
 }
 
+// ─── لیگ تریدرها (Traders League) ────────────────────────────────────────────
+
+/** بازهٔ زمانیِ لیگ — همه بر پایهٔ تقویم شمسی. */
+export type LeaguePeriod = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
+
+/** یک معیارِ رتبه‌بندی، همان‌طور که بک‌اند تعریفش می‌کند. */
+export interface LeagueMetric {
+  key: string;
+  label: string;
+  /** percent | usd | ratio | count | x | score */
+  unit: string;
+  higherIsBetter: boolean;
+  hint: string;
+}
+
+export interface LeagueWindow {
+  period: LeaguePeriod;
+  /** شناسهٔ پایدارِ بازه (مثلاً «۱۴۰۴-۰۵») برای رفتن به دورهٔ قبل/بعد. */
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+}
+
+/** یک ردیفِ لیدربرد. `userId` فقط برای ادمین پر می‌شود. */
+export interface LeagueEntry {
+  rank: number;
+  userId: number | null;
+  username: string;
+  exchanges: string[];
+  tradeCount: number;
+  wins: number;
+  losses: number;
+  breakeven: number;
+  startBalance: number;
+  endBalance: number;
+  pnlUsd: number;
+  pnlPercent: number;
+  volume: number;
+  avgLeverage: number | null;
+  maxDrawdown: number;
+  profitFactor: number | null;
+  winRate: number | null;
+  avgRr: number | null;
+  winStreak: number;
+  greenDays: number | null;
+  discipline: number | null;
+  bestTrade: number;
+  worstTrade: number;
+  score: number;
+  /** حداقلِ معاملهٔ لازم را در این دوره داشته است. */
+  qualified: boolean;
+  /** مثبت = صعود نسبت به دورهٔ قبل، null = در دورهٔ قبل نبوده. */
+  rankChange: number | null;
+}
+
+export interface LeagueBoard {
+  metric: string;
+  minTrades: number;
+  window: LeagueWindow;
+  previousKey: string;
+  nextKey: string;
+  hasNext: boolean;
+  entries: LeagueEntry[];
+  myRank: number | null;
+}
+
+export interface LeagueMeta {
+  metrics: LeagueMetric[];
+  periods: LeaguePeriod[];
+  defaultMetric: string;
+  defaultPeriod: LeaguePeriod;
+  minTrades: number;
+  current: Record<LeaguePeriod, LeagueWindow>;
+}
+
 export interface AuthResponse {
   accessToken: string;
   tokenType?: string;

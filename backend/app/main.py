@@ -25,6 +25,7 @@ from app.api import (
     exchanges as exchanges_router,
     export,
     groups as groups_router,
+    league as league_router,
     market,
     password,
     public,
@@ -130,6 +131,7 @@ app.include_router(export.router)
 app.include_router(admin.router)
 app.include_router(groups_router.router)
 app.include_router(dashboard.router)
+app.include_router(league_router.router)
 app.include_router(uploads.router)
 app.include_router(wallet.router)
 app.include_router(ai.router)
