@@ -264,10 +264,29 @@ export const adminApi = {
 export const leagueApi = {
   /** معیارها، بازه‌ها و «دورهٔ جاری» هر بازه. */
   meta: () => http.get<LeagueMeta>("/league/meta").then((r) => r.data),
-  /** لیدربردِ یک دوره. `key` خالی = دورهٔ جاری. */
-  board: (period: LeaguePeriod, metric: string, key?: string | null) =>
+  /**
+   * لیدربردِ یک دوره، صفحه‌بندی‌شده.
+   *
+   * `key` خالی = دورهٔ جاری. `page` خالی = سرور خودش صفحه‌ای را می‌دهد که
+   * ردیفِ خودِ کاربر در آن است.
+   */
+  board: (
+    period: LeaguePeriod,
+    metric: string,
+    key?: string | null,
+    page?: number | null,
+    perPage?: number
+  ) =>
     http
-      .get<LeagueBoard>("/league", { params: { period, metric, ...(key ? { key } : {}) } })
+      .get<LeagueBoard>("/league", {
+        params: {
+          period,
+          metric,
+          ...(key ? { key } : {}),
+          ...(page ? { page } : {}),
+          ...(perPage ? { perPage } : {}),
+        },
+      })
       .then((r) => r.data),
 };
 
