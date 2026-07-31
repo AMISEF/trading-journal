@@ -241,7 +241,7 @@ export interface SymbolStat {
   winRate?: number | null;
 }
 
-// ─── لیگ تریدرها (Traders League) ────────────────────────────────────────────
+// ─── لیگ تریدرها (Traders League) ────────────────────────────
 
 /** بازهٔ زمانیِ لیگ — همه بر پایهٔ تقویم شمسی. */
 export type LeaguePeriod = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
@@ -270,6 +270,8 @@ export interface LeagueEntry {
   rank: number;
   userId: number | null;
   username: string;
+  /** این ردیف خودِ کاربرِ واردشده است (هایلایت + برچسبِ you). */
+  isMe: boolean;
   exchanges: string[];
   tradeCount: number;
   wins: number;
@@ -293,6 +295,8 @@ export interface LeagueEntry {
   score: number;
   /** حداقلِ معاملهٔ لازم را در این دوره داشته است. */
   qualified: boolean;
+  /** در این دوره حداقل یک معاملهٔ بسته‌شده دارد. */
+  active: boolean;
   /** مثبت = صعود نسبت به دورهٔ قبل، null = در دورهٔ قبل نبوده. */
   rankChange: number | null;
 }
@@ -304,8 +308,18 @@ export interface LeagueBoard {
   previousKey: string;
   nextKey: string;
   hasNext: boolean;
+  /** ردیف‌های همین صفحه. */
   entries: LeagueEntry[];
+  /** کلِ اعضای لیگ و تعدادِ کسانی که در این دوره معامله کرده‌اند. */
+  total: number;
+  activeCount: number;
+  page: number;
+  pageSize: number;
+  pages: number;
   myRank: number | null;
+  myPage: number | null;
+  /** ردیفِ خودِ کاربر — حتی اگر در این صفحه نباشد. */
+  me: LeagueEntry | null;
 }
 
 export interface LeagueMeta {
@@ -314,6 +328,7 @@ export interface LeagueMeta {
   defaultMetric: string;
   defaultPeriod: LeaguePeriod;
   minTrades: number;
+  pageSize: number;
   current: Record<LeaguePeriod, LeagueWindow>;
 }
 
