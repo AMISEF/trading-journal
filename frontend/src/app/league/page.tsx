@@ -7,8 +7,12 @@
  *   ۱) سربرگِ مسابقه با دوره‌ی جاری و رتبهٔ خودِ کاربر،
  *   ۲) تبِ بازه‌ها (روزانه / هفتگی / ماهانه / فصلی / سالانه) + پیمایشِ دوره،
  *   ۳) نوارِ معیارها (درصد سود، امتیاز لیگ، حجم، اهرم، افت سرمایه، …)،
- *   ۴) سکوی قهرمانی (سه نفر اول)،
- *   ۵) جدولِ کاملِ رتبه‌بندی با همهٔ آمار.
+ *   ۴) سکوی قهرمانی (سه نفر اولِ کلِ جدول — فقط روی صفحهٔ اول)،
+ *   ۵) جدولِ رتبه‌بندی، صفحه‌بندی‌شده (۱۰۰ ردیف در هر صفحه).
+ *
+ * همهٔ کاربران عضوِ لیگ‌اند — حتی کسی که در این دوره معامله‌ای نبسته است — و هر
+ * کس لیگ را روی صفحه‌ای باز می‌کند که ردیفِ خودش در آن است؛ آن ردیف هایلایت می‌شود
+ * و برچسبِ «you» می‌گیرد.
  *
  * همهٔ محاسبات سمتِ بک‌اند انجام می‌شود (`/api/league`)؛ این‌جا فقط نمایش است.
  * از هر کاربر تنها **نام کاربری** نشان داده می‌شود؛ ادمین (و فقط ادمین) دکمهٔ
@@ -34,7 +38,7 @@ export default function LeaguePage() {
   );
 }
 
-// ─── طراحی ────────────────────────────────────────────────────────────────────
+// ─── طراحی ────────────────────────────────────────────────
 
 const TINTS = {
   gold: "251,191,36",
@@ -60,6 +64,9 @@ const PODIUM = [
   { tint: TINTS.silver, medal: "🥈", title: "نایب قهرمان", ring: "0 0 48px -14px rgba(203,213,225,0.75)" },
   { tint: TINTS.bronze, medal: "🥉", title: "سکوی سوم", ring: "0 0 48px -14px rgba(205,127,50,0.75)" },
 ] as const;
+
+/** شناسهٔ DOM ردیفِ خودِ کاربر — برای پریدن روی آن با دکمهٔ «برو به ردیف من». */
+const MY_ROW_ID = "league-my-row";
 
 function glass(rgb: string, strength = 1): React.CSSProperties {
   return {
@@ -119,7 +126,7 @@ function tone(entry: LeagueEntry, key: string): string {
   return "";
 }
 
-// ─── صفحه ─────────────────────────────────────────────────────────────────────
+// ─── صفحه ───────────────────────────────────────────────────
 
 function LeagueInner() {
   const { user } = useAuth();
@@ -130,6 +137,8 @@ function LeagueInner() {
   const [period, setPeriod] = useState<LeaguePeriod>("monthly");
   const [metric, setMetric] = useState("pnlPercent");
   const [windowKey, setWindowKey] = useState<string | null>(null);
+  // ``null`` = انتخاب با سرور: صفحه‌ای که ردیفِ خودِ کاربر در آن است.
+  const [page, setPage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -138,11 +147,11 @@ function LeagueInner() {
   }, []);
 
   const load = useCallback(
-    (p: LeaguePeriod, m: string, key: string | null) => {
+    (p: LeaguePeriod, m: string, key: string | null, pageNo: number | null) => {
       setLoading(true);
       setError("");
       leagueApi
-        .board(p, m, key)
+        .board(p, m, key, pageNo)
         .then(setBoard)
         .catch(() => setError("بارگذاری لیگ با خطا مواجه شد."))
         .finally(() => setLoading(false));
@@ -151,8 +160,8 @@ function LeagueInner() {
   );
 
   useEffect(() => {
-    load(period, metric, windowKey);
-  }, [period, metric, windowKey, load]);
+    load(period, metric, windowKey, page);
+  }, [period, metric, windowKey, page, load]);
 
   const metricSpec = useMemo(
     () => meta?.metrics.find((m) => m.key === metric) ?? null,
@@ -162,10 +171,33 @@ function LeagueInner() {
   const switchPeriod = (p: LeaguePeriod) => {
     setPeriod(p);
     setWindowKey(null); // هر بازه از دورهٔ جاریِ خودش شروع می‌شود
+    setPage(null);      // و روی صفحهٔ خودِ کاربر باز می‌شود
   };
 
-  const top3 = board?.entries.slice(0, 3) ?? [];
-  const rest = board?.entries.slice(3) ?? [];
+  const switchMetric = (m: string) => {
+    setMetric(m);
+    setPage(null);      // با تغییر معیار، جای همه جابه‌جا می‌شود
+  };
+
+  const switchWindow = (key: string | null) => {
+    setWindowKey(key);
+    setPage(null);
+  };
+
+  const jumpToMyRow = () => {
+    if (!board?.myPage) return;
+    if (board.page === board.myPage) {
+      document.getElementById(MY_ROW_ID)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setPage(board.myPage);
+  };
+
+  // سکو متعلق به سه نفرِ اولِ کلِ جدول است، پس فقط روی صفحهٔ اول معنا دارد.
+  const top3 = board && board.page === 1 ? board.entries.slice(0, 3) : [];
+  // ردیفِ خودِ کاربر وقتی در صفحهٔ جاری نیست — بالای جدول سنجاق می‌شود.
+  const myPinned =
+    board?.me && !board.entries.some((e) => e.isMe) ? board.me : null;
 
   return (
     <div className="relative space-y-6">
@@ -179,8 +211,7 @@ function LeagueInner() {
       <LeagueHeader
         board={board}
         metricLabel={metricSpec?.label ?? ""}
-        minTrades={meta?.minTrades ?? 3}
-        isAdmin={isAdmin}
+        onJumpToMyRow={jumpToMyRow}
       />
 
       {/* بازه‌ها + پیمایشِ دوره */}
@@ -209,7 +240,7 @@ function LeagueInner() {
           <NavArrow
             dir="prev"
             title="دورهٔ قبل"
-            onClick={() => board && setWindowKey(board.previousKey)}
+            onClick={() => board && switchWindow(board.previousKey)}
             disabled={!board || loading}
           />
           <div className="min-w-[10rem] rounded-xl px-4 py-2 text-center text-sm font-extrabold" style={{ background: "var(--glass-bg)", border: "1px solid rgba(148,163,184,0.18)" }}>
@@ -218,13 +249,13 @@ function LeagueInner() {
           <NavArrow
             dir="next"
             title={board?.hasNext ? "دورهٔ بعد" : "دورهٔ بعد هنوز شروع نشده است"}
-            onClick={() => board && setWindowKey(board.nextKey)}
+            onClick={() => board && switchWindow(board.nextKey)}
             disabled={!board || loading || !board.hasNext}
           />
           {windowKey && (
             <button
               type="button"
-              onClick={() => setWindowKey(null)}
+              onClick={() => switchWindow(null)}
               className="rounded-xl px-3 py-2 text-xs font-bold text-muted hover:text-text"
               style={{ background: "var(--glass-bg)", border: "1px solid rgba(148,163,184,0.18)" }}
             >
@@ -241,7 +272,7 @@ function LeagueInner() {
             <button
               key={m.key}
               type="button"
-              onClick={() => setMetric(m.key)}
+              onClick={() => switchMetric(m.key)}
               title={m.hint}
               className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
                 metric === m.key ? "text-[#06121f]" : "text-muted hover:text-text"
@@ -267,10 +298,10 @@ function LeagueInner() {
       {error && <p className="text-loss">{error}</p>}
       {loading && !board && <Spinner label="در حال بارگذاری لیگ…" />}
 
-      {board && board.entries.length === 0 && !loading && (
+      {board && board.total === 0 && !loading && (
         <div className="rounded-2xl p-10 text-center" style={glass(TINTS.sky, 0.7)}>
           <div className="text-4xl">🏁</div>
-          <div className="mt-3 text-lg font-extrabold">هنوز کسی در این دوره معامله‌ای نبسته است</div>
+          <div className="mt-3 text-lg font-extrabold">هنوز عضوی در لیگ نیست</div>
           <p className="mt-1 text-sm text-muted">
             اولین نفری باشید که در {board.window.label} ثبت رکورد می‌کند — کافی است معاملهٔ بسته‌شدهٔ خود را در ژورنال ثبت کنید.
           </p>
@@ -280,17 +311,44 @@ function LeagueInner() {
         </div>
       )}
 
-      {board && board.entries.length > 0 && (
+      {board && board.total > 0 && (
         <>
-          <Podium entries={top3} metric={metric} metricSpec={metricSpec} isAdmin={isAdmin} me={user?.username} />
+          {board.activeCount === 0 && (
+            <div className="rounded-2xl px-5 py-4 text-sm" style={{ background: `rgba(${TINTS.rose},0.10)`, border: `1px solid rgba(${TINTS.rose},0.28)` }}>
+              در {board.window.label} هنوز هیچ‌کس معامله‌ای نبسته است — اولین معاملهٔ بسته‌شده، صدرِ جدول را می‌گیرد.
+            </div>
+          )}
+
+          {top3.length > 0 && (
+            <Podium entries={top3} metric={metric} metricSpec={metricSpec} isAdmin={isAdmin} />
+          )}
+
+          {myPinned && (
+            <MyRowCard
+              entry={myPinned}
+              metric={metric}
+              metricSpec={metricSpec}
+              myPage={board.myPage}
+              onJump={jumpToMyRow}
+            />
+          )}
+
           <LeagueTable
             entries={board.entries}
-            highlight={rest.length > 0}
             metric={metric}
             metricSpec={metricSpec}
             isAdmin={isAdmin}
-            me={user?.username}
             minTrades={board.minTrades}
+          />
+
+          <Pager
+            page={board.page}
+            pages={board.pages}
+            pageSize={board.pageSize}
+            total={board.total}
+            myPage={board.myPage}
+            loading={loading}
+            onGo={(p) => setPage(p)}
           />
         </>
       )}
@@ -300,23 +358,21 @@ function LeagueInner() {
   );
 }
 
-// ─── سربرگ ────────────────────────────────────────────────────────────────────
+// ─── سربرگ ────────────────────────────────────────────────
 
 function LeagueHeader({
   board,
   metricLabel,
-  minTrades,
-  isAdmin,
+  onJumpToMyRow,
 }: {
   board: LeagueBoard | null;
   metricLabel: string;
-  minTrades: number;
-  /** ادمین‌ها در لیگ شرکت داده نمی‌شوند، پس «رتبهٔ شما» برایشان معنا ندارد. */
-  isAdmin: boolean;
+  onJumpToMyRow: () => void;
 }) {
-  const total = board?.entries.length ?? 0;
-  const qualified = board?.entries.filter((e) => e.qualified).length ?? 0;
-  const champion = board?.entries[0];
+  const total = board?.total ?? 0;
+  const active = board?.activeCount ?? 0;
+  // صدرنشین فقط روی صفحهٔ اول در دسترس است.
+  const champion = board?.page === 1 ? board?.entries[0] : undefined;
 
   return (
     <div className="relative overflow-hidden rounded-3xl p-6 md:p-8" style={glass(TINTS.gold)}>
@@ -349,14 +405,14 @@ function LeagueHeader({
 
         <div className="flex flex-wrap items-center gap-2.5">
           <HeaderStat label="دورهٔ جاری" value={board?.window.label ?? "…"} tint={TINTS.violet} />
-          <HeaderStat label="شرکت‌کننده" value={`${faNum(total)} نفر`} tint={TINTS.sky} />
-          <HeaderStat label={`واجد شرایط (${faNum(minTrades)}+ معامله)`} value={`${faNum(qualified)} نفر`} tint={TINTS.mint} />
-          {isAdmin ? (
-            <HeaderStat label="نقش شما" value="داورِ لیگ (ادمین)" tint={TINTS.violet} />
-          ) : board?.myRank ? (
-            <HeaderStat label="رتبهٔ شما" value={`#${faNum(board.myRank)}`} tint={TINTS.gold} />
+          <HeaderStat label="اعضای لیگ" value={`${faNum(total)} نفر`} tint={TINTS.sky} />
+          <HeaderStat label="فعال در این دوره" value={`${faNum(active)} نفر`} tint={TINTS.mint} />
+          {board?.myRank ? (
+            <button type="button" onClick={onJumpToMyRow} title="رفتن به ردیفِ خودم در جدول" className="text-start transition-transform hover:-translate-y-0.5">
+              <HeaderStat label="رتبهٔ شما (you)" value={`#${faNum(board.myRank)}`} tint={TINTS.gold} />
+            </button>
           ) : (
-            <HeaderStat label="رتبهٔ شما" value="هنوز ثبت نشده" tint={TINTS.rose} />
+            <HeaderStat label="رتبهٔ شما (you)" value="هنوز ثبت نشده" tint={TINTS.rose} />
           )}
         </div>
       </div>
@@ -413,20 +469,32 @@ function NavArrow({
   );
 }
 
-// ─── سکوی قهرمانی ─────────────────────────────────────────────────────────────
+/** برچسبِ «you» — همه‌جا یک‌شکل تا کاربر خودش را فوری پیدا کند. */
+function YouBadge({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`rounded-md px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${className}`}
+      style={{ background: `rgba(${TINTS.mint},0.22)`, color: `rgb(${TINTS.mint})`, border: `1px solid rgba(${TINTS.mint},0.45)` }}
+      dir="ltr"
+      title="این ردیفِ خودِ شماست"
+    >
+      you
+    </span>
+  );
+}
+
+// ─── سکوی قهرمانی ──────────────────────────────────────────
 
 function Podium({
   entries,
   metric,
   metricSpec,
   isAdmin,
-  me,
 }: {
   entries: LeagueEntry[];
   metric: string;
   metricSpec: { label: string; unit: string } | null;
   isAdmin: boolean;
-  me?: string;
 }) {
   if (entries.length === 0) return null;
   // ترتیبِ نمایش: دوم، اول، سوم — تا نفر اول وسط و بلندتر بایستد.
@@ -438,7 +506,6 @@ function Podium({
         const e = entries[idx];
         if (!e) return null;
         const p = PODIUM[idx];
-        const isMe = me && e.username === me;
         return (
           <div
             key={e.username}
@@ -459,7 +526,7 @@ function Podium({
               </span>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-extrabold" dir="ltr">{e.username}</span>
-                {isMe && <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: `rgba(${TINTS.mint},0.2)`, color: `rgb(${TINTS.mint})` }}>شما</span>}
+                {e.isMe && <YouBadge />}
               </div>
               <ExchangeRow slugs={e.exchanges} size={22} />
             </div>
@@ -520,22 +587,61 @@ function AdminLink({ userId, className = "" }: { userId: number; className?: str
   );
 }
 
-// ─── جدولِ رتبه‌بندی ───────────────────────────────────────────────────────────
+// ─── ردیفِ خودِ کاربر وقتی در این صفحه نیست ────────────────────────
+
+function MyRowCard({
+  entry,
+  metric,
+  metricSpec,
+  myPage,
+  onJump,
+}: {
+  entry: LeagueEntry;
+  metric: string;
+  metricSpec: { label: string; unit: string } | null;
+  myPage: number | null;
+  onJump: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl px-5 py-4" style={glass(TINTS.mint, 0.9)}>
+      <div className="flex flex-wrap items-center gap-3">
+        <RankBadge rank={entry.rank} />
+        <span className="font-extrabold" dir="ltr">{entry.username}</span>
+        <YouBadge />
+        <span className="text-xs text-muted">
+          {metricSpec?.label ?? "درصد سود"}:{" "}
+          <span className={`font-extrabold ${tone(entry, metric)}`} dir="ltr">
+            {formatMetric(entry, metric, metricSpec?.unit ?? "percent")}
+          </span>
+        </span>
+        <span className="text-xs text-muted">امتیاز لیگ: <span className="font-extrabold" dir="ltr">{faNum(entry.score.toFixed(1))}</span></span>
+        <span className="text-xs text-muted">معاملات: <span className="font-extrabold" dir="ltr">{faNum(entry.tradeCount)}</span></span>
+      </div>
+      <button
+        type="button"
+        onClick={onJump}
+        className="rounded-xl px-4 py-2 text-xs font-bold text-[#06121f]"
+        style={{ background: `rgb(${TINTS.mint})` }}
+      >
+        برو به ردیف من{myPage ? ` (صفحهٔ ${faNum(myPage)})` : ""}
+      </button>
+    </div>
+  );
+}
+
+// ─── جدولِ رتبه‌بندی ────────────────────────────────────────
 
 function LeagueTable({
   entries,
   metric,
   metricSpec,
   isAdmin,
-  me,
   minTrades,
 }: {
   entries: LeagueEntry[];
-  highlight?: boolean;
   metric: string;
   metricSpec: { label: string; unit: string } | null;
   isAdmin: boolean;
-  me?: string;
   minTrades: number;
 }) {
   // ستون‌های ثابتِ جدول. اگر معیارِ انتخابی خودش یکی از همین‌هاست، ستونِ جداگانه
@@ -568,35 +674,44 @@ function LeagueTable({
             </tr>
           </thead>
           <tbody>
-            {entries.map((e) => {
-              const isMe = me && e.username === me;
-              return (
-                <tr
-                  key={e.username}
-                  className="border-t transition-colors"
-                  style={{
-                    borderColor: "rgba(148,163,184,0.12)",
-                    background: isMe ? `rgba(${TINTS.mint},0.10)` : undefined,
-                  }}
-                >
-                  <Td>
-                    <div className="flex items-center gap-1.5">
-                      <RankBadge rank={e.rank} />
-                      <RankMove change={e.rankChange} />
-                    </div>
-                  </Td>
-                  <Td>
-                    <div className="flex items-center gap-2">
+            {entries.map((e) => (
+              <tr
+                key={e.username}
+                id={e.isMe ? MY_ROW_ID : undefined}
+                className="border-t transition-colors"
+                style={{
+                  borderColor: "rgba(148,163,184,0.12)",
+                  background: e.isMe ? `rgba(${TINTS.mint},0.12)` : undefined,
+                  boxShadow: e.isMe ? `inset 3px 0 0 rgb(${TINTS.mint})` : undefined,
+                }}
+              >
+                <Td>
+                  <div className="flex items-center gap-1.5">
+                    <RankBadge rank={e.rank} />
+                    <RankMove change={e.rankChange} />
+                  </div>
+                </Td>
+                <Td>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[11px] font-extrabold"
+                      style={{ background: `rgba(${TINTS.violet},0.16)`, border: `1px solid rgba(${TINTS.violet},0.3)` }}
+                      dir="ltr"
+                    >
+                      {e.username.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="font-bold" dir="ltr">{e.username}</span>
+                    {e.isMe && <YouBadge />}
+                    {!e.active ? (
                       <span
-                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[11px] font-extrabold"
-                        style={{ background: `rgba(${TINTS.violet},0.16)`, border: `1px solid rgba(${TINTS.violet},0.3)` }}
-                        dir="ltr"
+                        className="whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold text-muted"
+                        style={{ background: "var(--glass-bg)", border: "1px solid rgba(148,163,184,0.2)" }}
+                        title="در این دوره معاملهٔ بسته‌شده‌ای ثبت نشده است"
                       >
-                        {e.username.slice(0, 2).toUpperCase()}
+                        بدون معامله در این دوره
                       </span>
-                      <span className="font-bold" dir="ltr">{e.username}</span>
-                      {isMe && <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: `rgba(${TINTS.mint},0.2)`, color: `rgb(${TINTS.mint})` }}>شما</span>}
-                      {!e.qualified && (
+                    ) : (
+                      !e.qualified && (
                         <span
                           className="whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold text-muted"
                           style={{ background: "var(--glass-bg)", border: "1px solid rgba(148,163,184,0.2)" }}
@@ -604,36 +719,143 @@ function LeagueTable({
                         >
                           خارج از رقابت
                         </span>
-                      )}
-                    </div>
+                      )
+                    )}
+                  </div>
+                </Td>
+                <Td><ExchangeRow slugs={e.exchanges} /></Td>
+                {extraColumn && (
+                  <Td className={`font-extrabold ${tone(e, metric)}`} ltr>
+                    {formatMetric(e, metric, metricSpec?.unit ?? "percent")}
                   </Td>
-                  <Td><ExchangeRow slugs={e.exchanges} /></Td>
-                  {extraColumn && (
-                    <Td className={`font-extrabold ${tone(e, metric)}`} ltr>
-                      {formatMetric(e, metric, metricSpec?.unit ?? "percent")}
-                    </Td>
-                  )}
-                  <Td className={sortedOn("score") ? "font-extrabold" : ""} ltr>{faNum(e.score.toFixed(1))}</Td>
-                  <Td className={`${tone(e, "pnlUsd")} ${sortedOn("pnlUsd") ? "font-extrabold" : ""}`} ltr>{formatSignedUsd(e.pnlUsd)}</Td>
-                  <Td className={sortedOn("winRate") ? "font-extrabold" : ""} ltr>{e.winRate == null ? "—" : plainPct(e.winRate * 100)}</Td>
-                  <Td className={sortedOn("profitFactor") ? "font-extrabold" : ""} ltr>{formatProfitFactor(e)}</Td>
-                  <Td className={sortedOn("maxDrawdown") ? "font-extrabold" : ""} ltr>{plainPct(e.maxDrawdown)}</Td>
-                  <Td className={sortedOn("avgLeverage") ? "font-extrabold" : ""} ltr>{e.avgLeverage == null ? "—" : `${faNum(Math.round(e.avgLeverage * 10) / 10)}×`}</Td>
-                  <Td className={sortedOn("volume") ? "font-extrabold" : ""} ltr>{formatUsd(e.volume, 0)}</Td>
-                  <Td className={sortedOn("tradeCount") ? "font-extrabold" : ""} ltr>
-                    {faNum(e.tradeCount)}
-                    <span className="text-[10px] text-muted"> ({faNum(e.wins)}✓ {faNum(e.losses)}✕)</span>
-                  </Td>
-                  {isAdmin && (
-                    <Td>{e.userId != null && <AdminLink userId={e.userId} />}</Td>
-                  )}
-                </tr>
-              );
-            })}
+                )}
+                <Td className={sortedOn("score") ? "font-extrabold" : ""} ltr>{faNum(e.score.toFixed(1))}</Td>
+                <Td className={`${tone(e, "pnlUsd")} ${sortedOn("pnlUsd") ? "font-extrabold" : ""}`} ltr>{formatSignedUsd(e.pnlUsd)}</Td>
+                <Td className={sortedOn("winRate") ? "font-extrabold" : ""} ltr>{e.winRate == null ? "—" : plainPct(e.winRate * 100)}</Td>
+                <Td className={sortedOn("profitFactor") ? "font-extrabold" : ""} ltr>{formatProfitFactor(e)}</Td>
+                <Td className={sortedOn("maxDrawdown") ? "font-extrabold" : ""} ltr>{plainPct(e.maxDrawdown)}</Td>
+                <Td className={sortedOn("avgLeverage") ? "font-extrabold" : ""} ltr>{e.avgLeverage == null ? "—" : `${faNum(Math.round(e.avgLeverage * 10) / 10)}×`}</Td>
+                <Td className={sortedOn("volume") ? "font-extrabold" : ""} ltr>{formatUsd(e.volume, 0)}</Td>
+                <Td className={sortedOn("tradeCount") ? "font-extrabold" : ""} ltr>
+                  {faNum(e.tradeCount)}
+                  <span className="text-[10px] text-muted"> ({faNum(e.wins)}✓ {faNum(e.losses)}✕)</span>
+                </Td>
+                {isAdmin && (
+                  <Td>{e.userId != null && <AdminLink userId={e.userId} />}</Td>
+                )}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+// ─── صفحه‌بندی ─────────────────────────────────────────────
+
+/** شمارهٔ صفحه‌هایی که باید دکمه داشته باشند: اول، آخر، و دو تا دورِ صفحهٔ جاری. */
+function pageWindow(page: number, pages: number): number[] {
+  const wanted = new Set<number>([1, pages, page - 2, page - 1, page, page + 1, page + 2]);
+  return [...wanted].filter((p) => p >= 1 && p <= pages).sort((a, b) => a - b);
+}
+
+function Pager({
+  page,
+  pages,
+  pageSize,
+  total,
+  myPage,
+  loading,
+  onGo,
+}: {
+  page: number;
+  pages: number;
+  pageSize: number;
+  total: number;
+  myPage: number | null;
+  loading: boolean;
+  onGo: (page: number) => void;
+}) {
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  const numbers = pageWindow(page, pages);
+
+  return (
+    <div className="flex flex-col items-center justify-between gap-3 rounded-2xl px-4 py-3 sm:flex-row" style={glass(TINTS.violet, 0.6)}>
+      <div className="text-xs text-muted">
+        نمایش <span className="font-extrabold text-text">{faNum(from)}</span> تا{" "}
+        <span className="font-extrabold text-text">{faNum(to)}</span> از{" "}
+        <span className="font-extrabold text-text">{faNum(total)}</span> عضو — هر صفحه {faNum(pageSize)} نفر
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-1.5">
+        <PagerButton label="«" title="صفحهٔ اول" onClick={() => onGo(1)} disabled={loading || page <= 1} />
+        <PagerButton label="‹" title="صفحهٔ قبل" onClick={() => onGo(page - 1)} disabled={loading || page <= 1} />
+
+        {numbers.map((p, i) => (
+          <span key={p} className="flex items-center gap-1.5">
+            {i > 0 && numbers[i - 1] !== p - 1 && <span className="text-xs text-muted">…</span>}
+            <PagerButton
+              label={faNum(p)}
+              title={myPage === p ? "صفحهٔ ردیفِ خودِ شما" : `صفحهٔ ${p}`}
+              onClick={() => onGo(p)}
+              active={p === page}
+              marked={myPage === p}
+              disabled={loading}
+            />
+          </span>
+        ))}
+
+        <PagerButton label="›" title="صفحهٔ بعد" onClick={() => onGo(page + 1)} disabled={loading || page >= pages} />
+        <PagerButton label="»" title="صفحهٔ آخر" onClick={() => onGo(pages)} disabled={loading || page >= pages} />
+      </div>
+
+      <div className="text-xs text-muted">
+        صفحهٔ <span className="font-extrabold text-text">{faNum(page)}</span> از{" "}
+        <span className="font-extrabold text-text">{faNum(pages)}</span>
+      </div>
+    </div>
+  );
+}
+
+function PagerButton({
+  label,
+  title,
+  onClick,
+  disabled,
+  active,
+  marked,
+}: {
+  label: string;
+  title?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  /** صفحه‌ای که ردیفِ خودِ کاربر در آن است — با حلقهٔ نعنایی مشخص می‌شود. */
+  marked?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`min-w-[2.25rem] rounded-lg px-2.5 py-1.5 text-xs font-extrabold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+        active ? "text-[#06121f]" : "text-muted hover:text-text"
+      }`}
+      style={
+        active
+          ? { background: `linear-gradient(120deg, rgb(${TINTS.gold}), rgb(${TINTS.mint}))` }
+          : {
+              background: "var(--glass-bg)",
+              border: marked ? `1px solid rgba(${TINTS.mint},0.55)` : "1px solid rgba(148,163,184,0.18)",
+            }
+      }
+      dir="ltr"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -674,7 +896,7 @@ function RankBadge({ rank }: { rank: number }) {
 /** جابه‌جاییِ رتبه نسبت به دورهٔ قبل. */
 function RankMove({ change }: { change: number | null }) {
   if (change === null) {
-    return <span className="text-[10px] text-muted" title="تازه‌وارد این دوره">NEW</span>;
+    return <span className="text-[10px] text-muted" title="در دورهٔ قبل معامله‌ای نداشته">NEW</span>;
   }
   if (change === 0) {
     return <span className="text-[10px] text-muted" title="بدون تغییر نسبت به دورهٔ قبل">—</span>;
@@ -691,15 +913,17 @@ function RankMove({ change }: { change: number | null }) {
   );
 }
 
-// ─── قوانین ───────────────────────────────────────────────────────────────────
+// ─── قوانین ────────────────────────────────────────────────
 
 function RulesCard({ minTrades }: { minTrades: number }) {
   const rules = [
+    ["عضویت", "هر کسی که در پنل حساب دارد در جدول لیگ می‌آید؛ کسی که در این دوره معامله‌ای نبسته، تهِ جدول فهرست می‌شود تا هیچ‌کس غیب نشود."],
     ["مبنای بازده", "درصد سود نسبت به موجودیِ ابتدای همان دوره حساب می‌شود، نه موجودیِ فعلی — پس سرمایهٔ بزرگ‌تر به‌تنهایی مزیت نیست."],
     ["هفته‌ها", "هفتهٔ لیگ از شنبه شروع می‌شود و جمعه تمام می‌شود؛ ماه، فصل و سال هم شمسی‌اند."],
     ["وین‌ریت", "فقط معاملات سودده و زیان‌ده در وین‌ریت شمرده می‌شوند؛ معاملهٔ سربه‌سر آن را رقیق نمی‌کند."],
     ["حد نصاب", `کسی که در دوره کمتر از ${minTrades} معاملهٔ بسته‌شده دارد «خارج از رقابت» است و بعد از واجدین شرایط فهرست می‌شود.`],
     ["امتیاز لیگ", "ترکیبِ وزن‌دارِ بازده (۴۵)، وین‌ریت (۱۵)، ضریب سود (۱۵)، کنترل افت سرمایه (۱۵) و انضباط چک‌لیست (۱۰) — تا مسابقه فقط «شرط‌بندی روی یک معامله» نباشد."],
+    ["ردیفِ خودتان", "لیگ روی صفحه‌ای باز می‌شود که ردیفِ خودتان در آن است؛ آن ردیف هایلایت و با برچسبِ you مشخص می‌شود. هر صفحه ۱۰۰ نفر است."],
     ["حریم خصوصی", "از هر شرکت‌کننده تنها نام کاربری نمایش داده می‌شود."],
   ];
   return (
