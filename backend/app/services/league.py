@@ -9,6 +9,9 @@
 
 قواعدِ مسابقه
 -------------
+* **هر کسی که حساب دارد عضوِ لیگ است.** حتی اگر در این دوره هیچ معامله‌ای نبسته
+  باشد، ردیفش در جدول می‌آید (در انتهای فهرست، با وضعیتِ «بدون معامله در این
+  دوره») تا هیچ‌کس از لیگ غیب نشود. تنها حسابِ دموی سایت بیرون است.
 * مبنای درصدِ سود، موجودیِ کاربر در **لحظهٔ شروع بازه** است، نه موجودیِ الان.
   پس کسی که با سرمایهٔ بزرگ‌تر معامله می‌کند مزیتِ خودکار نمی‌گیرد.
 * فقط چرخهٔ سرمایهٔ فعال حساب می‌شود (بعد از ریست ماهانه به ۱۰۰۰ دلار،
@@ -17,14 +20,16 @@
 * برای جلوگیری از قهرمان‌شدن با یک معاملهٔ شانسی، کسی که کمتر از
   :data:`MIN_TRADES` معاملهٔ بسته‌شده در بازه دارد «واجد شرایط» نیست و بعد از
   همهٔ واجدین شرایط فهرست می‌شود (حذف نمی‌شود تا انگیزهٔ ادامه بماند).
-* ادمین‌ها و حسابِ دمو در لیگ نمی‌آیند.
+
+ترتیبِ نهاییِ جدول سه لایه دارد: اول واجدین شرایط، بعد کسانی که معامله داشته‌اند
+ولی به حد نصاب نرسیده‌اند، و آخر کسانی که در این دوره معامله‌ای نبسته‌اند.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +42,11 @@ from app.services import balances, calc as calc_engine, dashboard_stats, jalali
 
 #: کمینهٔ معاملهٔ بسته‌شده در بازه برای «واجد شرایط» شدن.
 MIN_TRADES = 3
+
+#: تعداد ردیف در هر صفحهٔ لیدربرد (و سقفِ مجازِ درخواست).
+PAGE_SIZE = 100
+MAX_PAGE_SIZE = 200
+
 
 #: معیارهای رتبه‌بندی. ``higher_is_better=False`` یعنی کمتر بهتر است (افت سرمایه).
 @dataclass(frozen=True)
@@ -109,6 +119,11 @@ class Entry:
     worst_trade: float = 0.0
     score: float = 0.0
     qualified: bool = False
+
+    @property
+    def active(self) -> bool:
+        """آیا در این دوره حتی یک معاملهٔ بسته‌شده دارد؟"""
+        return self.trade_count > 0
 
     def value_of(self, metric: str) -> float | None:
         return {
@@ -309,10 +324,12 @@ def build_entry(user: User, trades: list[Trade], window: jalali.Window,
 
 
 def sort_entries(entries: list[Entry], metric: str) -> list[Entry]:
-    """مرتب‌سازی بر اساس معیار: واجدین شرایط اول، بعد بقیه.
+    """مرتب‌سازی بر اساس معیار، در سه لایه.
 
-    مقدارِ نامشخص (مثلاً ضریب سودِ کسی که هیچ زیانی نداشته) همیشه آخر می‌آید تا
-    «داده نداریم» با «عملکرد ضعیف» اشتباه گرفته نشود.
+    ۱) واجدین شرایط، ۲) کسانی که معامله داشته‌اند ولی به حد نصاب نرسیده‌اند،
+    ۳) کسانی که در این دوره معامله‌ای نبسته‌اند. مقدارِ نامشخص (مثلاً ضریب سودِ
+    کسی که هیچ زیانی نداشته) همیشه آخرِ لایهٔ خودش می‌آید تا «داده نداریم» با
+    «عملکرد ضعیف» اشتباه گرفته نشود.
     """
     spec = next((m for m in METRICS if m.key == metric), METRICS[0])
     sign = -1.0 if spec.higher_is_better else 1.0
@@ -324,6 +341,7 @@ def sort_entries(entries: list[Entry], metric: str) -> list[Entry]:
             # پس باید بالای جدول بایستد نه انتهای آن.
             v = float("inf")
         return (
+            0 if e.active else 1,      # بی‌معامله‌ها همیشه ته جدول
             0 if e.qualified else 1,
             0 if v is not None else 1,
             sign * (v if v is not None else 0.0),
@@ -341,17 +359,19 @@ async def leaderboard(
     *,
     previous: jalali.Window | None = None,
 ) -> tuple[list[Entry], dict[int, int | None]]:
-    """لیدربردِ یک بازه + جابه‌جاییِ رتبهٔ هر کاربر نسبت به بازهٔ قبل.
+    """لیدربردِ **همهٔ** کاربران در یک بازه + جابه‌جاییِ رتبه نسبت به بازهٔ قبل.
 
     خروجی: (ردیف‌های مرتب‌شده، نگاشتِ ``user_id`` → تغییر رتبه). تغییر رتبه مثبت
-    یعنی صعود؛ ``None`` یعنی در دورهٔ قبل حضور نداشته.
+    یعنی صعود؛ ``None`` یعنی در دورهٔ قبل معامله‌ای نداشته.
+
+    فهرست شامل همهٔ کاربران است — حتی آن‌ها که در این دوره معامله‌ای نبسته‌اند —
+    و صفحه‌بندی در لایهٔ API انجام می‌شود.
     """
     if metric not in METRIC_KEYS:
         metric = DEFAULT_METRIC
 
-    rows = await db.execute(
-        select(User).where(User.role != "ADMIN", User.is_demo.is_not(True))
-    )
+    # تنها حسابی که در لیگ نمی‌آید، حسابِ دموی نمایشیِ سایت است.
+    rows = await db.execute(select(User).where(User.is_demo.is_not(True)))
     users = list(rows.scalars().all())
     ids = [u.id for u in users]
     trades_by_user = await _load_trades(db, ids)
@@ -364,8 +384,6 @@ async def leaderboard(
         build_entry(u, trades_by_user.get(u.id, []), window, exchanges.get(u.id, []))
         for u in users
     ]
-    # کسی که در کل دوره هیچ معامله‌ای نبسته، در جدولِ آن دوره نمی‌آید.
-    entries = [e for e in entries if e.trade_count > 0]
     ordered = sort_entries(entries, metric)
 
     moves: dict[int, int | None] = {}
@@ -374,9 +392,15 @@ async def leaderboard(
             build_entry(u, trades_by_user.get(u.id, []), previous, exchanges.get(u.id, []))
             for u in users
         ]
-        prev_entries = [e for e in prev_entries if e.trade_count > 0]
-        prev_rank = {e.user_id: i for i, e in enumerate(sort_entries(prev_entries, metric))}
-        for i, e in enumerate(ordered):
+        # مقایسهٔ رتبه فقط بین کسانی معنا دارد که در آن دوره معامله کرده‌اند؛
+        # وگرنه ردیف‌های خالیِ ته جدول به هم «صعود/نزول» نسبت می‌دادند.
+        prev_rank = {
+            e.user_id: i
+            for i, e in enumerate(e for e in sort_entries(prev_entries, metric) if e.active)
+        }
+        now_rank = {e.user_id: i for i, e in enumerate(e for e in ordered if e.active)}
+        for e in ordered:
             old = prev_rank.get(e.user_id)
-            moves[e.user_id] = None if old is None else old - i
+            new = now_rank.get(e.user_id)
+            moves[e.user_id] = None if old is None or new is None else old - new
     return ordered, moves
