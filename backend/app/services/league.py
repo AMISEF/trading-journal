@@ -18,8 +18,10 @@
 * موجودیِ پایهٔ هر کاربر = سرمایهٔ تنظیم‌شده + همهٔ واریز/برداشت‌های کیف پول
   (دقیقاً همان تعریفی که داشبورد و صفحهٔ کیف پول دارند) — پس اگر کاربری از
   کیف پولش برداشت کند، همین‌جا هم موجودیِ کمترش ملاک است.
-* فقط چرخهٔ سرمایهٔ فعال حساب می‌شود (بعد از ریست ماهانه به ۱۰۰۰ دلار،
-  معاملاتِ ماهِ قبل روی نتیجهٔ ماهِ جدید اثر ندارند).
+* **ریستِ سرمایه تاریخ را پاک نمی‌کند.** لیگ دوره‌به‌دوره سنجیده می‌شود؛ پس
+  معاملاتِ ماه‌های گذشته (خرداد، تیر، …) سر جای خودشان می‌مانند حتی اگر بعداً
+  سرمایهٔ کاربر به ۱۰۰۰ دلار ریست شده باشد. ریست فقط یک «چک‌پوینت» در
+  زنجیرهٔ موجودی است: از اولین معاملهٔ بعد از ریست، موجودی به پایه برمی‌گردد.
 * وین‌ریت از ``dashboard_stats.win_rate`` می‌آید؛ معاملات سربه‌سر در مخرج نیستند.
 * برای جلوگیری از قهرمان‌شدن با یک معاملهٔ شانسی، کسی که کمتر از
   :data:`MIN_TRADES` معاملهٔ بسته‌شده در بازه دارد «واجد شرایط» نیست و بعد از
@@ -236,15 +238,27 @@ async def _load_transactions(
 def build_entry(user: User, trades: list[Trade], window: jalali.Window,
                 exchanges: list[str],
                 transactions: list[WalletTransaction] | None = None) -> Entry:
-    """آمارِ یک کاربر در یک بازه را بساز."""
+    """آمارِ یک کاربر در یک بازه را بساز.
+
+    برخلاف داشبورد که فقط چرخهٔ سرمایهٔ جاری را نشان می‌دهد، لیگ تاریخی است:
+    معاملاتِ پیش از ریستِ سرمایه حذف نمی‌شوند، وگرنه برایندِ خرداد و تیرِ کسانی
+    که سرمایه‌شان به ۱۰۰۰ دلار ریست شده ناپدید می‌شد. ریست فقط زنجیرهٔ موجودی
+    را سر اولین معاملهٔ بعد از خودش به موجودیِ پایه برمی‌گرداند.
+    """
     entry = Entry(user_id=user.id, username=user.username, exchanges=sorted(exchanges))
 
-    cycle = [t for t in trades if balances.in_active_cycle(t, user.capital_reset_date)]
-    closed = sorted((t for t in cycle if t.status == "CLOSED"), key=lambda t: t.number)
+    closed = sorted((t for t in trades if t.status == "CLOSED"), key=lambda t: t.number)
 
     # همان تعریفِ موجودی که داشبورد و کیف پول دارند: سرمایهٔ تنظیم‌شده به‌علاوهٔ
     # همهٔ واریز/برداشت‌ها.
-    balance = float(user.wallet_margin or 0.0) + balances._txn_sum(transactions)
+    wallet_base = float(user.wallet_margin or 0.0) + balances._txn_sum(transactions)
+    balance = wallet_base
+
+    # ریستِ سرمایه = چک‌پوینت، نه پاک‌کنندهٔ تاریخ. معاملاتِ ماه‌های قبل با زنجیرهٔ
+    # خودشان حساب می‌شوند و از اولین معاملهٔ بعد از ریست، موجودی به پایه برمی‌گردد.
+    reset_dt = getattr(user, "capital_reset_date", None)
+    reset_done = reset_dt is None
+
     start_balance: float | None = None
     equity: list[float] = []          # موجودی بعد از هر معاملهٔ داخلِ بازه
     pnls: list[float] = []
@@ -256,6 +270,9 @@ def build_entry(user: User, trades: list[Trade], window: jalali.Window,
 
     for t in closed:
         day = _trade_day(t)
+        if not reset_done and balances.in_active_cycle(t, reset_dt):
+            balance = wallet_base
+            reset_done = True
         in_window = window.contains(day)
         if day is not None and day.date() > window.end:
             # معاملاتِ بعد از بازه نه در نتیجهٔ دوره می‌آیند و نه موجودیِ ابتدای
