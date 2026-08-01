@@ -15,6 +15,9 @@
   نمایشی/دموی سایت هم عضوِ لیگ است، چون معاملاتِ واقعیِ یک تریدر را دارد.
 * مبنای درصدِ سود، موجودیِ کاربر در **لحظهٔ شروع بازه** است، نه موجودیِ الان.
   پس کسی که با سرمایهٔ بزرگ‌تر معامله می‌کند مزیتِ خودکار نمی‌گیرد.
+* موجودیِ پایهٔ هر کاربر = سرمایهٔ تنظیم‌شده + همهٔ واریز/برداشت‌های کیف پول
+  (دقیقاً همان تعریفی که داشبورد و صفحهٔ کیف پول دارند) — پس اگر کاربری از
+  کیف پولش برداشت کند، همین‌جا هم موجودیِ کمترش ملاک است.
 * فقط چرخهٔ سرمایهٔ فعال حساب می‌شود (بعد از ریست ماهانه به ۱۰۰۰ دلار،
   معاملاتِ ماهِ قبل روی نتیجهٔ ماهِ جدید اثر ندارند).
 * وین‌ریت از ``dashboard_stats.win_rate`` می‌آید؛ معاملات سربه‌سر در مخرج نیستند.
@@ -39,6 +42,7 @@ from sqlalchemy.orm import selectinload
 from app.models.exchange_credential import ExchangeCredential
 from app.models.trade import Trade
 from app.models.user import User
+from app.models.wallet_transaction import WalletTransaction
 from app.services import balances, calc as calc_engine, dashboard_stats, jalali
 
 #: کمینهٔ معاملهٔ بسته‌شده در بازه برای «واجد شرایط» شدن.
@@ -208,15 +212,39 @@ async def _load_trades(db: AsyncSession, user_ids: list[int]) -> dict[int, list[
     return grouped
 
 
+async def _load_transactions(
+    db: AsyncSession, user_ids: list[int]
+) -> dict[int, list[WalletTransaction]]:
+    """واریز/برداشت‌های کیف پولِ چند کاربر را یک‌جا بخوان.
+
+    موجودیِ واقعیِ کاربر بدون این‌ها معنا ندارد: کسی که از کیف پولش برداشت
+    کرده، باید در لیگ هم با همان موجودیِ کمتر سنجیده شود.
+    """
+    if not user_ids:
+        return {}
+    rows = await db.execute(
+        select(WalletTransaction)
+        .where(WalletTransaction.user_id.in_(user_ids))
+        .order_by(WalletTransaction.user_id, WalletTransaction.transaction_date)
+    )
+    grouped: dict[int, list[WalletTransaction]] = defaultdict(list)
+    for tx in rows.scalars().all():
+        grouped[tx.user_id].append(tx)
+    return grouped
+
+
 def build_entry(user: User, trades: list[Trade], window: jalali.Window,
-                exchanges: list[str]) -> Entry:
+                exchanges: list[str],
+                transactions: list[WalletTransaction] | None = None) -> Entry:
     """آمارِ یک کاربر در یک بازه را بساز."""
     entry = Entry(user_id=user.id, username=user.username, exchanges=sorted(exchanges))
 
     cycle = [t for t in trades if balances.in_active_cycle(t, user.capital_reset_date)]
     closed = sorted((t for t in cycle if t.status == "CLOSED"), key=lambda t: t.number)
 
-    balance = float(user.wallet_margin or 0.0)
+    # همان تعریفِ موجودی که داشبورد و کیف پول دارند: سرمایهٔ تنظیم‌شده به‌علاوهٔ
+    # همهٔ واریز/برداشت‌ها.
+    balance = float(user.wallet_margin or 0.0) + balances._txn_sum(transactions)
     start_balance: float | None = None
     equity: list[float] = []          # موجودی بعد از هر معاملهٔ داخلِ بازه
     pnls: list[float] = []
@@ -376,13 +404,15 @@ async def leaderboard(
     users = list(rows.scalars().all())
     ids = [u.id for u in users]
     trades_by_user = await _load_trades(db, ids)
+    txns_by_user = await _load_transactions(db, ids)
     exchanges = await _load_exchanges(db, ids)
     for u in users:
         if getattr(u, "toobit_api_key_enc", None):
             exchanges[u.id].append("toobit")
 
     entries = [
-        build_entry(u, trades_by_user.get(u.id, []), window, exchanges.get(u.id, []))
+        build_entry(u, trades_by_user.get(u.id, []), window, exchanges.get(u.id, []),
+                    txns_by_user.get(u.id, []))
         for u in users
     ]
     ordered = sort_entries(entries, metric)
@@ -390,7 +420,8 @@ async def leaderboard(
     moves: dict[int, int | None] = {}
     if previous is not None:
         prev_entries = [
-            build_entry(u, trades_by_user.get(u.id, []), previous, exchanges.get(u.id, []))
+            build_entry(u, trades_by_user.get(u.id, []), previous, exchanges.get(u.id, []),
+                        txns_by_user.get(u.id, []))
             for u in users
         ]
         # مقایسهٔ رتبه فقط بین کسانی معنا دارد که در آن دوره معامله کرده‌اند؛
