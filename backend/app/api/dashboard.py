@@ -145,11 +145,17 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
     avg_leverage_short = _avg_lev([t for t in shown if t.direction == "SHORT"])
 
     # --- Running equity curve + per-trade PnL + RR (using the same balance logic) ---
-    # Wallet deposits/withdrawals are intentionally excluded here: the dashboard
-    # reflects *trading* performance only, so moving money in/out of the wallet
-    # never shows up as a gain or loss in the results (برآیند).
-    balance = (user.wallet_margin or 0.0)
-    start_balance = balance
+    # The chain starts at the user's real wallet balance: the configured capital
+    # plus every deposit/withdrawal ever recorded — the exact same definition the
+    # wallet page and the sidebar use (``balances.current_balance``). Otherwise a
+    # user who withdrew money would keep seeing the old, larger balance here.
+    #
+    # Deposits/withdrawals still never count as a *gain or loss*: they shift the
+    # starting point of the curve, and each trade sizes its margin from its own
+    # fixed ``balance_snapshot``, so the برایند (PnL) stays purely about trading.
+    wallet_base = (user.wallet_margin or 0.0) + _txn_sum(transactions)
+    balance = wallet_base
+    start_balance = wallet_base
     equity_curve: list[dict] = []
     pnls: list[float] = []
     rr_values: list[float] = []
@@ -228,7 +234,7 @@ async def build_user_dashboard(db: AsyncSession, user: User) -> DashboardOut:
     # KPIs/equity/balance above use the current cycle. So group *all* closed
     # trades (not just the current cycle) by day here.
     all_closed = sorted((t for t in trades if t.status == "CLOSED"), key=lambda t: t.number)
-    hist_balance = (user.wallet_margin or 0.0)
+    hist_balance = wallet_base
     by_day: dict[str, float] = defaultdict(float)
     for t in all_closed:
         tp_dicts = [
