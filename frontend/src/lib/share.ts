@@ -1,8 +1,8 @@
 /**
- * اشتراک‌گذاری معاملات — کارنامهٔ عمومی معامله‌گر (طلایی و الماسی).
+ * اشتراک‌گذاری معاملات — کارنامهٔ عمومی معامله‌گر (پلن طلایی و الماسی).
  *
- * لینک همیشه در لحظه از origin ساخته می‌شود تا روی هر دامنه‌ای (و زیرِ basePath
- * یعنی /journal) درست کار کند.
+ * لینک همیشه در لحظه از origin ساخته می‌شود تا روی هر دامنه‌ای و زیرِ basePath
+ * (یعنی /journal) درست کار کند.
  */
 import http, { BASE_PATH } from "./api";
 import type { DashboardData, Trade } from "./types";
@@ -72,11 +72,11 @@ export interface PublicProfile {
   trades: Trade[] | null;
 }
 
-/** حداقل و حداکثر طولِ نشانی (هم‌تراز با بک‌اند). */
+/** هم‌تراز با app/services/share.py */
 export const SLUG_MIN = 3;
 export const SLUG_MAX = 30;
 
-/** فقط حروف انگلیسی، عدد، خط تیره و زیرخط؛ فاصله به - تبدیل می‌شود. */
+/** فقط حروف انگلیسی، عدد، خط تیره و زیرخط؛ فاصله به خط تیره تبدیل می‌شود. */
 export function sanitizeSlug(raw: string): string {
   return (raw || "")
     .replace(/\s+/g, "-")
@@ -84,51 +84,60 @@ export function sanitizeSlug(raw: string): string {
     .slice(0, SLUG_MAX);
 }
 
-/** تنظیمات فعلیِ کارنامهٔ عمومی کاربر. */
+/** تنظیمات فعلیِ کارنامهٔ عمومیِ کاربرِ واردشده. */
 export function loadShare(): Promise<ShareSettings> {
   return http.get<ShareSettings>("/share/me").then((r) => r.data);
 }
 
-/** ذخیرهٔ تغییرات (فقط فیلدهایی که می‌فرستیم عوض می‌شوند). */
-export function saveShare(payload: ShareUpdate): Promise<ShareSettings> {
-  return http.put<ShareSettings>("/share/me", payload).then((r) => r.data);
+/** ذخیرهٔ تغییرات (فقط فیلدهایی که می‌فرستیم). */
+export function saveShare(patch: ShareUpdate): Promise<ShareSettings> {
+  return http.put<ShareSettings>("/share/me", patch).then((r) => r.data);
 }
 
-/** بررسی زندهٔ آزاد بودنِ نشانی هنگام تایپ. */
+/** بررسی زندهٔ آزاد بودنِ نشانی، هنگام تایپ. */
 export function checkSlug(slug: string): Promise<SlugCheck> {
   return http
     .get<SlugCheck>("/share/slug/check", { params: { slug } })
     .then((r) => r.data);
 }
 
-/** خواندنِ یک کارنامهٔ عمومی (بدون نیاز به ورود). */
-export function loadProfile(slug: string): Promise<PublicProfile> {
+/** خواندنِ عمومیِ یک کارنامه (بدون لاگین). */
+export function loadPublicProfile(slug: string): Promise<PublicProfile> {
   return http
     .get<PublicProfile>(`/public/profile/${encodeURIComponent(slug)}`)
     .then((r) => r.data);
 }
 
-/** لینک عمومی: <origin><basePath>/u/<slug> */
-export function profileLink(slug: string | null | undefined): string {
+/** نشانی کاملِ کارنامه: <origin><basePath>/u/<slug> */
+export function profileUrl(slug: string | null | undefined): string {
   if (!slug) return "";
   const origin =
     typeof window !== "undefined" && window.location ? window.location.origin : "";
   return `${origin}${BASE_PATH}/u/${encodeURIComponent(slug)}`;
 }
 
-/** متنی که کاربر کنار لینک می‌فرستد. */
-export function shareMessage(link: string, name?: string): string {
-  const who = name ? `کارنامهٔ معاملاتی ${name}` : "کارنامهٔ معاملاتی من";
+/** متنِ آمادهٔ اشتراک‌گذاری در تلگرام/واتس‌اپ. */
+export function shareMessage(link: string, name?: string | null): string {
+  const who = name ? `کارنامهٔ معاملاتِ ${name}` : "کارنامهٔ معاملاتِ من";
   return [
-    `${who} رو ببین — شفاف و بدون روتوش ✨`,
-    "هر معامله با تمام جزئیات، منحنی سرمایه، وین‌ریت و دراوداون، مستقیم از ژورنال:",
+    `📊 ${who} — شفاف و لحظه‌ای، در ژورنال تریدینگ الگو هاب`,
+    "برایند، وین‌ریت، منحنی سرمایه و جزئیات معاملات را ببین:",
     link,
   ].join("\n");
 }
 
-/** اعداد فارسی. */
-export function faNum(value: number | string | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "۰";
-  const s = typeof value === "number" ? value.toLocaleString("en-US") : String(value);
-  return s.replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
+/** لینک اشتراک‌گذاری در تلگرام (بدون نوشتنِ مستقیمِ آدرس در کد). */
+export function telegramShareUrl(link: string, text: string): string {
+  return (
+    "https://" +
+    "t.me/share/url?url=" +
+    encodeURIComponent(link) +
+    "&text=" +
+    encodeURIComponent(text)
+  );
+}
+
+/** لینک اشتراک‌گذاری در واتس‌اپ. */
+export function whatsappShareUrl(text: string): string {
+  return "https://" + "wa.me/?text=" + encodeURIComponent(text);
 }
