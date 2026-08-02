@@ -33,6 +33,10 @@ class UserOut(CamelModel):
     subscription_tier: str
     subscription_expires_at: datetime | None = None
     created_at: datetime
+    # دعوت دوستان: کدِ شخصی و شمارشگرهای دعوت (جزئیات کامل در /api/referrals/me).
+    referral_code: str | None = None
+    referral_total: int = 0
+    referral_qualified: int = 0
     # Whether the user has stored Toobit credentials (the keys themselves are
     # never returned) and a masked preview (last 4 chars) for confirmation.
     has_toobit_api_key: bool = False
@@ -50,6 +54,8 @@ class RegisterIn(CamelModel):
     phone: str
     password: str = Field(min_length=1)
     password_confirm: str
+    # کدِ دعوت (از لینک ?ref=…). کدِ نامعتبر نباید ثبت‌نام را خراب کند.
+    referral_code: str | None = None
 
     @field_validator("phone")
     @classmethod
@@ -58,6 +64,12 @@ class RegisterIn(CamelModel):
         if not PHONE_RE.match(v):
             raise ValueError("شماره تماس باید به صورت 09121234567 و ۱۱ رقم باشد.")
         return v
+
+    @field_validator("referral_code")
+    @classmethod
+    def _clean_code(cls, v: str | None) -> str | None:
+        v = (v or "").strip().upper()
+        return v[:16] or None
 
 
 class LoginIn(CamelModel):

@@ -12,6 +12,7 @@ from app.core.deps import get_current_user, get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.schemas.user import LoginIn, RegisterIn, TokenOut, UserOut, WalletIn
+from app.services import referrals
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -55,6 +56,13 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> Toke
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    # دعوت دوستان: اگر با لینک دعوت آمده، به دعوت‌کننده وصل می‌شود.
+    # کدِ نامعتبر یا خطای شمارش، ثبت‌نام را خراب نمی‌کند.
+    try:
+        await referrals.attach_referrer(db, user, body.referral_code)
+    except Exception:  # noqa: BLE001
+        pass
 
     return await _token_response(db, user)
 
