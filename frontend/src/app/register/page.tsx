@@ -4,8 +4,8 @@
  * Registration page. On success: store session + go to dashboard.
  *
  * دعوت دوستان: اگر کاربر با لینک ?ref=CODE آمده باشد، کد خوانده، در
- * localStorage نگه داشته (تا رفتن و برگشتن به صفحه گمش نکند) و همراه
- * ثبت‌نام به سرور فرستاده می‌شود.
+ * localStorage نگه داشته و داخل فرم نمایش داده می‌شود؛ همچنین کاربر می‌تواند
+ * کد معرف را دستی وارد یا ویرایش کند.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -29,6 +29,7 @@ export default function RegisterPage() {
     passwordConfirm: "",
   });
   const [refCode, setRefCode] = useState("");
+  const [fromLink, setFromLink] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -36,11 +37,10 @@ export default function RegisterPage() {
   useEffect(() => {
     try {
       const fromUrl = new URLSearchParams(window.location.search).get("ref");
-      const code = (fromUrl || window.localStorage.getItem(REF_KEY) || "")
-        .trim()
-        .toUpperCase();
+      const code = (fromUrl || window.localStorage.getItem(REF_KEY) || "").trim();
       if (code) {
         setRefCode(code);
+        setFromLink(Boolean(fromUrl));
         window.localStorage.setItem(REF_KEY, code);
       }
     } catch {
@@ -50,6 +50,17 @@ export default function RegisterPage() {
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const onRefChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const code = e.target.value.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 16);
+    setRefCode(code);
+    try {
+      if (code) window.localStorage.setItem(REF_KEY, code);
+      else window.localStorage.removeItem(REF_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,11 +73,16 @@ export default function RegisterPage() {
       setError("رمز عبور و تکرار آن یکسان نیستند.");
       return;
     }
+    const code = refCode.trim();
+    if (code && code.length < 3) {
+      setError("کد معرف باید حداقل ۳ کاراکتر باشد (یا خالی بماند).");
+      return;
+    }
     setLoading(true);
     try {
       const res = await authApi.register({
         ...form,
-        ...(refCode ? { referralCode: refCode } : {}),
+        ...(code ? { referralCode: code } : {}),
       });
       setSession(res.accessToken, res.user);
       try {
@@ -84,7 +100,7 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout title="ساخت حساب جدید">
-      {refCode && (
+      {fromLink && refCode && (
         <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 backdrop-blur">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/20 text-primary">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -143,6 +159,31 @@ export default function RegisterPage() {
             <label className="tj-label">تکرار رمز</label>
             <input type="password" className="tj-input" dir="ltr" value={form.passwordConfirm} onChange={set("passwordConfirm")} required />
           </div>
+        </div>
+        <div>
+          <label className="tj-label">
+            کد معرف <span className="text-muted">(اختیاری)</span>
+          </label>
+          <div className="relative">
+            <input
+              className="tj-input pl-24 font-mono tracking-widest"
+              dir="ltr"
+              placeholder="CRYPTOSMART"
+              maxLength={16}
+              value={refCode}
+              onChange={onRefChange}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {refCode.length >= 3 && (
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 rounded-lg bg-primary/15 px-2 py-1 text-[10px] font-bold text-primary">
+                ثبت می‌شود
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] leading-5 text-muted">
+            اگر کسی شما را دعوت کرده، کد معرفش را اینجا بنویسید (مثلاً Cryptosmart). بزرگ یا کوچک بودن حروف مهم نیست.
+          </p>
         </div>
         {error && <p className="text-sm text-loss">{error}</p>}
         <Button type="submit" className="w-full" disabled={loading}>
