@@ -11,6 +11,14 @@ Flow (per user, every ``TOOBIT_SYNC_INTERVAL`` seconds):
   5. enrich each trade with the entry ladder + partial take-profits reconstructed
      from the fills.
 
+**Import window (سخت‌گیرانه).** Only positions that demonstrably *opened at or
+after* the moment the user registered their API key are imported. The floor is
+``users.toobit_key_at``; if it is missing (a key stored before that column
+existed) it is stamped on the first sync, so an old key can never back-fill a
+month of history. A position whose open/close time cannot be determined is
+skipped rather than imported — an undated row used to slip past the filter and
+land on today's date in the calendar.
+
 Everything is wrapped so one user's bad key can never break another's sync or
 the app. ``sync_user`` accepts an injected client for testing.
 
@@ -38,6 +46,37 @@ logger = logging.getLogger("app.services.toobit_sync")
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """Normalise a datetime to UTC-aware.
+
+    Postgres columns declared without a timezone hand us naive datetimes;
+    comparing those against the aware datetimes built from exchange timestamps
+    raises ``TypeError``. Every floor comparison goes through here.
+    """
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _position_start(fields: dict) -> datetime | None:
+    """Best available "when did this position begin" timestamp."""
+    return _aware(fields.get("open_date")) or _aware(fields.get("close_date"))
+
+
+def _is_new_position(fields: dict, key_floor: datetime | None) -> bool:
+    """True only when the position provably started at/after ``key_floor``.
+
+    Unknown dates return ``False``: we never import something we cannot place
+    in time, because such rows end up stamped with today's date.
+    """
+    if key_floor is None:
+        return True
+    started = _position_start(fields)
+    if started is None:
+        return False
+    return started >= key_floor
 
 
 def _base_symbol(contract: str) -> str:
@@ -95,8 +134,8 @@ def _ts_dt(dt: datetime | None) -> float:
     if dt is None:
         return 0.0
     try:
-        return dt.timestamp()
-    except (ValueError, OverflowError, OSError):
+        return _aware(dt).timestamp()
+    except (ValueError, OverflowError, OSError, AttributeError):
         return 0.0
 
 
@@ -499,23 +538,45 @@ async def _fills_for_contract(
     return fills
 
 
+async def _key_floor_for(db: AsyncSession, user: User) -> datetime:
+    """The moment this user registered their Toobit key — always defined.
+
+    Keys stored before ``toobit_key_at`` existed (or written by an older code
+    path) have no floor, which used to let the lookback window back-fill weeks
+    of pre-registration history. In that case we stamp *now* and persist it, so
+    from this sync on only genuinely new positions are imported.
+    """
+    floor = _aware(getattr(user, "toobit_key_at", None))
+    if floor is not None:
+        return floor
+    floor = _utcnow()
+    user.toobit_key_at = floor
+    await db.commit()
+    logger.info("toobit: stamped missing key_at for user %s at %s", user.id, floor.isoformat())
+    return floor
+
+
 async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = None) -> int:
     """Sync one user's Toobit futures into the journal. Returns rows touched.
 
     Sizing/PnL come from the authoritative position endpoints (correct units +
     exact PnL); the userTrades fills feed is used only to reconstruct the entry
     ladder (پله‌ها) and partial take-profits, where relative ratios (not absolute
-    contract-unit quantities) are all that matter. Only positions opened at/after
-    the user connected their key are imported.
+    contract-unit quantities) are all that matter.
+
+    **Only positions opened at/after the key-registration moment are imported.**
+    Anything older — and anything whose date the exchange doesn't disclose — is
+    skipped, and pre-floor rows imported by earlier versions are cleaned up.
     """
     client = client or client_for(user)
     if client is None:
         return 0
 
-    key_floor = user.toobit_key_at
+    key_floor = await _key_floor_for(db, user)
     lookback_ms = int((_utcnow() - timedelta(days=settings.TOOBIT_LOOKBACK_DAYS)).timestamp() * 1000)
-    floor_ms = int(key_floor.timestamp() * 1000) if key_floor else None
-    since_ms = max(lookback_ms, floor_ms) if floor_ms else lookback_ms
+    floor_ms = int(key_floor.timestamp() * 1000)
+    # Never ask the exchange for anything older than the key floor.
+    since_ms = max(lookback_ms, floor_ms)
 
     touched = 0
     errors: list[str] = []
@@ -532,11 +593,17 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
     produced: set[str] = set()
 
     # History rows grouped by contract, for matching money numbers to instances.
+    # Rows that closed before the key floor belong to the pre-registration era
+    # and are dropped here so they can neither be imported nor matched.
     hist_by_contract: dict[str, list[dict]] = {}
     for h in history:
         sym = h.get("symbol")
-        if sym:
-            hist_by_contract.setdefault(sym, []).append(h)
+        if not sym:
+            continue
+        closed_at = _dt(h.get("closeTime"))
+        if closed_at is not None and closed_at < key_floor:
+            continue
+        hist_by_contract.setdefault(sym, []).append(h)
 
     # Open positions from the authoritative endpoint (margin/leverage in real units).
     open_by_key: dict[tuple[str, str], dict] = {}
@@ -589,9 +656,11 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
             closed_fields.append(fields)
 
     # ── Upsert closed instances in chronological order (stable numbering) ──
+    skipped_old = 0
     closed_fields.sort(key=lambda f: _ts_dt(f.get("open_date")))
     for fields in closed_fields:
-        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
+        if not _is_new_position(fields, key_floor):
+            skipped_old += 1
             continue
         try:
             await _upsert_trade(db, user, fields, fields.get("leverage"))
@@ -605,7 +674,8 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
 
     # ── Upsert still-open positions ──
     for fields in open_by_key.values():
-        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
+        if not _is_new_position(fields, key_floor):
+            skipped_old += 1
             continue
         try:
             await _upsert_trade(db, user, fields, fields.get("leverage"))
@@ -617,19 +687,32 @@ async def sync_user(db: AsyncSession, user: User, client: ToobitClient | None = 
             errors.append(f"{fields.get('symbol')}: {type(exc).__name__}: {exc}")
             logger.exception("toobit open import failed")
 
-    # ── Cleanup: drop unedited toobit rows inside the window that this pass did
-    # not produce. This removes the old one-row-per-partial-close duplicates
-    # (hist:*), superseded ids, and phantom open:* rows after a position closes.
+    if skipped_old:
+        logger.info(
+            "toobit: skipped %s position(s) older than the key floor for user %s",
+            skipped_old, user.id,
+        )
+
+    # ── Cleanup ──
+    # 1) unedited toobit rows that started before the key floor — these are the
+    #    pre-registration trades earlier versions imported by mistake;
+    # 2) unedited rows inside the window that this pass did not produce (old
+    #    one-row-per-partial-close duplicates, superseded ids, phantom open:*).
     try:
         existing = (await db.execute(
             select(Trade).where(Trade.user_id == user.id, Trade.source == "toobit")
         )).scalars().all()
         since_s = since_ms / 1000.0
+        floor_s = key_floor.timestamp()
         for t in existing:
-            if t.toobit_position_id in produced:
-                continue
             edited = (t.synced_at and t.updated_at and t.updated_at > t.synced_at + timedelta(seconds=5))
             if edited:
+                continue
+            started = _aware(t.open_date) or _aware(t.close_date)
+            if started is not None and started.timestamp() < floor_s:
+                await db.delete(t)  # pre-registration leftover
+                continue
+            if t.toobit_position_id in produced:
                 continue
             in_window = _ts_dt(t.open_date) >= since_s if t.open_date else t.toobit_position_id and t.toobit_position_id.startswith("open:")
             if in_window:
