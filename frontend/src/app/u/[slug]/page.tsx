@@ -3,10 +3,11 @@
 /**
  * کارنامهٔ عمومی معامله‌گر — /journal/u/<slug>
  *
- * بدون لاگین و بدون AppShell. بالای صفحه دو کلید انتخاب بخش وجود دارد:
- * «برایند» (داشبورد کامل) و «ژورنال» (لیست معاملات). با کلیک روی هر معامله،
- * تمام جزئیات — دقیقاً همان تب‌هایی که خودِ کاربر داخل سایت می‌بیند — به‌صورت
- * فقط‌خواندنی باز می‌شود.
+ * بدون لاگین. بالای صفحه دو کلید انتخاب بخش: «برایند» (داشبورد کامل)
+ * و «ژورنال» (لیست معاملات). با کلیک روی هر معامله، تمام جزئیات — همان تب‌هایی
+ * که خودِ کاربر داخل سایت می‌بیند — فقط‌خواندنی باز می‌شود.
+ *
+ * تمام رنگ‌ها از متغیرهای تم می‌آیند تا در هر هفت تمِ سایت خوانا باشد.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -29,23 +30,23 @@ import {
 } from "@/lib/format";
 import { formatJalaliDate, formatTime } from "@/lib/jalali";
 
-const TINTS = {
-  mint: "94,234,212",
-  violet: "167,139,250",
-  sky: "125,211,252",
-} as const;
-
 const PAGE_SIZE = 15;
 
-function glass(): React.CSSProperties {
+/** کارتِ هماهنگ با تم (روشن/تاریک خودکار). */
+function card(): React.CSSProperties {
   return {
-    background: "var(--glass-bg)",
-    backdropFilter: "blur(20px) saturate(160%)",
-    WebkitBackdropFilter: "blur(20px) saturate(160%)",
-    border: "1px solid var(--glass-border)",
-    boxShadow: "0 20px 56px -24px rgba(56,189,248,0.22)",
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
+    color: "var(--text)",
+    boxShadow: "var(--glass-shadow)",
   };
 }
+
+const primaryBtn: React.CSSProperties = {
+  background: "var(--primary)",
+  color: "var(--surface)",
+  border: "1px solid var(--primary)",
+};
 
 function pnlOf(t: Trade): number | null {
   if (t.source && t.realizedPnl != null) return t.realizedPnl;
@@ -86,12 +87,8 @@ export default function PublicProfilePage() {
     return (
       <main dir="rtl" className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center gap-4 p-6 text-center">
         <div className="text-5xl">🔎</div>
-        <h1 className="text-xl font-extrabold">{error}</h1>
-        <a
-          href={`${BASE_PATH}/register`}
-          className="rounded-xl px-5 py-2.5 text-sm font-extrabold text-[#06121f]"
-          style={{ background: "linear-gradient(120deg, rgb(103,232,249), rgb(52,211,153))" }}
-        >
+        <h1 className="text-xl font-extrabold" style={{ color: "var(--text)" }}>{error}</h1>
+        <a href={`${BASE_PATH}/register`} className="rounded-xl px-5 py-2.5 text-sm font-extrabold" style={primaryBtn}>
           ساخت کارنامهٔ رایگان
         </a>
       </main>
@@ -109,7 +106,10 @@ export default function PublicProfilePage() {
   const both = profile.showDashboard && profile.showJournal;
 
   const switcher = both ? (
-    <div className="flex items-center gap-2 rounded-2xl p-1.5" style={glass()}>
+    <div
+      className="inline-flex items-center gap-2 rounded-2xl p-1.5"
+      style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+    >
       {([
         { id: "dashboard" as const, label: "برایند", icon: "📊" },
         { id: "journal" as const, label: "ژورنال", icon: "📒" },
@@ -123,12 +123,8 @@ export default function PublicProfilePage() {
             className="flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-extrabold transition-all"
             style={
               active
-                ? {
-                    background: `linear-gradient(120deg, rgb(${TINTS.mint}), rgb(${TINTS.sky}))`,
-                    color: "#06121f",
-                    boxShadow: `0 12px 26px -14px rgba(${TINTS.sky},0.9)`,
-                  }
-                : { color: "var(--text-muted, #94a3b8)" }
+                ? { background: "var(--primary)", color: "var(--surface)" }
+                : { background: "transparent", color: "var(--muted)" }
             }
           >
             <span>{s.icon}</span>
@@ -140,40 +136,38 @@ export default function PublicProfilePage() {
   ) : null;
 
   const hero = (
-    <div
-      className="relative overflow-hidden rounded-3xl p-6"
-      style={{
-        background: `linear-gradient(150deg, rgba(${TINTS.sky},0.16), rgba(${TINTS.violet},0.06) 55%, var(--glass-bg))`,
-        border: `1px solid rgba(${TINTS.sky},0.28)`,
-      }}
-    >
+    <div className="relative overflow-hidden rounded-3xl p-6" style={card()}>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1
-              className="text-3xl font-extrabold tracking-tight"
-              style={{
-                backgroundImage: `linear-gradient(120deg, rgb(${TINTS.mint}), rgb(${TINTS.sky}), rgb(${TINTS.violet}))`,
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-                color: "transparent",
-              }}
-            >
+            <h1 className="text-3xl font-extrabold tracking-tight" style={{ color: "var(--text)" }}>
               {profile.name}
             </h1>
             <span
               className="rounded-full px-3 py-1 text-xs font-bold"
-              style={{ background: "rgba(251,191,36,0.16)", color: "rgb(251,191,36)" }}
+              style={{ background: "var(--primary-soft)", color: "var(--primary)", border: "1px solid var(--primary)" }}
             >
               {profile.planLabel}
             </span>
           </div>
-          {profile.title && <div className="mt-1 text-sm font-bold text-muted">{profile.title}</div>}
-          {profile.bio && <p className="mt-2 max-w-xl text-sm text-muted">{profile.bio}</p>}
+          {profile.title && (
+            <div className="mt-1 text-sm font-bold" style={{ color: "var(--muted)" }}>{profile.title}</div>
+          )}
+          {profile.bio && <p className="mt-2 max-w-xl text-sm" style={{ color: "var(--muted)" }}>{profile.bio}</p>}
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-xl px-3 py-2" style={glass()}>تعداد معاملات: <b>{faNum(profile.tradeCount)}</b></span>
-          <span className="rounded-xl px-3 py-2" style={glass()}>بازدید: <b>{faNum(profile.views)}</b></span>
+          <span
+            className="rounded-xl px-3 py-2"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--muted)" }}
+          >
+            تعداد معاملات: <b style={{ color: "var(--text)" }}>{faNum(profile.tradeCount)}</b>
+          </span>
+          <span
+            className="rounded-xl px-3 py-2"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--muted)" }}
+          >
+            بازدید: <b style={{ color: "var(--text)" }}>{faNum(profile.views)}</b>
+          </span>
         </div>
       </div>
       {switcher && <div className="mt-5 flex justify-start">{switcher}</div>}
@@ -181,22 +175,14 @@ export default function PublicProfilePage() {
   );
 
   const cta = (
-    <div
-      className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl p-6"
-      style={{
-        background: `linear-gradient(150deg, rgba(${TINTS.mint},0.14), rgba(${TINTS.violet},0.06) 60%, var(--glass-bg))`,
-        border: `1px solid rgba(${TINTS.mint},0.28)`,
-      }}
-    >
+    <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl p-6" style={card()}>
       <div>
-        <div className="text-lg font-extrabold">کارنامهٔ خودت را بساز</div>
-        <div className="text-sm text-muted">ژورنال تریدینگ کریپتو اسمارت — ثبت معاملات، تحلیل هوش مصنوعی و کارنامهٔ قابل اشتراک.</div>
+        <div className="text-lg font-extrabold" style={{ color: "var(--text)" }}>کارنامهٔ خودت را بساز</div>
+        <div className="text-sm" style={{ color: "var(--muted)" }}>
+          ژورنال تریدینگ کریپتو اسمارت — ثبت معاملات، تحلیل هوش مصنوعی و کارنامهٔ قابل اشتراک.
+        </div>
       </div>
-      <a
-        href={`${BASE_PATH}/register`}
-        className="rounded-xl px-5 py-2.5 text-sm font-extrabold text-[#06121f]"
-        style={{ background: "linear-gradient(120deg, rgb(103,232,249), rgb(52,211,153))" }}
-      >
+      <a href={`${BASE_PATH}/register`} className="rounded-xl px-5 py-2.5 text-sm font-extrabold" style={primaryBtn}>
         ساخت کارنامهٔ رایگان
       </a>
     </div>
@@ -237,7 +223,7 @@ function PublicJournal({ profile }: { profile: PublicProfile }) {
 
   if (trades.length === 0) {
     return (
-      <div className="mt-6 rounded-3xl p-8 text-center text-muted" style={glass()}>
+      <div className="mt-6 rounded-3xl p-8 text-center" style={{ ...card(), color: "var(--muted)" }}>
         معامله‌ای برای نمایش وجود ندارد.
       </div>
     );
@@ -246,16 +232,18 @@ function PublicJournal({ profile }: { profile: PublicProfile }) {
   return (
     <div className="mt-6 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-extrabold">معاملات</h2>
-        <span className="text-xs text-muted">
-          {clickable ? "برای مشاهدهٔ جزئیات کاملِ هر معامله روی آن کلیک کنید" : "این کارنامه بدون جزئیاتِ معاملات به اشتراک گذاشته شده است"}
+        <h2 className="text-xl font-extrabold" style={{ color: "var(--text)" }}>معاملات</h2>
+        <span className="text-xs" style={{ color: "var(--muted)" }}>
+          {clickable
+            ? "برای مشاهدهٔ جزئیات کاملِ هر معامله روی آن کلیک کنید"
+            : "این کارنامه بدون جزئیاتِ معاملات به اشتراک گذاشته شده است"}
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-3xl" style={glass()}>
+      <div className="overflow-x-auto rounded-3xl" style={card()}>
         <table className="w-full text-sm">
-          <thead className="text-muted">
-            <tr className="border-b border-white/10 text-center">
+          <thead style={{ color: "var(--muted)" }}>
+            <tr className="text-center" style={{ borderBottom: "1px solid var(--border)" }}>
               <th className="p-3">#</th>
               <th className="p-3">نماد</th>
               <th className="p-3">جهت</th>
@@ -275,8 +263,12 @@ function PublicJournal({ profile }: { profile: PublicProfile }) {
                 <tr
                   key={t.id}
                   onClick={clickable ? () => setDetail(t) : undefined}
-                  className={`border-b border-white/5 transition-colors ${clickable ? "cursor-pointer hover:bg-white/5" : ""}`}
-                  style={brand ? { background: `rgba(${brand.tint},0.08)` } : undefined}
+                  className={clickable ? "cursor-pointer transition-colors" : ""}
+                  style={{
+                    borderBottom: "1px solid var(--border)",
+                    background: brand ? `rgba(${brand.tint},0.10)` : "transparent",
+                    color: "var(--text)",
+                  }}
                 >
                   <td className="p-3 text-center">{faNum(t.number)}</td>
                   <td className="p-3 text-center font-medium" dir="ltr">
@@ -292,7 +284,9 @@ function PublicJournal({ profile }: { profile: PublicProfile }) {
                   <td className="p-3 text-center" dir="ltr">{formatRatio(t.calc?.rrAchieved ?? t.rrAchieved)}</td>
                   <td className="p-3 text-center" dir="ltr">
                     <div className={pnlColorClass(pnl)}>{formatSignedUsd(pnl)}</div>
-                    <div className={`text-xs ${pnlColorClass(t.calc?.resultPct ?? null)}`}>{formatPct(t.calc?.resultPct ?? null)}</div>
+                    <div className={`text-xs ${pnlColorClass(t.calc?.resultPct ?? null)}`}>
+                      {formatPct(t.calc?.resultPct ?? null)}
+                    </div>
                   </td>
                   <td className="p-3 text-center">
                     <StatusDot status={t.status} pnl={pnl} exitType={t.exitType} />
@@ -311,17 +305,19 @@ function PublicJournal({ profile }: { profile: PublicProfile }) {
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={safePage <= 1}
             className="rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-40"
-            style={glass()}
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)" }}
           >
             قبلی
           </button>
-          <span className="px-2 text-sm text-muted">صفحهٔ {faNum(safePage)} از {faNum(totalPages)}</span>
+          <span className="px-2 text-sm" style={{ color: "var(--muted)" }}>
+            صفحهٔ {faNum(safePage)} از {faNum(totalPages)}
+          </span>
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={safePage >= totalPages}
             className="rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-40"
-            style={glass()}
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)" }}
           >
             بعدی
           </button>
@@ -363,23 +359,26 @@ function PublicTradeDetail({ trade, onClose }: { trade: Trade; onClose: () => vo
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4"
+      style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
       onClick={onClose}
       dir="rtl"
     >
       <div className="tj-card my-6 w-full max-w-3xl space-y-4 p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+        <div className="flex items-center justify-between gap-3 pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
           <div className="flex flex-wrap items-center gap-3">
             <StatusDot status={trade.status} pnl={pnl} exitType={trade.exitType} />
-            <div className="font-bold">
-              معامله #{faNum(trade.number)} <span dir="ltr" className="text-muted">{trade.symbol || ""}</span>
+            <div className="font-bold" style={{ color: "var(--text)" }}>
+              معامله #{faNum(trade.number)}{" "}
+              <span dir="ltr" style={{ color: "var(--muted)" }}>{trade.symbol || ""}</span>
             </div>
             <Badge tone="muted">حالت فقط‌خواندنی</Badge>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted transition hover:bg-surface-2"
+            className="rounded-lg px-3 py-1.5 text-sm"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--muted)" }}
           >
             بستن ✕
           </button>
