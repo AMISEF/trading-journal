@@ -9,10 +9,12 @@ re-opens without spending another API call; ``POST`` regenerates.
 Every user-facing ``POST`` passes through ``app.services.plans`` first, which is
 the single source of truth for the subscription quotas (per-trade analysis,
 coach cooldown, institutional-report cooldown). The free tier's per-trade quota
-is a *lifetime* one — one analysis for the whole account — so the number of
-already-analysed trades is counted here and handed to the gate. The ``/admin/*``
-variants deliberately skip those checks — an admin generating a report for a
-customer is not spending the customer's quota.
+is a *lifetime* one — one analysis for the whole account, plus one per five
+qualified referrals — so the number of already-analysed trades is counted here
+and handed to the gate. Coach runs are metered on ``users.ai_overall_runs``,
+incremented when the user starts their own job. The ``/admin/*`` variants
+deliberately skip both the checks and the meter — an admin generating a report
+for a customer is not spending the customer's quota.
 """
 
 from __future__ import annotations
@@ -79,7 +81,7 @@ async def _trade_analyses_used(db: AsyncSession, user_id: int) -> int:
     """How many of this user's trades already carry a stored AI analysis.
 
     This is the meter behind the free tier's «۱ تحلیل تک‌معامله» quota: one
-    analysis for the whole account, not one per trade.
+    analysis for the whole account (plus the referral bonus), not one per trade.
     """
     result = await db.execute(
         select(func.count())
@@ -159,7 +161,7 @@ async def generate_overall_analysis(
     db: AsyncSession = Depends(get_db),
 ) -> AIAnalysisOut:
     plans.assert_can_generate_coach(user)
-    return await _start_overall_job(db, user)
+    return await _start_overall_job(db, user, count_usage=True)
 
 
 @router.post("/overall/chat", response_model=AIAnalysisOut)
@@ -263,7 +265,8 @@ async def admin_generate_overall_analysis(
     target = await db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
-    return await _start_overall_job(db, target)
+    # Admin runs are on the house: they must not spend the customer's quota.
+    return await _start_overall_job(db, target, count_usage=False)
 
 
 @router.post("/admin/users/{user_id}/overall/chat", response_model=AIAnalysisOut)
@@ -430,7 +433,9 @@ async def _start_trade_job(db: AsyncSession, trade: Trade) -> AIAnalysisOut:
     return _trade_out(trade)
 
 
-async def _start_overall_job(db: AsyncSession, owner: User) -> AIAnalysisOut:
+async def _start_overall_job(
+    db: AsyncSession, owner: User, *, count_usage: bool = False
+) -> AIAnalysisOut:
     if not ai_analysis.is_enabled():
         raise HTTPException(
             status_code=503,
@@ -438,6 +443,9 @@ async def _start_overall_job(db: AsyncSession, owner: User) -> AIAnalysisOut:
         )
     owner.ai_overall_status = "PENDING"
     owner.ai_overall_error = None
+    if count_usage:
+        # The meter behind the free quota + the «دعوت دوستان» bonus runs.
+        owner.ai_overall_runs = int(getattr(owner, "ai_overall_runs", 0) or 0) + 1
     await db.commit()
     _spawn(_run_overall_job(owner.id))
     return _overall_out(owner)
