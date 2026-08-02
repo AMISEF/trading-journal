@@ -29,6 +29,7 @@ from app.api import (
     market,
     password,
     public,
+    referrals as referrals_router,
     service,
     settings as settings_router,
     templates,
@@ -140,4 +141,5 @@ app.include_router(exchanges_router.router)
 app.include_router(password.auth_router)
 app.include_router(password.settings_router)
 app.include_router(public.router)
+app.include_router(referrals_router.router)
 app.include_router(service.router)
