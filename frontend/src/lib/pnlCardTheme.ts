@@ -130,13 +130,19 @@ export const pctText = (v: number | null | undefined, digits = 1) =>
   v === null || v === undefined || Number.isNaN(v) ? "—" : `${v.toFixed(digits)}%`;
 export const signedPct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
 
-/** درصدها گاهی به‌صورت کسری (۰ تا ۱) می‌آیند؛ اینجا یکدست می‌شوند. */
+/** درصدهایی که به‌صورت کسری (۰ تا ۱) می‌آیند؛ فقط برای همین فیلدها. */
 export function asPercent(v: number | null | undefined): number | null {
   if (v === null || v === undefined || Number.isNaN(v)) return null;
   return Math.abs(v) <= 1.5 ? v * 100 : v;
 }
 
 /* آمارِ کارت */
+
+export interface EquityPoint {
+  balance: number;
+  pnl: number;
+  date: string | null;
+}
 
 export interface CardStats {
   pnlUsd: number;
@@ -159,6 +165,7 @@ export interface CardStats {
   trades: number;
   closed: number;
   equity: number[];
+  equityPoints: EquityPoint[];
   periodTitle: string;
   periodLabel: string;
 }
@@ -206,6 +213,12 @@ export function buildStats(data: DashboardData, period: CardPeriod): CardStats {
       ? (ds.shortWins / short) * 100
       : asPercent(ds.shortWinRate);
 
+  const points: EquityPoint[] = (data.equityCurve ?? []).map((p) => ({
+    balance: p.balance,
+    pnl: p.pnl,
+    date: p.date ?? null,
+  }));
+
   return {
     pnlUsd,
     pnlPct,
@@ -213,8 +226,9 @@ export function buildStats(data: DashboardData, period: CardPeriod): CardStats {
     winRate,
     avgRr: data.avgRr ?? 0,
     profitFactor: data.profitFactor ?? 0,
+    // بک‌اند درصد دراوداون را همین‌جوری (۰ تا ۱۰۰) می‌دهد — مقیاس نمی‌شود.
     ddUsd: Math.abs(data.maxDrawdown?.amount ?? 0),
-    ddPct: Math.abs(asPercent(data.maxDrawdown?.percent) ?? 0),
+    ddPct: Math.abs(data.maxDrawdown?.percent ?? 0),
     win,
     loss,
     be: wl.breakeven ?? 0,
@@ -226,7 +240,8 @@ export function buildStats(data: DashboardData, period: CardPeriod): CardStats {
     shortWr,
     trades: data.tradeCount ?? 0,
     closed: data.closedCount ?? 0,
-    equity: (data.equityCurve ?? []).map((p) => p.balance),
+    equity: points.map((p) => p.balance),
+    equityPoints: points,
     periodTitle: meta.title,
     periodLabel: meta.label,
   };
