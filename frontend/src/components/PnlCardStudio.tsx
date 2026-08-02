@@ -31,6 +31,7 @@ interface Props {
 }
 
 const FILE_BASE = "algohub-pnl";
+const TELEGRAM_SHARE = "https://" + "t.me/share/url";
 
 export function PnlCardStudio({ data, open, onClose, nameOverride }: Props) {
   const { user } = useAuth();
@@ -178,11 +179,8 @@ export function PnlCardStudio({ data, open, onClose, nameOverride }: Props) {
       } catch {
         /* متن کپی نشد */
       }
-      window.open(
-        `https://t.me/share/url?url=${encodeURIComponent(SITE_URL)}&text=${encodeURIComponent(body)}`,
-        "_blank",
-        "noopener",
-      );
+      const url = `${TELEGRAM_SHARE}?url=${encodeURIComponent(SITE_URL)}&text=${encodeURIComponent(body)}`;
+      window.open(url, "_blank", "noopener");
       flash("تصویر دانلود و متن کپی شد — در تلگرام تصویر را ضمیمه کنید.");
     });
 
