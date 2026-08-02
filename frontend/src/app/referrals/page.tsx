@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ReferralCodeEditor } from "@/components/ReferralCodeEditor";
 import { referralsApi } from "@/lib/api";
 import {
   fa,
@@ -205,6 +206,13 @@ function ReferralsView() {
                     کپی متن دعوت
                   </button>
                 </div>
+
+                {/* لینک اختصاصی (کد دلخواه) */}
+                <ReferralCodeEditor
+                  code={data.code}
+                  onSaved={(stats) => setData(stats)}
+                  onToast={flash}
+                />
               </div>
 
               {/* Live counters */}
@@ -349,7 +357,7 @@ function ReferralsView() {
                 لینک بالا مخصوص خودت است؛ در تلگرام، اینستاگرام یا هر جای دیگر به اشتراک بگذار.
               </Step>
               <Step n={2} title="دوستت ثبت‌نام می‌کند">
-                وقتی با لینک تو ثبت‌نام کند، اسمش در لیست بالا ظاهر می‌شود.
+                وقتی با لینک تو ثبت‌نام کند (یا کد تو را دستی وارد کند)، اسمش در لیست بالا ظاهر می‌شود.
               </Step>
               <Step n={3} title="۳ معامله ثبت کند">
                 بعد از ثبت ۳ معامله توسط او، دعوت معتبر می‌شود و جایزه‌های تو فعال می‌شوند.
@@ -531,6 +539,7 @@ const CSS = `
   padding:.65rem 1.05rem;font-size:.82rem;font-weight:700;transition:transform .15s ease,box-shadow .15s ease,opacity .15s}
 .tj-btn-primary{color:#04121f;background:linear-gradient(90deg,#7DD3FC,#C084FC);box-shadow:0 10px 26px -12px rgba(125,211,252,.9)}
 .tj-btn-primary:hover{transform:translateY(-1px)}
+.tj-btn-primary:disabled{opacity:.5;transform:none;box-shadow:none;cursor:not-allowed}
 .tj-btn-ghost{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06)}
 .tj-btn-ghost:hover{background:rgba(255,255,255,.12)}
 .tj-btn-tg{background:#229ED9;color:#fff}
