@@ -13,6 +13,12 @@ which exchange they came from:
      update in place instead of duplicating;
   5. reconstruct the entry ladder (پله‌ها) and partial take-profits.
 
+**Import window (سخت‌گیرانه).** Only positions that provably opened at or after
+the moment the user saved this exchange's API key (``ExchangeCredential.key_at``)
+are imported; a missing floor is stamped on the first sync. Positions whose date
+the exchange doesn't disclose are skipped rather than imported — undated rows
+used to slip through and land on today's date in the calendar.
+
 Differences from the Toobit worker:
 
 * credentials live in ``exchange_credentials`` (not ``users.toobit_*``);
@@ -52,6 +58,31 @@ POSITION_ID_MAX = 80
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """Normalise a datetime to UTC-aware (DB columns hand us naive values)."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _position_start(fields: dict) -> datetime | None:
+    return _aware(fields.get("open_date")) or _aware(fields.get("close_date"))
+
+
+def _is_new_position(fields: dict, key_floor: datetime | None) -> bool:
+    """True only when the position provably started at/after ``key_floor``.
+
+    Unknown dates return ``False``: importing something we cannot place in time
+    stamps it with today's date and pollutes the journal.
+    """
+    if key_floor is None:
+        return True
+    started = _position_start(fields)
+    if started is None:
+        return False
+    return started >= key_floor
 
 
 def _f(v) -> float | None:
@@ -101,12 +132,19 @@ def _dt(ms) -> datetime | None:
         return None
 
 
+def _as_dt(value) -> datetime | None:
+    """Adapters return either a datetime or an epoch — accept both."""
+    if isinstance(value, datetime):
+        return _aware(value)
+    return _dt(value)
+
+
 def _ts_dt(dt: datetime | None) -> float:
     if dt is None:
         return 0.0
     try:
-        return dt.timestamp()
-    except (ValueError, OverflowError, OSError):
+        return _aware(dt).timestamp()
+    except (ValueError, OverflowError, OSError, AttributeError):
         return 0.0
 
 
@@ -133,8 +171,7 @@ def _plain_fills(rows: list[dict]) -> list[dict]:
         price, qty = _f(r.get("price")), _f(r.get("qty"))
         raw_side = (r.get("side") or "").upper()
         side = "BUY" if raw_side.startswith("BUY") else "SELL" if raw_side.startswith("SELL") else ""
-        when = r.get("time")
-        when = when if isinstance(when, datetime) else _dt(when)
+        when = _as_dt(r.get("time"))
         if price is None or qty is None or qty <= 0 or price <= 0 or not side or when is None:
             continue
         out.append({"price": price, "qty": qty, "side": side, "ts": when})
@@ -252,8 +289,7 @@ def _fields_from_instance(
             continue
         if (h.get("side") or "LONG").upper() != direction:
             continue
-        cdt = h.get("closeTime")
-        cdt = cdt if isinstance(cdt, datetime) else _dt(cdt)
+        cdt = _as_dt(h.get("closeTime"))
         if cdt is None or cdt < lo or cdt > hi:
             continue
         matched.append(h)
@@ -320,8 +356,7 @@ def _fields_from_open(slug: str, p: dict) -> dict | None:
     notional = _f(p.get("positionValue"))
     if (margin is None or margin <= 0) and notional and lev:
         margin = notional / lev
-    open_dt = p.get("createTime")
-    open_dt = open_dt if isinstance(open_dt, datetime) else _dt(open_dt)
+    open_dt = _as_dt(p.get("createTime") or p.get("openTime") or p.get("ctime") or p.get("time"))
     return {
         "toobit_position_id": _pid(slug, f"open:{sym}:{side}"),
         "symbol": sym, "direction": side, "status": "OPEN",
@@ -342,15 +377,13 @@ def _fields_from_closed(slug: str, h: dict) -> dict | None:
     lev = _f(h.get("leverage"))
     notional = _f(h.get("closeValue")) or ((_f(h.get("maxPosition")) or 0.0) * entry)
     margin = notional / lev if (notional and lev) else None
-    open_dt = h.get("openTime")
-    close_dt = h.get("closeTime")
     return {
         "toobit_position_id": _pid(slug, f"hist:{pid}"),
         "symbol": sym, "direction": side, "status": "CLOSED",
         "entry_price": entry, "exit_price": exit_, "leverage": lev,
         "margin": margin, "realized_pnl": _f(h.get("realizedPnL")) or 0.0,
-        "open_date": open_dt if isinstance(open_dt, datetime) else _dt(open_dt),
-        "close_date": close_dt if isinstance(close_dt, datetime) else _dt(close_dt),
+        "open_date": _as_dt(h.get("openTime")),
+        "close_date": _as_dt(h.get("closeTime")),
     }
 
 
@@ -475,23 +508,49 @@ async def get_credential(db: AsyncSession, user_id: int, slug: str) -> ExchangeC
     return res.scalars().first()
 
 
+async def _key_floor_for(db: AsyncSession, credential: ExchangeCredential) -> datetime:
+    """The moment this key was registered — always defined.
+
+    A credential saved before ``key_at`` was recorded has no floor, which would
+    let the lookback window back-fill weeks of pre-registration history. In that
+    case we stamp *now* and persist it.
+    """
+    floor = _aware(getattr(credential, "key_at", None))
+    if floor is not None:
+        return floor
+    floor = _utcnow()
+    credential.key_at = floor
+    await db.commit()
+    logger.info(
+        "%s: stamped missing key_at for user %s at %s",
+        credential.exchange, credential.user_id, floor.isoformat(),
+    )
+    return floor
+
+
 async def sync_user_exchange(
     db: AsyncSession,
     user: User,
     credential: ExchangeCredential,
     client=None,
 ) -> int:
-    """Sync one (user, exchange) pair into the journal. Returns rows touched."""
+    """Sync one (user, exchange) pair into the journal. Returns rows touched.
+
+    Only positions opened at/after the key-registration moment are imported;
+    anything older — and anything undated — is skipped, and pre-floor rows left
+    behind by earlier versions are cleaned up.
+    """
     slug = credential.exchange
     meta = get_meta(slug)
     if meta is None or meta.legacy:
         return 0
     client = client or client_for_credential(credential)
 
-    key_floor = credential.key_at
+    key_floor = await _key_floor_for(db, credential)
     lookback_ms = int((_utcnow() - timedelta(days=settings.TOOBIT_LOOKBACK_DAYS)).timestamp() * 1000)
-    floor_ms = int(key_floor.timestamp() * 1000) if key_floor else None
-    since_ms = max(lookback_ms, floor_ms) if floor_ms else lookback_ms
+    floor_ms = int(key_floor.timestamp() * 1000)
+    # Never ask the exchange for anything older than the key floor.
+    since_ms = max(lookback_ms, floor_ms)
 
     touched = 0
     errors: list[str] = []
@@ -513,11 +572,17 @@ async def sync_user_exchange(
 
     produced: set[str] = set()
 
+    # Drop history rows that closed before the key floor: they belong to the
+    # pre-registration era and must neither be imported nor matched.
     hist_by_contract: dict[str, list[dict]] = {}
     for h in history:
         sym = h.get("symbol")
-        if sym:
-            hist_by_contract.setdefault(sym, []).append(h)
+        if not sym:
+            continue
+        closed_at = _as_dt(h.get("closeTime"))
+        if closed_at is not None and closed_at < key_floor:
+            continue
+        hist_by_contract.setdefault(sym, []).append(h)
 
     open_by_key: dict[tuple[str, str], dict] = {}
     lev_by_contract: dict[str, float] = {}
@@ -575,9 +640,11 @@ async def sync_user_exchange(
                 fields["exit_type"] = "LAST_TP"
             closed_fields.append(fields)
 
+    skipped_old = 0
     closed_fields.sort(key=lambda f: _ts_dt(f.get("open_date")))
     for fields in closed_fields:
-        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
+        if not _is_new_position(fields, key_floor):
+            skipped_old += 1
             continue
         try:
             await _upsert_trade(db, user, slug, fields)
@@ -590,7 +657,8 @@ async def sync_user_exchange(
             logger.exception("%s closed import failed", slug)
 
     for fields in open_by_key.values():
-        if key_floor and fields.get("open_date") and fields["open_date"] < key_floor:
+        if not _is_new_position(fields, key_floor):
+            skipped_old += 1
             continue
         try:
             await _upsert_trade(db, user, slug, fields)
@@ -602,18 +670,33 @@ async def sync_user_exchange(
             errors.append(f"{fields.get('symbol')}: {type(exc).__name__}: {exc}")
             logger.exception("%s open import failed", slug)
 
-    # Cleanup: drop unedited rows *of this exchange* that this pass didn't produce.
+    if skipped_old:
+        logger.info(
+            "%s: skipped %s position(s) older than the key floor for user %s",
+            slug, skipped_old, user.id,
+        )
+
+    # Cleanup (rows *of this exchange* only):
+    #   1) unedited rows that started before the key floor — pre-registration
+    #      trades imported by earlier versions;
+    #   2) unedited in-window rows this pass didn't produce (duplicates,
+    #      superseded ids, phantom open:* rows).
     try:
         existing = (await db.execute(
             select(Trade).where(Trade.user_id == user.id, Trade.source == slug)
         )).scalars().all()
         since_s = since_ms / 1000.0
+        floor_s = key_floor.timestamp()
         open_prefix = _pid(slug, "open:")[: len(slug) + 6]
         for t in existing:
-            if t.toobit_position_id in produced:
-                continue
             edited = (t.synced_at and t.updated_at and t.updated_at > t.synced_at + timedelta(seconds=5))
             if edited:
+                continue
+            started = _aware(t.open_date) or _aware(t.close_date)
+            if started is not None and started.timestamp() < floor_s:
+                await db.delete(t)  # pre-registration leftover
+                continue
+            if t.toobit_position_id in produced:
                 continue
             if t.open_date:
                 in_window = _ts_dt(t.open_date) >= since_s
