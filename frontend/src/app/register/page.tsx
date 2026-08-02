@@ -1,10 +1,17 @@
 "use client";
 
-/** Registration page. On success: store session + go to dashboard. */
-import { useState } from "react";
+/**
+ * Registration page. On success: store session + go to dashboard.
+ *
+ * دعوت دوستان: اگر کاربر با لینک ?ref=CODE آمده باشد، کد خوانده، در
+ * localStorage نگه داشته (تا رفتن و برگشتن به صفحه گمش نکند) و همراه
+ * ثبت‌نام به سرور فرستاده می‌شود.
+ */
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
+import { REF_KEY } from "@/lib/referrals";
 import { useAuth } from "@/store/auth";
 import { Button } from "@/components/ui";
 import { AuthLayout } from "@/components/AuthLayout";
@@ -21,8 +28,25 @@ export default function RegisterPage() {
     password: "",
     passwordConfirm: "",
   });
+  const [refCode, setRefCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Read ?ref= once on mount (window.location keeps this out of Suspense).
+  useEffect(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("ref");
+      const code = (fromUrl || window.localStorage.getItem(REF_KEY) || "")
+        .trim()
+        .toUpperCase();
+      if (code) {
+        setRefCode(code);
+        window.localStorage.setItem(REF_KEY, code);
+      }
+    } catch {
+      /* private mode / SSR guard */
+    }
+  }, []);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -40,8 +64,16 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const res = await authApi.register(form);
+      const res = await authApi.register({
+        ...form,
+        ...(refCode ? { referralCode: refCode } : {}),
+      });
       setSession(res.accessToken, res.user);
+      try {
+        window.localStorage.removeItem(REF_KEY);
+      } catch {
+        /* ignore */
+      }
       router.replace("/dashboard");
     } catch (err: any) {
       setError(err?.response?.data?.detail || "ثبت‌نام ناموفق بود.");
@@ -52,6 +84,23 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout title="ساخت حساب جدید">
+      {refCode && (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 backdrop-blur">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/20 text-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="8" width="18" height="4" rx="1" />
+              <path d="M12 8v13M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+              <path d="M12 8S9.5 3 7.5 3a2.5 2.5 0 0 0 0 5M12 8s2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" />
+            </svg>
+          </span>
+          <div className="text-xs leading-5">
+            <div className="font-bold">با لینک دعوت وارد شدی 🎉</div>
+            <div className="text-muted">
+              کد دعوت <span dir="ltr" className="font-mono text-primary">{refCode}</span> ثبت شد؛ بعد از ثبت ۳ معامله، جایزهٔ دعوت‌کننده‌ات فعال می‌شود.
+            </div>
+          </div>
+        </div>
+      )}
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
