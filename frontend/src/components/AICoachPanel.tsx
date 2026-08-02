@@ -4,11 +4,18 @@
  * AI trading-coach panel. Loads any cached analysis on mount, lets the user
  * (re)generate it, and renders the Markdown result. Reused for both per-trade
  * and whole-journal ("overall") analysis via the fetcher/generator props.
+ *
+ * Plan limits are enforced on the server. When it refuses (free tier used up
+ * its single trade analysis / single coach run, or a paid cooldown is still
+ * running) the message carries the `[UPGRADE]` marker, and this panel shows the
+ * «خرید اشتراک» call to action instead of a red error box.
  */
 import { useEffect, useRef, useState } from "react";
 import type { AIAnalysis, ChatMessage } from "@/lib/types";
 import { formatJalaliDateTime } from "@/lib/jalali";
 import { printReport } from "@/lib/markdown";
+import { isUpgradeError } from "@/lib/plans";
+import { UpgradeNotice } from "@/components/UpgradeNotice";
 
 interface Props {
   /** GET the cached analysis / job status. */
@@ -139,6 +146,7 @@ export function AICoachPanel({ fetcher, generator, title, subtitle, pdf, chat }:
   };
 
   const pending = status === "PENDING";
+  const locked = isUpgradeError(error);
 
   return (
     <div className="tj-card space-y-4 p-5">
@@ -170,7 +178,9 @@ export function AICoachPanel({ fetcher, generator, title, subtitle, pdf, chat }:
         </div>
       )}
 
-      {error && (
+      {error && locked && <UpgradeNotice message={error} />}
+
+      {error && !locked && (
         <div className="rounded-xl border border-loss/30 bg-loss/10 px-4 py-3 text-sm text-loss">
           {error}
         </div>
@@ -272,7 +282,12 @@ export function AICoachPanel({ fetcher, generator, title, subtitle, pdf, chat }:
             </div>
           )}
 
-          {chatError && <p className="text-xs text-loss">{chatError}</p>}
+          {chatError && isUpgradeError(chatError) && (
+            <UpgradeNotice message={chatError} compact />
+          )}
+          {chatError && !isUpgradeError(chatError) && (
+            <p className="text-xs text-loss">{chatError}</p>
+          )}
 
           <div className="flex items-end gap-2">
             <textarea
