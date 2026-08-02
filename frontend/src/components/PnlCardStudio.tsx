@@ -15,6 +15,7 @@ import {
   CARD_PERIODS,
   CARD_THEMES,
   aspectDef,
+  loadBrandLogo,
   renderPnlCard,
   shareCaption,
   SITE_URL,
@@ -59,16 +60,22 @@ export function PnlCardStudio({ data, open, onClose, nameOverride }: Props) {
     setTimeout(() => setToast(""), 3800);
   }, []);
 
+  /** پیش‌نیازهای رندر: فونت‌ها و لوگو. */
+  const prepare = useCallback(async () => {
+    try {
+      if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
+    } catch {
+      /* فونت آماده نشد — با فونتِ پیش‌فرض می‌کشیم */
+    }
+    return loadBrandLogo();
+  }, []);
+
   /** رندرِ پیش‌نمایش. */
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     const draw = async () => {
-      try {
-        if (typeof document !== "undefined" && document.fonts?.ready) await document.fonts.ready;
-      } catch {
-        /* فونت آماده نشد — با فونتِ پیش‌فرض می‌کشیم */
-      }
+      const logo = await prepare();
       if (cancelled || !canvasRef.current) return;
       renderPnlCard(canvasRef.current, data, {
         aspect,
@@ -78,17 +85,19 @@ export function PnlCardStudio({ data, open, onClose, nameOverride }: Props) {
         name: fullName,
         username,
         scale: 1,
+        logo,
       });
     };
     void draw();
     return () => {
       cancelled = true;
     };
-  }, [open, data, aspect, theme, period, showMargin, fullName, username]);
+  }, [open, data, aspect, theme, period, showMargin, fullName, username, prepare]);
 
   /** خروجی با کیفیت ۲ برابر. */
   const makeBlob = useCallback(
     async (aspectOverride?: CardAspect): Promise<Blob | null> => {
+      const logo = await prepare();
       const canvas = document.createElement("canvas");
       renderPnlCard(canvas, data, {
         aspect: aspectOverride ?? aspect,
@@ -98,10 +107,11 @@ export function PnlCardStudio({ data, open, onClose, nameOverride }: Props) {
         name: fullName,
         username,
         scale: 2,
+        logo,
       });
       return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png", 1));
     },
-    [data, aspect, theme, period, showMargin, fullName, username],
+    [data, aspect, theme, period, showMargin, fullName, username, prepare],
   );
 
   const fileName = (a: CardAspect) => `${FILE_BASE}-${period}-${a}.png`;
