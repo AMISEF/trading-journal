@@ -36,6 +36,12 @@ const TILE_W = 300;
 const TILE_H = 176;
 const GAP = 22;
 
+/** پنجرهٔ میانگین متحرک — دقیقاً همان MA(5) داشبورد. */
+const MA_WINDOW = 5;
+/** رنگِ سرمایه و میانگین متحرک در داشبورد (sky / rose). */
+const SITE_SKY = "#7DD3FC";
+const SITE_ROSE = "#F472B6";
+
 /* ابزارهای پایه */
 
 function hexA(hex: string, a: number): string {
@@ -517,34 +523,82 @@ function directionTile(ctx: Ctx, p: CardPalette, x: number, y: number, w: number
   });
 }
 
+/* منحنی سرمایه — همانِ نمودار داشبورد (MA پنج معاملهٔ اخیر) */
+
+function statBox(ctx: Ctx, p: CardPalette, x: number, y: number, w: number, h: number, label: string, value: string, color: string) {
+  ctx.save();
+  rr(ctx, x, y, w, h, 16);
+  ctx.fillStyle = hexA(color, 0.1);
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = hexA(color, 0.22);
+  ctx.stroke();
+  ctx.restore();
+  text(ctx, label, x + w / 2, y + 24, { size: 17, weight: 600, color: p.muted, align: "center", max: w - 18 });
+  text(ctx, value, x + w / 2, y + 50, { size: 24, weight: 800, color, align: "center", ltr: true, max: w - 18 });
+}
+
+function shortJalali(iso: string | null): string {
+  if (!iso) return "";
+  const jp = getJalaliParts(iso);
+  if (!jp) return iso;
+  return `${toPersianDigits(jp.day)} ${jp.monthName}`;
+}
+
 function equityTile(ctx: Ctx, p: CardPalette, x: number, y: number, w: number, h: number, s: CardStats) {
   panel(ctx, p, x, y, w, h, p.accent);
   const right = x + w - 28;
-  text(ctx, "منحنی سرمایه و میانگین متحرک", right, y + 44, { size: 24, weight: 800, color: p.text, max: w * 0.6 });
-  text(ctx, "Equity Curve + MA", x + 28, y + 44, { size: 19, weight: 600, color: p.muted, align: "left", ltr: true, max: w * 0.3 });
+  const equityColor = p.isDark ? SITE_SKY : p.accent;
+  const maColor = p.isDark ? SITE_ROSE : p.accent2;
 
-  const pts = s.equity.length >= 2 ? s.equity : [s.balance, s.balance];
-  const win = Math.max(3, Math.min(20, Math.round(pts.length / 6)));
-  const ma = pts.map((_, i) => {
-    const from = Math.max(0, i - win + 1);
-    const slice = pts.slice(from, i + 1);
+  text(ctx, "منحنی سرمایه و میانگین متحرک", right, y + 42, { size: 24, weight: 800, color: p.text, max: w * 0.55 });
+  text(ctx, "MA پنج معامله اخیر روی رشد حساب", right, y + 68, { size: 18, weight: 600, color: p.muted, max: w * 0.55 });
+  text(ctx, "Equity Curve + MA(5)", x + 28, y + 42, { size: 19, weight: 600, color: p.muted, align: "left", ltr: true, max: w * 0.3 });
+
+  const pts = s.equityPoints.length ? s.equityPoints : [{ balance: s.balance, pnl: 0, date: null }];
+  const bal = pts.map((q) => q.balance);
+  const ma = bal.map((_, i) => {
+    const from = Math.max(0, i - (MA_WINDOW - 1));
+    const slice = bal.slice(from, i + 1);
     return slice.reduce((a, b) => a + b, 0) / slice.length;
   });
 
-  const gx = x + 34;
-  const gy = y + 66;
-  const gw = w - 68;
-  const gh = h - 112;
-  const min = Math.min(...pts, ...ma);
-  const max = Math.max(...pts, ...ma);
-  const span = max - min || 1;
-  const px = (i: number) => gx + gw - (i / (pts.length - 1 || 1)) * gw;
-  const py = (v: number) => gy + gh - ((v - min) / span) * gh;
+  // سه آمارِ بالای نمودار — دقیقاً همان‌هایی که در داشبورد هست.
+  const cumulative = pts.reduce((a, q) => a + (q.pnl || 0), 0);
+  const lastBal = bal[bal.length - 1];
+  const lastMa = ma[ma.length - 1];
+  const gapFromMa = lastBal - lastMa;
+  const statH = 74;
+  const statY = y + 84;
+  const statGap = 14;
+  const statW = (w - 56 - statGap * 2) / 3;
+  const stats = [
+    { label: "سود تجمعی", value: signedUsd(cumulative), color: cumulative >= 0 ? p.profit : p.loss },
+    { label: "MA پنج معامله", value: usd(lastMa), color: maColor },
+    { label: "فاصله از MA", value: signedUsd(gapFromMa), color: gapFromMa >= 0 ? p.profit : p.loss },
+  ];
+  stats.forEach((st, i) => {
+    const sx = x + 28 + i * (statW + statGap);
+    statBox(ctx, p, sx, statY, statW, statH, st.label, st.value, st.color);
+  });
 
+  // محدودهٔ نمودار — محور مقدار سمت چپ، محور تاریخ پایین، قدیمی‌ترین در چپ.
+  const gx = x + 118;
+  const gw = w - 118 - 36;
+  const gy = statY + statH + 22;
+  const gh = Math.max(90, h - (gy - y) - 84);
+  const lo = Math.min(...bal, ...ma);
+  const hi = Math.max(...bal, ...ma);
+  const span = hi - lo || 1;
+  const n = bal.length;
+  const px = (i: number) => gx + (n > 1 ? (i / (n - 1)) * gw : gw / 2);
+  const py = (v: number) => gy + gh - ((v - lo) / span) * gh;
+
+  // خطوط راهنما و برچسبِ مقدار
   ctx.save();
-  ctx.strokeStyle = hexA(p.muted, 0.16);
+  ctx.strokeStyle = hexA(p.muted, 0.18);
   ctx.lineWidth = 1;
-  ctx.setLineDash([6, 8]);
+  ctx.setLineDash([4, 4]);
   for (let i = 0; i <= 3; i++) {
     const yy = gy + (gh / 3) * i;
     ctx.beginPath();
@@ -553,58 +607,84 @@ function equityTile(ctx: Ctx, p: CardPalette, x: number, y: number, w: number, h
     ctx.stroke();
   }
   ctx.restore();
+  for (let i = 0; i <= 3; i++) {
+    const value = hi - (span / 3) * i;
+    text(ctx, usd(value, 0), gx - 12, gy + (gh / 3) * i + 6, {
+      size: 16, weight: 600, color: p.muted, align: "right", ltr: true, max: 84,
+    });
+  }
 
-  const up = pts[pts.length - 1] >= pts[0];
-  const line = up ? p.profit : p.loss;
-
+  // ناحیهٔ زیر منحنی سرمایه
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(px(0), gy + gh);
-  pts.forEach((v, i) => ctx.lineTo(px(i), py(v)));
-  ctx.lineTo(px(pts.length - 1), gy + gh);
+  bal.forEach((v, i) => ctx.lineTo(px(i), py(v)));
+  ctx.lineTo(px(n - 1), gy + gh);
   ctx.closePath();
   const ag = ctx.createLinearGradient(0, gy, 0, gy + gh);
-  ag.addColorStop(0, hexA(line, 0.38));
-  ag.addColorStop(1, hexA(line, 0));
+  ag.addColorStop(0, hexA(equityColor, 0.4));
+  ag.addColorStop(0.55, hexA(equityColor, 0.12));
+  ag.addColorStop(1, hexA(equityColor, 0));
   ctx.fillStyle = ag;
   ctx.fill();
   ctx.restore();
 
+  // خطِ سرمایه
   ctx.save();
   ctx.beginPath();
-  pts.forEach((v, i) => (i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v))));
-  ctx.strokeStyle = line;
-  ctx.lineWidth = 4;
+  bal.forEach((v, i) => (i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v))));
+  ctx.strokeStyle = equityColor;
+  ctx.lineWidth = 3.5;
   ctx.lineJoin = "round";
-  ctx.shadowColor = hexA(line, 0.6);
-  ctx.shadowBlur = 16;
   ctx.stroke();
   ctx.restore();
 
+  // میانگین متحرک (خط پیوسته، همانند داشبورد)
   ctx.save();
   ctx.beginPath();
   ma.forEach((v, i) => (i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v))));
-  ctx.strokeStyle = hexA(p.accent2, 0.95);
-  ctx.lineWidth = 3;
-  ctx.setLineDash([12, 9]);
+  ctx.strokeStyle = maColor;
+  ctx.lineWidth = 2.6;
+  ctx.lineJoin = "round";
   ctx.stroke();
   ctx.restore();
 
+  // نقطهٔ آخر
   ctx.save();
   ctx.beginPath();
-  ctx.arc(px(pts.length - 1), py(pts[pts.length - 1]), 8, 0, Math.PI * 2);
-  ctx.fillStyle = line;
-  ctx.shadowColor = hexA(line, 0.9);
-  ctx.shadowBlur = 18;
+  ctx.arc(px(n - 1), py(lastBal), 7, 0, Math.PI * 2);
+  ctx.fillStyle = equityColor;
   ctx.fill();
   ctx.restore();
 
-  const legendY = y + h - 22;
-  const vw = text(ctx, usd(pts[pts.length - 1]), right, legendY, {
-    size: 21, weight: 800, color: line, ltr: true, align: "right", max: w * 0.3,
+  // برچسبِ تاریخ زیر نمودار
+  const labelCount = Math.min(5, n);
+  const seen = new Set<number>();
+  for (let k = 0; k < labelCount; k++) {
+    const idx = labelCount === 1 ? 0 : Math.round((k / (labelCount - 1)) * (n - 1));
+    if (seen.has(idx)) continue;
+    seen.add(idx);
+    const label = shortJalali(pts[idx]?.date ?? null);
+    if (!label) continue;
+    text(ctx, label, px(idx), gy + gh + 26, { size: 16, weight: 600, color: p.muted, align: "center", max: gw / labelCount - 8 });
+  }
+
+  // راهنمای رنگ‌ها
+  const ly = y + h - 22;
+  const items = [
+    { c: equityColor, t: "سرمایه" },
+    { c: maColor, t: "میانگین متحرک بالانس" },
+  ];
+  let lx = x + w / 2 - 150;
+  items.forEach((it) => {
+    ctx.save();
+    rr(ctx, lx, ly - 12, 22, 10, 5);
+    ctx.fillStyle = it.c;
+    ctx.fill();
+    ctx.restore();
+    const tw = text(ctx, it.t, lx + 30, ly - 2, { size: 18, weight: 600, color: p.muted, align: "left", max: 220 });
+    lx += 30 + tw + 34;
   });
-  text(ctx, "سرمایه", right - vw - 10, legendY, { size: 19, weight: 700, color: p.muted, max: w * 0.2 });
-  text(ctx, `MA(${win})`, x + 34, legendY, { size: 19, weight: 700, color: p.accent2, align: "left", ltr: true, max: w * 0.2 });
 }
 
 /* پانویس */
@@ -724,8 +804,9 @@ export function renderPnlCard(canvas: HTMLCanvasElement, data: DashboardData, op
       cols: 1,
       draw: (x, y, w, h) =>
         metricTile(ctx, p, x, y, w, h, {
+          // مقدار دلاری بالا و درصد زیرِ آن — دقیقاً مانند کارت داشبورد.
           label: "حداکثر دراوداون", icon: "🛡", color: p.loss,
-          value: `-${s.ddPct.toFixed(1)}%`, sub: usd(-s.ddUsd), subLtr: true,
+          value: usd(-s.ddUsd), sub: `${s.ddPct.toFixed(2)}%`, subLtr: true,
         }),
     },
     { cols: 2, draw: (x, y, w, h) => winLossTile(ctx, p, x, y, w, h, s) },
@@ -765,7 +846,7 @@ export function renderPnlCard(canvas: HTMLCanvasElement, data: DashboardData, op
   const footerH = 172;
   const footerY = H - PAD - footerH;
   const chartTop = ty + 4;
-  const chartH = Math.max(180, footerY - 20 - chartTop);
+  const chartH = Math.max(300, footerY - 20 - chartTop);
   equityTile(ctx, p, gridX, chartTop, gridW, chartH, s);
 
   footer(ctx, p, gridX, footerY, gridW, footerH, opts.logo);
