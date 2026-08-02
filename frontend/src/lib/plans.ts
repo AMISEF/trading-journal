@@ -7,6 +7,12 @@
  * exists so the interface can hide or lock what the API would refuse anyway,
  * instead of letting the user press a button that returns 403.
  *
+ * The free tier is a taste, not a trial: 20 journal entries, one single-trade
+ * analysis and one coach run — in total, forever. When the server refuses a
+ * second use it appends {@link UPGRADE_MARKER} to the message; {@link isUpgradeError}
+ * detects it and {@link upgradeMessage} strips it, so panels can swap the plain
+ * red error box for a «خرید اشتراک» button pointing at {@link SUBSCRIPTION_PATH}.
+ *
  * Billing periods live in the subscription page: the monthly price below is the
  * base, and 3/6/12-month periods apply the standing discount to it.
  */
@@ -14,16 +20,37 @@ import type { User } from "@/lib/types";
 
 export type Tier = "bronze" | "silver" | "gold" | "diamond";
 
+/** Where every upgrade call-to-action sends the user. */
+export const SUBSCRIPTION_PATH = "/subscription";
+
+/** Machine-readable flag the backend appends to plan-gate errors. */
+export const UPGRADE_MARKER = "[UPGRADE]";
+
+/** Did this error come from a subscription limit (rather than a real failure)? */
+export function isUpgradeError(message: string | null | undefined): boolean {
+  return !!message && message.includes(UPGRADE_MARKER);
+}
+
+/** The same message, with the internal marker removed. */
+export function upgradeMessage(message: string | null | undefined): string {
+  return (message ?? "").replace(UPGRADE_MARKER, "").trim();
+}
+
 export interface PlanLimits {
   /** null = unlimited */
   maxTrades: number | null;
   /** "once" = a trade may be analysed a single time, ever */
   tradeAnalysis: "once" | "unlimited";
+  /** Lifetime cap on single-trade analyses for the whole account; null = uncapped. */
+  tradeAnalysisQuota: number | null;
   coachEnabled: boolean;
   /** null = no cooldown (unlimited) */
   coachPeriodDays: number | null;
+  /** Lifetime cap on coach runs; null = uncapped. */
+  coachQuota: number | null;
   reportEnabled: boolean;
   reportPeriodDays: number | null;
+  reportQuota: number | null;
   toobit: boolean;
 }
 
@@ -54,22 +81,31 @@ export const PLANS: Plan[] = [
     tint: "251,146,60",
     hex: "#FB923C",
     monthlyPrice: 0,
-    tagline: "اولین ۱۰ معامله‌ات را حرفه‌ای ثبت کن و ببین ژورنال چه چیزی از تو رو می‌کند.",
+    tagline: "۲۰ معاملهٔ اولت را حرفه‌ای ثبت کن و یک بار طعم تحلیل هوش مصنوعی را بچش.",
     badge: null,
     buttonText: "شروع رایگان",
     features: [
-      "ثبت ۱۰ معامله با تمام جزئیات: ورود پله‌ای، حد ضرر، تارگت‌ها، تصویر چارت، چک‌لیست و احساسات",
-      "۱ تحلیل هوش مصنوعی روی هر معامله — کیفیت اجرای تو نمره می‌گیرد، نه سود و ضررت",
+      "ثبت ۲۰ معامله با تمام جزئیات: ورود پله‌ای، حد ضرر، تارگت‌ها، تصویر چارت، چک‌لیست و احساسات",
+      "۱ تحلیل تک‌معامله با هوش مصنوعی — یک بار روی یک معامله، برای آشنایی با کیفیت تحلیل",
+      "۱ بار مربی هوش مصنوعی روی کل ژورنال: نقاط قوت، نشتی‌های پول و برنامهٔ بهبود",
       "داشبورد کامل: وین‌ریت، فاکتور سود، R:R و منحنی رشد سرمایه",
+      "پس از این سقف، برای استفادهٔ بیشتر باید یکی از پلن‌های اشتراکی را تهیه کنی",
     ],
-    highlights: ["ثبت ۱۰ معامله", "۱ تحلیل هوش مصنوعی روی هر معامله", "داشبورد کامل و منحنی سرمایه"],
+    highlights: [
+      "ثبت ۲۰ معامله",
+      "۱ تحلیل تک‌معامله + ۱ بار مربی هوش مصنوعی",
+      "داشبورد کامل و منحنی سرمایه",
+    ],
     limits: {
-      maxTrades: 10,
+      maxTrades: 20,
       tradeAnalysis: "once",
-      coachEnabled: false,
+      tradeAnalysisQuota: 1,
+      coachEnabled: true,
       coachPeriodDays: null,
+      coachQuota: 1,
       reportEnabled: false,
       reportPeriodDays: null,
+      reportQuota: 0,
       toobit: false,
     },
   },
@@ -92,10 +128,13 @@ export const PLANS: Plan[] = [
     limits: {
       maxTrades: 100,
       tradeAnalysis: "unlimited",
+      tradeAnalysisQuota: null,
       coachEnabled: true,
       coachPeriodDays: 7,
+      coachQuota: null,
       reportEnabled: false,
       reportPeriodDays: null,
+      reportQuota: 0,
       toobit: false,
     },
   },
@@ -119,10 +158,13 @@ export const PLANS: Plan[] = [
     limits: {
       maxTrades: null,
       tradeAnalysis: "unlimited",
+      tradeAnalysisQuota: null,
       coachEnabled: true,
       coachPeriodDays: 1,
+      coachQuota: null,
       reportEnabled: true,
       reportPeriodDays: 7,
+      reportQuota: null,
       toobit: false,
     },
   },
@@ -151,10 +193,13 @@ export const PLANS: Plan[] = [
     limits: {
       maxTrades: null,
       tradeAnalysis: "unlimited",
+      tradeAnalysisQuota: null,
       coachEnabled: true,
       coachPeriodDays: null,
+      coachQuota: null,
       reportEnabled: true,
       reportPeriodDays: null,
+      reportQuota: null,
       toobit: true,
     },
   },
@@ -197,8 +242,13 @@ export function limitsOf(user: User | null | undefined): PlanLimits {
 }
 
 /** Human cadence for a feature, e.g. «هر روز ۱ بار» / «نامحدود». */
-export function cadenceLabel(enabled: boolean, periodDays: number | null): string {
-  if (!enabled) return "در این پلن فعال نیست";
+export function cadenceLabel(
+  enabled: boolean,
+  periodDays: number | null,
+  quota: number | null = null
+): string {
+  if (!enabled || quota === 0) return "در این پلن فعال نیست";
+  if (quota !== null) return quota === 1 ? "فقط ۱ بار (رایگان)" : `فقط ${quota} بار (رایگان)`;
   if (periodDays === null) return "نامحدود";
   if (periodDays === 1) return "روزی ۱ بار";
   if (periodDays === 7) return "هفته‌ای ۱ بار";
