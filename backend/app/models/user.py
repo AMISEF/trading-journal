@@ -7,6 +7,8 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
+    Integer,
     String,
     Text,
     false,
@@ -83,7 +85,7 @@ class User(Base):
     wallet_margin: Mapped[float] = mapped_column(Float, default=1000.0)
 
     # عضویتِ گروه‌های نمایشی — چندگانه. مقدارِ خامِ ستون یک لیستِ کاما-جدا است
-    # («CRYPTOSMART_TEAM», «LIVE_TRADE», یا «CRYPTOSMART_TEAM,LIVE_TRADE»)، پس
+    # («CRYPTOSMART_TEAM»، «LIVE_TRADE»، یا «CRYPTOSMART_TEAM,LIVE_TRADE»)، پس
     # یک کاربر می‌تواند هم‌زمان عضوِ تیم کریپتو اسمارت و لایو ترید باشد.
     # نامِ ستون در دیتابیس همان user_group است تا هیچ مهاجرتی لازم نشود.
     user_group_raw: Mapped[str | None] = mapped_column(
@@ -128,6 +130,9 @@ class User(Base):
     # Background-job state: None | "PENDING" | "DONE" | "ERROR".
     ai_overall_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ai_overall_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How many coach runs this account has spent (the free tier + referral
+    # bonuses are counted against this, so one stored result is not enough).
+    ai_overall_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Cached institutional due-diligence report (Markdown) + its job state.
     ai_report: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -156,6 +161,23 @@ class User(Base):
     # Subscription
     subscription_tier: Mapped[str] = mapped_column(String(20), default="bronze")
     subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # ------------------------------------------------------------------
+    # دعوت دوستان (رفرال) — جزئیات در app/services/referrals.py
+    # ------------------------------------------------------------------
+    # کدِ یکتای دعوت؛ در اولین بازدید از صفحهٔ دعوت دوستان ساخته می‌شود.
+    referral_code: Mapped[str | None] = mapped_column(
+        String(16), unique=True, index=True, nullable=True
+    )
+    # دعوت‌کنندهٔ این کاربر (اگر با لینک دعوت ثبت‌نام کرده باشد).
+    referred_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # شمارشگرهای دنرمال‌شده تا پلن‌ها بدون کوئری اضافه به سهمیهٔ جایزه دسترسی داشته باشند.
+    referral_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    referral_qualified: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # پلکان‌هایی که جایزه‌شان پرداخت شده (مثلاً ["silver", "gold"]).
+    referral_rewards: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
