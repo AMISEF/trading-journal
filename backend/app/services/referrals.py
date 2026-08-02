@@ -2,9 +2,10 @@
 
 Rules, exactly as sold on the «دعوت دوستان» page:
 
-* Every user owns a permanent invite code and a link
-  ``<site>/register?ref=<code>``. The code is minted lazily the first time the
-  page (or the API) is touched, so old accounts get one automatically.
+* Every user owns an invite code and a link ``<site>/register?ref=<code>``. The
+  code is minted lazily the first time the page (or the API) is touched, so old
+  accounts get one automatically — and the user may replace the random code
+  with a personal one (e.g. ``Cryptosmart``) via :func:`set_code`.
 * A friend *counts* as soon as they register with the link, but only becomes
   **qualified** once they have logged :data:`QUALIFY_TRADES` journal entries.
   Only qualified friends pay out.
@@ -18,6 +19,10 @@ Rules, exactly as sold on the «دعوت دوستان» page:
   :func:`app.services.plans.referral_bonus`, which reads the denormalised
   ``users.referral_qualified`` counter this module maintains.
 
+Codes are stored with the casing the user chose but matched
+case-insensitively, so ``/register?ref=cryptosmart`` and ``?ref=CRYPTOSMART``
+both land on the same inviter.
+
 Granting a reward never *downgrades* anybody: if the user is already on a
 higher tier the reward extends what they have (or is skipped when their current
 plan has no expiry, i.e. it is unlimited).
@@ -25,6 +30,7 @@ plan has no expiry, i.e. it is unlimited).
 
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -74,6 +80,31 @@ MILESTONES: list[dict] = [
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _CODE_LEN = 8
 
+# Custom (user-chosen) codes.
+CODE_MIN = 3
+CODE_MAX = 16
+_CODE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_RESERVED = {
+    "ADMIN",
+    "ADMINISTRATOR",
+    "API",
+    "LOGIN",
+    "LOGOUT",
+    "NONE",
+    "NULL",
+    "REFERRAL",
+    "REFERRALS",
+    "REGISTER",
+    "ROOT",
+    "SUPPORT",
+    "SYSTEM",
+    "UNDEFINED",
+}
+
+
+class CodeError(ValueError):
+    """A user-chosen invite code was rejected (message is Persian, user-facing)."""
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -88,8 +119,12 @@ def _aware(value: datetime | None) -> datetime | None:
 # ---------------------------------------------------------------------------
 # Codes
 # ---------------------------------------------------------------------------
-async def _code_taken(db: AsyncSession, code: str) -> bool:
-    result = await db.execute(select(User.id).where(User.referral_code == code))
+async def _code_taken(db: AsyncSession, code: str, exclude_user_id: int | None = None) -> bool:
+    """Is this code already in use (ignoring letter case)?"""
+    stmt = select(User.id).where(func.upper(User.referral_code) == code.upper())
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != exclude_user_id)
+    result = await db.execute(stmt)
     return result.scalars().first() is not None
 
 
@@ -106,17 +141,93 @@ async def ensure_code(db: AsyncSession, user: User) -> str:
             return code
     # Astronomically unlikely; fall back to something guaranteed unique.
     code = f"U{user.id}{secrets.choice(_ALPHABET)}{secrets.choice(_ALPHABET)}"
-    user.referral_code = code[:16]
+    user.referral_code = code[:CODE_MAX]
     await db.commit()
     await db.refresh(user)
     return user.referral_code
 
 
+async def set_code(db: AsyncSession, user: User, raw: str | None) -> str:
+    """Replace the random code with a personal one, e.g. ``Cryptosmart``.
+
+    The chosen casing is kept for display; uniqueness is checked without regard
+    to case so nobody can shadow an existing link. Raises :class:`CodeError`
+    with a ready-to-show Persian message when the code is not acceptable.
+    """
+    code = (raw or "").strip()
+    # Persian/Arabic digits typed by mistake → ASCII.
+    for i, digit in enumerate("0123456789"):
+        code = code.replace("۰۱۲۳۴۵۶۷۸۹"[i], digit)
+        code = code.replace("٠١٢٣٤٥٦٧٨٩"[i], digit)
+
+    if not code:
+        raise CodeError("کد دعوت را وارد کنید.")
+    if len(code) < CODE_MIN or len(code) > CODE_MAX:
+        raise CodeError(
+            f"کد دعوت باید بین {CODE_MIN} تا {CODE_MAX} کاراکتر باشد."
+        )
+    if not _CODE_RE.match(code):
+        raise CodeError(
+            "کد دعوت فقط می‌تواند شامل حروف انگلیسی، عدد، خط تیره (-) و زیرخط (_) باشد."
+        )
+    if code.upper() in _RESERVED:
+        raise CodeError("این کد رزرو شده است؛ یک کد دیگر انتخاب کنید.")
+
+    # No change (same code, maybe different casing) → just persist the casing.
+    if user.referral_code and user.referral_code.upper() == code.upper():
+        if user.referral_code != code:
+            user.referral_code = code
+            await db.commit()
+            await db.refresh(user)
+        return user.referral_code
+
+    if await _code_taken(db, code, exclude_user_id=user.id):
+        raise CodeError("این کد قبلاً توسط کاربر دیگری گرفته شده است.")
+
+    user.referral_code = code
+    try:
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001 - unique index race
+        await db.rollback()
+        raise CodeError("این کد قبلاً گرفته شده است؛ یک کد دیگر امتحان کنید.") from exc
+    await db.refresh(user)
+    return user.referral_code
+
+
+async def code_available(db: AsyncSession, user: User, raw: str | None) -> dict:
+    """Live check for the «لینک اختصاصی» input: is this code usable?"""
+    code = (raw or "").strip()
+    if not code:
+        return {"code": code, "available": False, "reason": "کد دعوت را وارد کنید."}
+    if len(code) < CODE_MIN or len(code) > CODE_MAX:
+        return {
+            "code": code,
+            "available": False,
+            "reason": f"طول کد باید بین {CODE_MIN} تا {CODE_MAX} کاراکتر باشد.",
+        }
+    if not _CODE_RE.match(code):
+        return {
+            "code": code,
+            "available": False,
+            "reason": "فقط حروف انگلیسی، عدد، - و _ مجاز است.",
+        }
+    if code.upper() in _RESERVED:
+        return {"code": code, "available": False, "reason": "این کد رزرو شده است."}
+    if user.referral_code and user.referral_code.upper() == code.upper():
+        return {"code": code, "available": True, "reason": "کد فعلی خودت است."}
+    if await _code_taken(db, code, exclude_user_id=user.id):
+        return {"code": code, "available": False, "reason": "این کد گرفته شده است."}
+    return {"code": code, "available": True, "reason": "این کد آزاد است ✓"}
+
+
 async def find_by_code(db: AsyncSession, code: str | None) -> User | None:
-    code = (code or "").strip().upper()
+    """Resolve an invite code to its owner, ignoring letter case."""
+    code = (code or "").strip()
     if not code:
         return None
-    result = await db.execute(select(User).where(User.referral_code == code))
+    result = await db.execute(
+        select(User).where(func.upper(User.referral_code) == code.upper())
+    )
     return result.scalars().first()
 
 
@@ -312,6 +423,8 @@ async def stats(db: AsyncSession, user: User) -> dict:
 
     return {
         "code": code,
+        "codeMin": CODE_MIN,
+        "codeMax": CODE_MAX,
         "total": state["total"],
         "qualified": qualified,
         "pending": max(0, state["total"] - qualified),
