@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button, Spinner } from "@/components/ui";
 import { DashboardView } from "@/components/DashboardView";
+import { PnlCardStudio } from "@/components/PnlCardStudio";
 import { dashboardApi, tradesApi, publicApi } from "@/lib/api";
 import type { DashboardData, Trade } from "@/lib/types";
 import { DemoTradesPanel } from "@/components/DemoTradesPanel";
@@ -25,7 +26,7 @@ const TINTS = {
   sky: "125,211,252",
 } as const;
 
-// ─── Main dashboard ───────────────────────────────────────────────────────────
+// ─── Main dashboard ────────────────────────────────────────────────────
 
 const DEMO_KEY = "tj_demo_on";
 
@@ -72,6 +73,9 @@ function DashboardInner() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // ── استودیوی ساخت تصویر برایند ──
+  const [studioOpen, setStudioOpen] = useState(false);
 
   // ── Demo mode: render a sample showcase journal read-only (name never shown) ──
   const [demoOn, setDemoOn] = useState(false);
@@ -182,6 +186,17 @@ function DashboardInner() {
                   {demoBusy ? "در حال بارگذاری…" : "🎬 ایجاد دمو"}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setStudioOpen(true)}
+                className="rounded-xl px-4 py-2 text-sm font-extrabold text-[#2a1200] transition-all hover:-translate-y-0.5 active:scale-95"
+                style={{
+                  background: "linear-gradient(120deg, rgb(251,191,36), rgb(244,114,182))",
+                  boxShadow: "0 12px 28px -12px rgba(251,146,60,0.9)",
+                }}
+              >
+                🖼️ ساخت تصویر برایند
+              </button>
               {!demoOn && (
                 <Button onClick={createTrade} disabled={creating}>
                   {creating ? "در حال ساخت…" : "+ ثبت معامله جدید"}
@@ -189,6 +204,14 @@ function DashboardInner() {
               )}
             </div>
           </div>
+
+          {/* ── استودیوی تصویر برایند ── */}
+          <PnlCardStudio
+            data={data}
+            open={studioOpen}
+            onClose={() => setStudioOpen(false)}
+            nameOverride={demoOn ? "حساب دموی الگو هاب" : undefined}
+          />
 
           {/* ── Demo banner ── */}
           {demoOn && (
