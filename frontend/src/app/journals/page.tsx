@@ -10,6 +10,11 @@
  * Ourbit / WEEX): the row (or card) takes that exchange's brand wash and a
  * matching tag sits next to the symbol, so the origin of every trade is obvious
  * at a glance.
+ *
+ * Plan limits: the free (bronze) plan allows 20 journals. When the backend
+ * refuses a new trade because of that cap, the 403 message carries the upgrade
+ * marker and we render <UpgradeNotice> — a card with a "خرید اشتراک" button that
+ * routes to /subscription — instead of a plain red error line.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,6 +23,8 @@ import { Badge, Button, Paginator, Spinner, StatusDot, usePagination } from "@/c
 import { exportUrl, tradesApi, publicApi } from "@/lib/api";
 import { brandOf } from "@/lib/exchanges";
 import { ExchangeTag } from "@/components/ExchangeLogo";
+import { UpgradeNotice } from "@/components/UpgradeNotice";
+import { isUpgradeError } from "@/lib/plans";
 import { useAuth } from "@/store/auth";
 import { DemoTradesPanel } from "@/components/DemoTradesPanel";
 import type { Trade, TradeStatus } from "@/lib/types";
@@ -81,6 +88,12 @@ function tagColorClass(tag: string, colorMap: Map<string, number>): string {
   let h = 0;
   for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) & 0xffffffff;
   return TAG_BG[Math.abs(h) % TAG_BG.length];
+}
+
+/** Error text of an axios-style failure, falling back to a Persian default. */
+function errorText(e: any, fallback: string): string {
+  const detail = e?.response?.data?.detail;
+  return typeof detail === "string" && detail.trim() ? detail : fallback;
 }
 
 export default function JournalsPage() {
@@ -148,12 +161,16 @@ function JournalsInner() {
 
   const createTrade = async () => {
     setCreating(true);
+    setError("");
     try {
       const t = await tradesApi.create();
       router.push(`/journals/${t.id}`);
-    } catch {
-      setError("ساخت معامله جدید ناموفق بود.");
+    } catch (e: any) {
+      // A 403 here is usually the free-plan journal cap; its message carries the
+      // upgrade marker so we can show the buy-subscription card.
+      setError(errorText(e, "ساخت معامله جدید ناموفق بود."));
       setCreating(false);
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -304,7 +321,8 @@ function JournalsInner() {
     );
   }
 
-  if (error) return <p className="text-loss">{error}</p>;
+  if (error && !trades)
+    return isUpgradeError(error) ? <UpgradeNotice message={error} /> : <p className="text-loss">{error}</p>;
   if (!trades) return <Spinner label="در حال بارگذاری ژورنال‌ها…" />;
 
   return (
@@ -345,6 +363,14 @@ function JournalsInner() {
           </Button>
         </div>
       </div>
+
+      {/* Plan limit / error banner */}
+      {error &&
+        (isUpgradeError(error) ? (
+          <UpgradeNotice message={error} />
+        ) : (
+          <p className="text-loss">{error}</p>
+        ))}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-end gap-3 rounded-3xl p-4" style={glassStyle()}>
