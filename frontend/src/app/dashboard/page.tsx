@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button, Spinner } from "@/components/ui";
 import { DashboardView } from "@/components/DashboardView";
 import { PnlCardStudio } from "@/components/PnlCardStudio";
+import { ShareTradesModal } from "@/components/ShareTradesModal";
 import { dashboardApi, tradesApi, publicApi } from "@/lib/api";
 import type { DashboardData, Trade } from "@/lib/types";
 import { DemoTradesPanel } from "@/components/DemoTradesPanel";
@@ -26,7 +27,7 @@ const TINTS = {
   sky: "125,211,252",
 } as const;
 
-// ─── Main dashboard ────────────────────────────────────────────────────
+// ─── Main dashboard ────────────────────────────────────────────
 
 const DEMO_KEY = "tj_demo_on";
 
@@ -68,6 +69,18 @@ function JalaliClock() {
   );
 }
 
+/** آیکون اشتراک‌گذاری (سه گرهٔ متصل). */
+export function ShareGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+    </svg>
+  );
+}
+
 function DashboardInner() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
@@ -76,6 +89,8 @@ function DashboardInner() {
 
   // ── استودیوی ساخت تصویر برایند ──
   const [studioOpen, setStudioOpen] = useState(false);
+  // ── اشتراک‌گذاری معاملات (کارنامهٔ عمومی) ──
+  const [shareOpen, setShareOpen] = useState(false);
 
   // ── Demo mode: render a sample showcase journal read-only (name never shown) ──
   const [demoOn, setDemoOn] = useState(false);
@@ -188,6 +203,18 @@ function DashboardInner() {
               )}
               <button
                 type="button"
+                onClick={() => setShareOpen(true)}
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-extrabold text-[#06121f] transition-all hover:-translate-y-0.5 active:scale-95"
+                style={{
+                  background: "linear-gradient(120deg, rgb(103,232,249), rgb(52,211,153))",
+                  boxShadow: "0 12px 28px -12px rgba(103,232,249,0.9)",
+                }}
+              >
+                <ShareGlyph />
+                اشتراک‌گذاری معاملات
+              </button>
+              <button
+                type="button"
                 onClick={() => setStudioOpen(true)}
                 className="rounded-xl px-4 py-2 text-sm font-extrabold text-[#2a1200] transition-all hover:-translate-y-0.5 active:scale-95"
                 style={{
@@ -212,6 +239,9 @@ function DashboardInner() {
             onClose={() => setStudioOpen(false)}
             nameOverride={demoOn ? "حساب دموی الگو هاب" : undefined}
           />
+
+          {/* ── کارنامهٔ عمومی / اشتراک‌گذاری معاملات ── */}
+          <ShareTradesModal open={shareOpen} onClose={() => setShareOpen(false)} />
 
           {/* ── Demo banner ── */}
           {demoOn && (
