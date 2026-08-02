@@ -5,7 +5,7 @@
  * working on every domain the journal is served from (and under the /journal
  * basePath).
  */
-import { BASE_PATH } from "./api";
+import http, { BASE_PATH } from "./api";
 
 export interface ReferralFriend {
   id: number;
@@ -44,6 +44,9 @@ export interface ReferralAiBonus {
 
 export interface ReferralStats {
   code: string;
+  /** حداقل/حداکثر طول کدِ دلخواه (از سرور). */
+  codeMin?: number;
+  codeMax?: number;
   total: number;
   qualified: number;
   pending: number;
@@ -54,6 +57,33 @@ export interface ReferralStats {
   planLabel: string;
   planExpiresAt: string | null;
   aiBonus: ReferralAiBonus;
+}
+
+export interface ReferralCodeCheck {
+  code: string;
+  available: boolean;
+  reason: string;
+}
+
+/** حداقل و حداکثر طول کدِ اختصاصی (هم‌تراز با بک‌اند). */
+export const CODE_MIN = 3;
+export const CODE_MAX = 16;
+
+/** فقط حروف انگلیسی، عدد، خط تیره و زیرخط. */
+export function sanitizeCode(raw: string): string {
+  return (raw || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, CODE_MAX);
+}
+
+/** ثبت کدِ اختصاصی (مثلاً Cryptosmart) → آمار به‌روزشده. */
+export function saveCode(code: string): Promise<ReferralStats> {
+  return http.put<ReferralStats>("/referrals/code", { code }).then((r) => r.data);
+}
+
+/** بررسی زندهٔ آزاد بودن کد، هنگام تایپ. */
+export function checkCode(code: string): Promise<ReferralCodeCheck> {
+  return http
+    .get<ReferralCodeCheck>("/referrals/code/check", { params: { code } })
+    .then((r) => r.data);
 }
 
 /** Where a new friend lands: <origin><basePath>/register?ref=CODE */
