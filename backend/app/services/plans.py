@@ -8,6 +8,8 @@ user is treated as bronze regardless of the stored tier (their paid period
 ended and nobody demoted them yet). Only admins change these fields — via
 ``POST /api/admin/users/{id}/set-plan`` or the Telegram admin bot — there is no
 self-service upgrade endpoint (payment is handled manually / off-platform).
+The one exception is the referral program (``app.services.referrals``), which
+grants 14-day tiers automatically when an invite milestone is reached.
 
 The four tiers, as sold on the pricing page:
 
@@ -24,6 +26,11 @@ The free tier is a *taste*, not a trial with a clock: 20 journal entries, one
 single-trade analysis and one coach run — ever. The second attempt is refused
 with an upgrade message, and the interface turns that into a «خرید اشتراک»
 button pointing at the subscription page.
+
+On top of the table, the referral program tops up the *countable* quotas: every
+:data:`app.services.referrals.AI_BONUS_STEP` qualified invites add one coach run
+and one single-trade analysis (see :func:`referral_bonus`). Bonuses only touch
+quotas that are actually numbers — an unlimited tier stays unlimited.
 
 Semantics of the limit keys:
 
@@ -68,6 +75,11 @@ UPGRADE_MARKER = "[UPGRADE]"
 FREE_TRADES = 20
 FREE_TRADE_ANALYSES = 1
 FREE_COACH_RUNS = 1
+
+# Every N qualified referrals grant +1 coach run and +1 single-trade analysis.
+# Kept here (not imported from referrals) to avoid a circular import; the
+# referral module re-exports the same number as AI_BONUS_STEP.
+REFERRAL_AI_BONUS_STEP = 5
 
 PLAN_LIMITS: dict[str, dict] = {
     # رایگان: ثبت ۲۰ معامله، فقط ۱ تحلیل تک‌معامله و ۱ بار مربی هوش مصنوعی.
@@ -143,8 +155,33 @@ def effective_plan(user: User) -> str:
     return tier
 
 
+def referral_bonus(user: User) -> int:
+    """Extra AI runs earned by inviting friends: one per 5 qualified invites.
+
+    A friend is *qualified* once they have recorded three journal entries; the
+    counter is maintained by ``app.services.referrals``.
+    """
+    qualified = int(getattr(user, "referral_qualified", 0) or 0)
+    if qualified <= 0:
+        return 0
+    return qualified // REFERRAL_AI_BONUS_STEP
+
+
+# Quotas that the referral bonus tops up (only when they are real numbers —
+# an unlimited quota stays unlimited).
+_BONUS_KEYS = ("trade_analysis_quota", "coach_quota")
+
+
 def limits_for(user: User) -> dict:
-    return PLAN_LIMITS[effective_plan(user)]
+    """The active tier's limits, with the referral bonus already applied."""
+    limits = dict(PLAN_LIMITS[effective_plan(user)])
+    bonus = referral_bonus(user)
+    if bonus:
+        for key in _BONUS_KEYS:
+            value = limits.get(key)
+            if value is not None:
+                limits[key] = value + bonus
+    return limits
 
 
 def is_free(user: User) -> bool:
@@ -159,6 +196,15 @@ def plan_duration(months: float) -> timedelta:
 def _upgrade_error(message: str) -> HTTPException:
     """403 with the upgrade marker appended (see the module docstring)."""
     return HTTPException(status_code=403, detail=f"{message} {UPGRADE_MARKER}")
+
+
+def _invite_hint(user: User) -> str:
+    """Nudge towards the free way out: invite friends instead of paying."""
+    if not is_free(user):
+        return ""
+    return (
+        " یا از بخش «دعوت دوستان» دوستانت رو دعوت کن تا رایگان اعتبار بگیری."
+    )
 
 
 def assert_can_create_trade(user: User, current_trade_count: int) -> None:
@@ -180,8 +226,9 @@ def assert_can_analyze_trade(user: User, trade=None, used_count: int = 0) -> Non
 
     ``used_count`` is how many trades of this user already carry a stored
     analysis — that is what enforces the free tier's *lifetime* quota of one
-    single-trade analysis for the whole account. On the free tier re-running an
-    already analysed trade also counts as a second use and is refused.
+    single-trade analysis for the whole account (plus any referral bonus). On
+    the free tier re-running an already analysed trade also counts as a second
+    use and is refused.
     """
     lim = limits_for(user)
     if not lim["trade_analysis"]:
@@ -193,8 +240,8 @@ def assert_can_analyze_trade(user: User, trade=None, used_count: int = 0) -> Non
     quota = lim.get("trade_analysis_quota")
     if quota is not None and used_count >= quota:
         raise _upgrade_error(
-            f"در پلن رایگان فقط {quota} تحلیل تک‌معامله در دسترس است و از آن استفاده کرده‌ای. "
-            "برای استفادهٔ بیشتر از تحلیل هوش مصنوعی لازم است اشتراک تهیه کنی."
+            f"سهمیهٔ تحلیل تک‌معامله ({quota} تحلیل) تمام شده است. "
+            "برای استفادهٔ بیشتر اشتراک تهیه کن" + _invite_hint(user)
         )
 
     if lim.get("trade_analysis_once") and trade is not None and getattr(trade, "ai_analysis", None):
@@ -220,11 +267,11 @@ def _assert_cooldown(
             "برای دسترسی، اشتراک تهیه کن."
         )
 
-    # Lifetime quota (free tier): a fixed number of runs, ever.
+    # Lifetime quota (free tier + referral bonus): a fixed number of runs, ever.
     if quota is not None and used_count >= quota:
         raise _upgrade_error(
-            f"در پلن رایگان فقط {quota} بار {feature_label} در دسترس است و از آن استفاده کرده‌ای. "
-            "برای استفادهٔ بیشتر لازم است اشتراک تهیه کنی."
+            f"سهمیهٔ {feature_label} ({quota} بار) تمام شده است. "
+            "برای استفادهٔ بیشتر اشتراک تهیه کن" + _invite_hint(user)
         )
 
     # period_days is None on the unlimited tiers — no cooldown at all.
@@ -245,9 +292,13 @@ def _assert_cooldown(
 def coach_used_count(user: User) -> int:
     """How many times the journal-wide coach produced a result for this user.
 
-    There is no dedicated counter column; a stored result (or its timestamp) is
-    proof of one use, which is exactly what the free tier's quota of one needs.
+    ``users.ai_overall_runs`` is the real meter (it keeps counting past the
+    first run, which the referral bonus needs). Accounts that ran the coach
+    before that column existed still have a stored result, so fall back to it.
     """
+    runs = int(getattr(user, "ai_overall_runs", 0) or 0)
+    if runs:
+        return runs
     return 1 if (user.ai_overall_at or user.ai_overall) else 0
 
 
