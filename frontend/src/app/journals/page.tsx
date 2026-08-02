@@ -1,20 +1,10 @@
 "use client";
 
 /**
- * Journal list (/journals).
- * Table with columns: checkbox, #, نماد, جهت, VOL, TF, تاریخ, زمان, R:R انتظار,
+ * Journal list (/journals) with the «اشتراک‌گذاری معاملات» button in the header.
+ * Table columns: checkbox, #, نماد, جهت, VOL, TF, تاریخ, زمان, R:R انتظار,
  * R:R کسب, نتیجه, تگ‌ها, وضعیت.
  * Features: search, status/tag filter, sort, group, table/card toggle, bulk delete.
- *
- * Imported trades are colour-coded by their exchange (Toobit / LBank / XT /
- * Ourbit / WEEX): the row (or card) takes that exchange's brand wash and a
- * matching tag sits next to the symbol, so the origin of every trade is obvious
- * at a glance.
- *
- * Plan limits: the free (bronze) plan allows 20 journals. When the backend
- * refuses a new trade because of that cap, the 403 message carries the upgrade
- * marker and we render <UpgradeNotice> — a card with a "خرید اشتراک" button that
- * routes to /subscription — instead of a plain red error line.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -24,6 +14,7 @@ import { exportUrl, tradesApi, publicApi } from "@/lib/api";
 import { brandOf } from "@/lib/exchanges";
 import { ExchangeTag } from "@/components/ExchangeLogo";
 import { UpgradeNotice } from "@/components/UpgradeNotice";
+import { ShareTradesModal } from "@/components/ShareTradesModal";
 import { isUpgradeError } from "@/lib/plans";
 import { useAuth } from "@/store/auth";
 import { DemoTradesPanel } from "@/components/DemoTradesPanel";
@@ -41,7 +32,6 @@ import { formatJalaliDate, formatTime } from "@/lib/jalali";
 type SortKey = "number" | "symbol" | "pnl" | "rrExpected";
 type GroupKey = "none" | "status" | "direction" | "symbol";
 
-// ─── Glass / pastel design tokens (shared with the dashboard look) ────────────
 const TINTS = {
   mint: "94,234,212",
   violet: "167,139,250",
@@ -96,6 +86,18 @@ function errorText(e: any, fallback: string): string {
   return typeof detail === "string" && detail.trim() ? detail : fallback;
 }
 
+/** آیکون اشتراک‌گذاری (سه گرهٔ متصل). */
+function ShareGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+    </svg>
+  );
+}
+
 export default function JournalsPage() {
   return (
     <AppShell>
@@ -112,9 +114,9 @@ function JournalsInner() {
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  // کارنامهٔ عمومی (اشتراک‌گذاری معاملات)
+  const [shareOpen, setShareOpen] = useState(false);
 
-  // Demo mode mirrors the dashboard toggle: when on, show the showcase account's
-  // journals read-only (clicking a row opens the full read-only detail).
   const [demoOn, setDemoOn] = useState(false);
   const [demoTrades, setDemoTrades] = useState<Trade[] | null>(null);
 
@@ -139,7 +141,6 @@ function JournalsInner() {
   const [group, setGroup] = useState<GroupKey>("none");
   const [view, setView] = useState<"table" | "card">("table");
 
-  // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tagColorMap, setTagColorMap] = useState<Map<string, number>>(new Map());
 
@@ -166,8 +167,6 @@ function JournalsInner() {
       const t = await tradesApi.create();
       router.push(`/journals/${t.id}`);
     } catch (e: any) {
-      // A 403 here is usually the free-plan journal cap; its message carries the
-      // upgrade marker so we can show the buy-subscription card.
       setError(errorText(e, "ساخت معامله جدید ناموفق بود."));
       setCreating(false);
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -176,21 +175,17 @@ function JournalsInner() {
 
   const bulkDelete = async () => {
     if (!confirm(`${selected.size} معامله حذف شود؟`)) return;
-    // Delete sequentially (not in parallel) so the server's renumbering
-    // logic runs one at a time and produces a consistent gap-free sequence.
     const ids = [...selected];
     try {
       for (const id of ids) await tradesApi.remove(id);
     } catch {
       setError("حذف برخی معاملات ناموفق بود.");
     }
-    // Re-fetch so trade numbers are up to date after renumbering.
     const refreshed = await tradesApi.list();
     setTrades(refreshed);
     setSelected(new Set());
   };
 
-  // All unique tags across trades for the filter dropdown
   const allTags = useMemo(() => {
     if (!trades) return [];
     const s = new Set<string>();
@@ -206,8 +201,7 @@ function JournalsInner() {
         t.symbol?.toLowerCase().includes(search.toLowerCase()) ||
         String(t.number).includes(search);
       const matchStatus = statusFilter === "ALL" || t.status === statusFilter;
-      const matchTag =
-        !tagFilter || (t.tags ?? []).includes(tagFilter);
+      const matchTag = !tagFilter || (t.tags ?? []).includes(tagFilter);
       return matchSearch && matchStatus && matchTag;
     });
     rows = [...rows].sort((a, b) => {
@@ -234,11 +228,7 @@ function JournalsInner() {
 
   const pagination = usePagination(filtered, "journals");
 
-  // Reset to page 1 whenever filters change
-  // (filtering re-creates `filtered`, so pagination.slice auto-adjusts via safePage)
-
   const groups = useMemo(() => {
-    // Paginate the filtered list first, then group the visible page
     const pageRows = pagination.slice;
     if (group === "none") return [{ key: "all", label: "", rows: pageRows }];
     const map = new Map<string, Trade[]>();
@@ -349,12 +339,24 @@ function JournalsInner() {
           </h1>
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: `rgb(${TINTS.mint})` }} />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {selected.size > 0 && (
             <Button variant="danger" onClick={bulkDelete}>
               حذف {faNum(selected.size)} مورد
             </Button>
           )}
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-extrabold text-[#06121f] transition-all hover:-translate-y-0.5 active:scale-95"
+            style={{
+              background: "linear-gradient(120deg, rgb(103,232,249), rgb(52,211,153))",
+              boxShadow: "0 12px 28px -12px rgba(103,232,249,0.9)",
+            }}
+          >
+            <ShareGlyph />
+            اشتراک‌گذاری معاملات
+          </button>
           <a href={exportUrl()} target="_blank" rel="noopener noreferrer">
             <Button variant="ghost">خروجی اکسل</Button>
           </a>
@@ -363,6 +365,9 @@ function JournalsInner() {
           </Button>
         </div>
       </div>
+
+      {/* کارنامهٔ عمومی / اشتراک‌گذاری معاملات */}
+      <ShareTradesModal open={shareOpen} onClose={() => setShareOpen(false)} />
 
       {/* Plan limit / error banner */}
       {error &&
@@ -489,8 +494,6 @@ function statusLabel(s: TradeStatus) {
 }
 
 function pnlOf(t: Trade) {
-  // Trades imported from an exchange carry that exchange's exact realized PnL
-  // (fees included); prefer it over the price-derived recomputation.
   if (brandOf(t.source) && t.realizedPnl != null) return t.realizedPnl;
   return t.calc?.realizedPnl ?? t.realizedPnl ?? null;
 }
@@ -536,12 +539,7 @@ function TradeTable({
         <thead className="text-muted">
           <tr className="border-b border-white/10 text-center">
             <th className="p-3">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={onToggleAll}
-                className="cursor-pointer"
-              />
+              <input type="checkbox" checked={allSelected} onChange={onToggleAll} className="cursor-pointer" />
             </th>
             <th className="p-3">#</th>
             <th className="p-3">ش.معامله</th>
@@ -566,11 +564,7 @@ function TradeTable({
             <tr
               key={t.id}
               className={`border-b border-white/5 transition-colors ${
-                isSelected
-                  ? "bg-primary-soft"
-                  : brand
-                    ? "backdrop-blur-sm"
-                    : "hover:bg-white/5"
+                isSelected ? "bg-primary-soft" : brand ? "backdrop-blur-sm" : "hover:bg-white/5"
               }`}
               style={
                 !isSelected && brand
@@ -582,12 +576,7 @@ function TradeTable({
               }
             >
               <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => onToggle(t.id)}
-                  className="cursor-pointer"
-                />
+                <input type="checkbox" checked={isSelected} onChange={() => onToggle(t.id)} className="cursor-pointer" />
               </td>
               <td className="cursor-pointer p-3 text-center font-medium" onClick={() => onOpen(t.id)}>
                 {faNum(t.number)}
@@ -650,8 +639,6 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
       {rows.map((t) => {
         const pnl = pnlOf(t);
         const brand = brandOf(t.source);
-        // An imported trade wears its exchange's colour; a manual one keeps the
-        // profit/loss pastel wash.
         const rgb = brand
           ? brand.tint
           : pnl != null && pnl > 0
@@ -666,7 +653,6 @@ function TradeCards({ rows, onOpen, colorMap }: { rows: Trade[]; onOpen: (id: st
           className="group relative cursor-pointer overflow-hidden rounded-3xl p-4 transition-all duration-300 hover:-translate-y-1"
           style={glassTint(rgb)}
         >
-          {/* animated top sheen */}
           <div
             className="absolute inset-x-6 top-0 h-px animate-sheen"
             style={{ background: `linear-gradient(90deg, transparent, rgba(${rgb},0.8), transparent)` }}
