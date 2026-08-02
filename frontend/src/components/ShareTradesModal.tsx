@@ -19,6 +19,7 @@ import {
   type ShareMode,
   type ShareSettings,
 } from "@/lib/share";
+import { BASE_PATH } from "@/lib/api";
 import { SUBSCRIPTION_PATH } from "@/lib/plans";
 
 const MODE_ICON: Record<string, string> = {
@@ -69,7 +70,6 @@ export function ShareTradesModal({
       .catch(() => setError("بارگذاری تنظیمات اشتراک‌گذاری ممکن نشد."));
   }, [open, apply]);
 
-  // کلید Escape برای بستن.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -117,7 +117,11 @@ export function ShareTradesModal({
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail;
-      setError(typeof detail === "string" && detail ? detail.replace("[UPGRADE]", "").trim() : "ذخیره ناموفق بود.");
+      setError(
+        typeof detail === "string" && detail
+          ? detail.replace("[UPGRADE]", "").trim()
+          : "ذخیره ناموفق بود.",
+      );
       return false;
     } finally {
       setSaving(false);
@@ -127,7 +131,7 @@ export function ShareTradesModal({
   if (!open) return null;
 
   const link = data?.slug ? profileUrl(data.slug) : "";
-  const msg = shareMessage(link, data?.name ?? null);
+  const msg = shareMessage(link, null);
 
   const copy = async () => {
     if (!link) return;
@@ -143,7 +147,6 @@ export function ShareTradesModal({
     <div className="tjs-backdrop" onClick={onClose}>
       <style>{CSS}</style>
       <div className="tjs-panel" onClick={(e) => e.stopPropagation()}>
-        {/* ── head ── */}
         <div className="tjs-head">
           <div className="flex items-center gap-3">
             <span className="tjs-badge">
@@ -169,11 +172,11 @@ export function ShareTradesModal({
               <div className="tjs-lock-icon">💎</div>
               <div className="tjs-lock-title">مخصوص پلن طلایی و الماسی</div>
               <p className="tjs-lock-text">
-                «کارنامهٔ عمومی» یک صفحهٔ اختصاصی است که برایند، وین‌ریت، منحنی سرمایه و
-                جزئیات معاملاتت را به دنبال‌کننده‌ها نشان می‌دهد. برای فعال‌سازی، اشتراکت را به
-                طلایی یا الماسی ارتقا بده.
+                «کارنامهٔ عمومی» یک صفحهٔ اختصاصی است که برایند، وین‌ریت، منحنی سرمایه و جزئیات
+                معاملاتت را به دنبال‌کننده‌ها نشان می‌دهد. برای فعال‌سازی، اشتراکت را به طلایی یا
+                الماسی ارتقا بده.
               </p>
-              <a className="tjs-btn tjs-btn-gold" href={SUBSCRIPTION_PATH}>
+              <a className="tjs-btn tjs-btn-gold" href={`${BASE_PATH}${SUBSCRIPTION_PATH}`}>
                 خرید / ارتقای اشتراک
               </a>
               <div className="tjs-plan">پلن فعلی تو: {data.planLabel}</div>
@@ -182,7 +185,6 @@ export function ShareTradesModal({
 
           {data && data.canShare && (
             <>
-              {/* ── کلید فعال‌سازی ── */}
               <div className="tjs-row">
                 <div>
                   <div className="tjs-row-title">لینک عمومی کارنامه</div>
@@ -208,7 +210,6 @@ export function ShareTradesModal({
                 </button>
               </div>
 
-              {/* ── چه چیزی دیده شود ── */}
               <div className="tjs-section-title">چه چیزی به اشتراک گذاشته شود؟</div>
               <div className="tjs-modes">
                 {data.modes.map((m) => (
@@ -229,7 +230,6 @@ export function ShareTradesModal({
                 ))}
               </div>
 
-              {/* ── نشانی اختصاصی ── */}
               <div className="tjs-section-title">نشانی اختصاصی</div>
               <div className="tjs-slug">
                 <span className="tjs-prefix" dir="ltr">/u/</span>
@@ -258,7 +258,6 @@ export function ShareTradesModal({
               </div>
               {hint && <div className={`tjs-hint ${status}`}>{hint}</div>}
 
-              {/* ── عنوان / معرفی / ناشناس ── */}
               <div className="tjs-grid2">
                 <label className="tjs-field">
                   <span>عنوان صفحه (اختیاری)</span>
@@ -300,7 +299,6 @@ export function ShareTradesModal({
                 </button>
               </div>
 
-              {/* ── لینک و دکمه‌های اشتراک ── */}
               {data.slug && (
                 <div className="tjs-linkbox">
                   <div className="tjs-link" dir="ltr">{link}</div>
