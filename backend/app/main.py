@@ -32,6 +32,7 @@ from app.api import (
     referrals as referrals_router,
     service,
     settings as settings_router,
+    share as share_router,
     templates,
     trades,
     uploads,
@@ -142,4 +143,6 @@ app.include_router(password.auth_router)
 app.include_router(password.settings_router)
 app.include_router(public.router)
 app.include_router(referrals_router.router)
+app.include_router(share_router.router)
+app.include_router(share_router.public_router)
 app.include_router(service.router)
