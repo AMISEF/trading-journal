@@ -93,6 +93,17 @@ async def init_db() -> None:
             # their single use (otherwise the free quota would reset for them).
             "UPDATE users SET ai_overall_runs = 1 "
             "WHERE ai_overall_runs = 0 AND (ai_overall IS NOT NULL OR ai_overall_at IS NOT NULL)",
+            # کارنامهٔ عمومی معامله‌گر (اشتراک‌گذاری معاملات) — طلایی و الماسی.
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_slug VARCHAR(40)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_enabled BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_mode VARCHAR(20) NOT NULL DEFAULT 'all'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_title VARCHAR(80)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_bio VARCHAR(300)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_anonymous BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_views INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS share_created_at TIMESTAMP WITH TIME ZONE",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_share_slug "
+            "ON users (share_slug) WHERE share_slug IS NOT NULL",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'manual'",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS toobit_position_id VARCHAR(80)",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS synced_at TIMESTAMP WITH TIME ZONE",

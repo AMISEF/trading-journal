@@ -179,6 +179,29 @@ class User(Base):
     # پلکان‌هایی که جایزه‌شان پرداخت شده (مثلاً ["silver", "gold"]).
     referral_rewards: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # ------------------------------------------------------------------
+    # کارنامهٔ عمومی معامله‌گر — جزئیات در app/services/share.py
+    # ------------------------------------------------------------------
+    # نشانیِ یکتای صفحهٔ عمومی (/u/<slug>)؛ فقط پلن طلایی و الماسی می‌سازند.
+    share_slug: Mapped[str | None] = mapped_column(
+        String(40), unique=True, index=True, nullable=True
+    )
+    # آیا لینک همین حالا فعال است (کاربر می‌تواند بدون حذفِ اسلاگ خاموشش کند).
+    share_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # چه چیزی به اشتراک گذاشته می‌شود:
+    # "dashboard" | "journal" (بدون جزئیات) | "journal_full" (با جزئیات) | "all"
+    share_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="all")
+    # عنوان و معرفیِ کوتاهِ صفحه (اختیاری).
+    share_title: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    share_bio: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # نمایشِ ناشناس: به‌جای نام و نام خانوادگی فقط نام کاربری نشان داده شود.
+    share_anonymous: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # شمارندهٔ بازدید و زمانِ ساخت لینک.
+    share_views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    share_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     # All trades belonging to this user.
