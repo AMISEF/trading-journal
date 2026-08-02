@@ -8,9 +8,11 @@ re-opens without spending another API call; ``POST`` regenerates.
 
 Every user-facing ``POST`` passes through ``app.services.plans`` first, which is
 the single source of truth for the subscription quotas (per-trade analysis,
-coach cooldown, institutional-report cooldown). The ``/admin/*`` variants
-deliberately skip those checks — an admin generating a report for a customer is
-not spending the customer's quota.
+coach cooldown, institutional-report cooldown). The free tier's per-trade quota
+is a *lifetime* one — one analysis for the whole account — so the number of
+already-analysed trades is counted here and handed to the gate. The ``/admin/*``
+variants deliberately skip those checks — an admin generating a report for a
+customer is not spending the customer's quota.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -73,6 +75,24 @@ async def _load_trade(db: AsyncSession, trade_id: int) -> Trade | None:
     return result.scalars().first()
 
 
+async def _trade_analyses_used(db: AsyncSession, user_id: int) -> int:
+    """How many of this user's trades already carry a stored AI analysis.
+
+    This is the meter behind the free tier's «۱ تحلیل تک‌معامله» quota: one
+    analysis for the whole account, not one per trade.
+    """
+    result = await db.execute(
+        select(func.count())
+        .select_from(Trade)
+        .where(
+            Trade.user_id == user_id,
+            Trade.ai_analysis.is_not(None),
+            Trade.ai_analysis != "",
+        )
+    )
+    return int(result.scalar() or 0)
+
+
 def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
     _BACKGROUND_TASKS.add(task)
@@ -103,9 +123,10 @@ async def generate_trade_analysis(
     trade = await _load_trade(db, trade_id)
     if trade is None or trade.user_id != user.id:
         raise HTTPException(status_code=404, detail="معامله یافت نشد")
-    # The trade is passed in so the bronze "one analysis per trade" rule can be
-    # evaluated — re-running an already analysed trade is refused there.
-    plans.assert_can_analyze_trade(user, trade)
+    # The trade and the account-wide usage are both passed in: the free tier
+    # allows a single analysis ever, the paid tiers allow re-runs.
+    used = await _trade_analyses_used(db, user.id)
+    plans.assert_can_analyze_trade(user, trade, used_count=used)
     return await _start_trade_job(db, trade)
 
 
