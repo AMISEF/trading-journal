@@ -4,9 +4,10 @@
  * - Reads the base URL from NEXT_PUBLIC_API_BASE (default http://localhost:8001/api).
  * - Attaches the JWT Bearer token (localStorage "tj_token") to every request.
  * - Exposes typed helper groups: auth, trades, calc, market, checklists, reasons,
- *   dashboard, admin, uploads.
+ *   dashboard, admin, referrals, uploads.
  */
 import axios, { AxiosInstance } from "axios";
+import type { ReferralStats } from "./referrals";
 import type {
   AIAnalysis,
   AuthResponse,
@@ -99,6 +100,8 @@ export interface RegisterPayload {
   phone: string;
   password: string;
   passwordConfirm: string;
+  /** کدِ دعوت دوستان (از لینک ?ref=…)؛ اختیاری. */
+  referralCode?: string;
 }
 
 export const authApi = {
@@ -126,6 +129,16 @@ export const passwordApi = {
     http.post<{ ok: boolean; email: string }>("/settings/password/request-code", {}).then((r) => r.data),
   change: (code: string, newPassword: string) =>
     http.post("/settings/password/change", { code, newPassword }).then((r) => r.data),
+};
+
+// ---------------------------------------------------------------------------
+// دعوت دوستان (referrals)
+// ---------------------------------------------------------------------------
+export const referralsApi = {
+  /** کدِ دعوت، شمارشگرها، لیست دوستان، مراحل جایزه و اعتبار هوش مصنوعی. */
+  me: () => http.get<ReferralStats>("/referrals/me").then((r) => r.data),
+  /** محاسبهٔ مجدد + اعمال جایزه‌های رسیده (دکمهٔ به‌روزرسانی). */
+  sync: () => http.post<ReferralStats>("/referrals/sync", {}).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------

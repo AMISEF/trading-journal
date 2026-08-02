@@ -21,6 +21,8 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   adminOnly?: boolean;
+  /** تک‌موردیِ تبلیغاتی: بجای حالت عادی، گرادیانتِ متحرک می‌گیرد. */
+  glow?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -50,6 +52,18 @@ const NAV: NavItem[] = [
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M8 21h8M12 17v4M6 4h12v5a6 6 0 0 1-12 0z" />
         <path d="M18 5h2a2 2 0 0 1 0 4h-2M6 5H4a2 2 0 0 0 0 4h2" />
+      </svg>
+    ),
+  },
+  {
+    href: "/referrals",
+    label: "دعوت دوستان",
+    glow: true,
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="8" width="18" height="4" rx="1" />
+        <path d="M12 8v13M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+        <path d="M12 8S9.5 3 7.5 3a2.5 2.5 0 0 0 0 5M12 8s2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" />
       </svg>
     ),
   },
@@ -166,19 +180,26 @@ function Shell({ children }: { children: React.ReactNode }) {
       <nav className="flex-1 space-y-1 px-3">
         {items.map((item) => {
           const active = pathname.startsWith(item.href);
+          const base = "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition";
+          const cls = active
+            ? `${base} bg-primary text-white`
+            : item.glow
+              ? `${base} tj-nav-glow text-text hover:bg-surface-2`
+              : `${base} text-text hover:bg-surface-2`;
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={() => setOpen(false)}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${
-                active
-                  ? "bg-primary text-white"
-                  : "text-text hover:bg-surface-2"
-              }`}
+              className={cls}
             >
               {item.icon}
               {item.label}
+              {item.glow && !active && (
+                <span className="ms-auto rounded-full bg-gradient-to-l from-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-bold text-white">
+                  جایزه
+                </span>
+              )}
             </Link>
           );
         })}
