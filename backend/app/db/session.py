@@ -78,6 +78,21 @@ async def init_db() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_synced_at TIMESTAMP WITH TIME ZONE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS toobit_sync_error TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE",
+            # دعوت دوستان (referral program). The counters are denormalised so the
+            # plan gates can read them without an extra query.
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(16)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by_id INTEGER",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_total INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_qualified INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_rewards JSONB",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_overall_runs INTEGER NOT NULL DEFAULT 0",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_referral_code "
+            "ON users (referral_code) WHERE referral_code IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS ix_users_referred_by_id ON users (referred_by_id)",
+            # Accounts that ran the coach before ai_overall_runs existed keep
+            # their single use (otherwise the free quota would reset for them).
+            "UPDATE users SET ai_overall_runs = 1 "
+            "WHERE ai_overall_runs = 0 AND (ai_overall IS NOT NULL OR ai_overall_at IS NOT NULL)",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'manual'",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS toobit_position_id VARCHAR(80)",
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS synced_at TIMESTAMP WITH TIME ZONE",
