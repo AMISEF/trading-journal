@@ -24,7 +24,7 @@ export const metadata: Metadata = {
  *   Themes: light | soft | barbie | cinderella | dark | ocean | classic.
  * - PWA: the journal is part of the installable ALGO HUB app, whose manifest
  *   and service worker live at the domain root (scope "/"). The official logo
- *   is served by the /app-icon route handler.
+ *   is rendered at the requested size by the /app-icon route handler.
  */
 export default function RootLayout({
   children,
@@ -52,7 +52,7 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"
           rel="stylesheet"
         />
-        <link rel="icon" href={`${BASE_PATH}/app-icon`} />
+        <link rel="icon" type="image/png" sizes="192x192" href={`${BASE_PATH}/app-icon?size=192`} />
         {/* اپلیکیشن نصب‌شدنی ALGO HUB (مدیریت سرمایه + ژورنال تریدینگ) */}
         <link rel="manifest" href="/manifest.webmanifest" />
         <meta name="application-name" content="ALGO HUB" />
@@ -61,7 +61,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#0A1622" />
-        <link rel="apple-touch-icon" href={`${BASE_PATH}/app-icon`} />
+        <link rel="apple-touch-icon" sizes="180x180" href={`${BASE_PATH}/app-icon?size=180`} />
         {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
         {/* Apply the saved theme before first paint (no flash of wrong colours).
