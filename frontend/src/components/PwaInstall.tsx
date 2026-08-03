@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * نصب اپ «الگو هاب» روی صفحهٔ اصلی گوشی — نسخهٔ داخل ژورنال.
+ * نصب اپ ALGO HUB روی صفحهٔ اصلی گوشی — نسخهٔ داخل ژورنال.
  *
- * اپ الگو هاب شامل مدیریت سرمایه و ژورنال تریدینگ است؛ سرویس‌وورکر روی ریشهٔ
+ * اپ ALGO HUB شامل مدیریت سرمایه و ژورنال تریدینگ است؛ سرویس‌وورکر روی ریشهٔ
  * دامنه («/») ثبت می‌شود، پس هر دو بخش زیر یک اپ قرار می‌گیرند.
  */
 import { useEffect, useState } from "react";
+import { BASE_PATH } from "@/lib/api";
 
 const DISMISS_KEY = "ah-pwa-dismissed-at";
 const DISMISS_DAYS = 7;
@@ -102,14 +103,15 @@ export function PwaInstall() {
         boxShadow: "var(--glass-shadow)",
       }}
     >
-      <div
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-sm font-extrabold"
-        style={{ background: "linear-gradient(135deg,#4ED9CC,#19C3B3 45%,#128F84)", color: "#04201d" }}
-      >
-        AH
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`${BASE_PATH}/app-icon`}
+        alt="ALGO HUB"
+        className="h-12 w-12 shrink-0 rounded-2xl object-contain p-1"
+        style={{ background: "var(--surface-2)" }}
+      />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-extrabold">الگو هاب را روی صفحهٔ اصلی گوشی‌تان نصب کنید</div>
+        <div className="text-sm font-extrabold">اپ ALGO HUB را روی صفحهٔ اصلی گوشی‌تان نصب کنید</div>
         <div className="mt-0.5 text-xs leading-7" style={{ color: "var(--muted)" }}>
           {mode === "ios"
             ? "در سافاری، دکمهٔ «اشتراک‌گذاری» را بزنید و «افزودن به صفحهٔ اصلی» را انتخاب کنید."
