@@ -7,7 +7,10 @@
 هیچ دادهٔ شخصی ذخیره نمی‌شود: vid فقط یک رشتهٔ تصادفی است.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,11 +32,11 @@ class AnalyticsEvent(Base):
     # view | cta_click | signup_start | plan_view | install_prompt
     kind: Mapped[str] = mapped_column(String(30), default="view", index=True)
     # شناسهٔ تصادفیِ بازدیدکننده (برای شمارش کاربرِ یکتا).
-    vid: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
-    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
-    path: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    referrer: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    source: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
-    campaign: Mapped[str | None] = mapped_column(String(60), nullable=True)
-    device: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    vid: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    path: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    referrer: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, index=True)
+    campaign: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    device: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_bot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

@@ -6,6 +6,11 @@
 مراحل قیف:
   ۱) بازدید لندینگ → ۲) ثبت‌نام → ۳) اولین معامله → ۴) خرید اشتراک
 مرحلهٔ ۳ مهم‌ترین عدد محصول است.
+
+پایگاه‌داده PostgreSQL است؛ بنابراین برای گروه‌بندی زمانی از ``to_char``
+و برای شمارش شرطی از ``CASE`` استفاده می‌شود. هر بخش اختیاری در یک
+try/except با rollback بسته شده تا یک کوئریِ ناموفق کل گزارش را از کار
+نیندازد.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import Boolean, and_, distinct, exists, func, select
+from sqlalchemy import and_, case, distinct, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_admin, get_db
@@ -113,8 +118,13 @@ async def track(
 
 
 async def _scalar(db: AsyncSession, stmt) -> int:
-    value = await db.scalar(stmt)
-    return int(value or 0)
+    """شمارشِ امن: اگر جدول هنوز ساخته نشده باشد صفر برمی‌گرداند."""
+    try:
+        value = await db.scalar(stmt)
+        return int(value or 0)
+    except Exception:  # noqa: BLE001
+        await db.rollback()
+        return 0
 
 
 @router.get("/funnel")
@@ -207,42 +217,52 @@ async def funnel(
         ),
     )
 
-    # ── روند روزانه ──
-    day_ev = func.strftime("%Y-%m-%d", AnalyticsEvent.ts)
-    day_user = func.strftime("%Y-%m-%d", User.created_at)
+    # ── روند روزانه (PostgreSQL: to_char) ──
+    day_ev = func.to_char(AnalyticsEvent.ts, "YYYY-MM-DD")
+    day_user = func.to_char(User.created_at, "YYYY-MM-DD")
+    day_trade = func.to_char(Trade.created_at, "YYYY-MM-DD")
     trend_map: dict[str, dict[str, Any]] = {}
+
+    def _slot(key: str) -> dict[str, Any]:
+        return trend_map.setdefault(
+            key, {"day": key, "visitors": 0, "views": 0, "signups": 0, "trades": 0}
+        )
+
     try:
         rows = (await db.execute(
             select(day_ev.label("day"),
                    func.count(distinct(AnalyticsEvent.vid)).label("visitors"),
                    func.count(AnalyticsEvent.id).label("views"))
             .where(human, AnalyticsEvent.ts >= since)
-            .group_by("day").order_by("day")
+            .group_by(day_ev).order_by(day_ev)
         )).all()
         for r in rows:
-            trend_map[r.day] = {"day": r.day, "visitors": r.visitors,
-                                "views": r.views, "signups": 0, "trades": 0}
+            item = _slot(r.day)
+            item["visitors"] = int(r.visitors or 0)
+            item["views"] = int(r.views or 0)
+    except Exception:  # noqa: BLE001
+        await db.rollback()
+
+    try:
         rows = (await db.execute(
             select(day_user.label("day"), func.count(User.id).label("n"))
-            .where(User.created_at >= since).group_by("day")
+            .where(User.created_at >= since).group_by(day_user)
         )).all()
         for r in rows:
-            item = trend_map.setdefault(
-                r.day, {"day": r.day, "visitors": 0, "views": 0,
-                        "signups": 0, "trades": 0})
-            item["signups"] = r.n
-        rows = (await db.execute(
-            select(func.strftime("%Y-%m-%d", Trade.created_at).label("day"),
-                   func.count(Trade.id).label("n"))
-            .where(Trade.created_at >= since).group_by("day")
-        )).all()
-        for r in rows:
-            item = trend_map.setdefault(
-                r.day, {"day": r.day, "visitors": 0, "views": 0,
-                        "signups": 0, "trades": 0})
-            item["trades"] = r.n
+            _slot(r.day)["signups"] = int(r.n or 0)
     except Exception:  # noqa: BLE001
-        pass
+        await db.rollback()
+
+    try:
+        rows = (await db.execute(
+            select(day_trade.label("day"), func.count(Trade.id).label("n"))
+            .where(Trade.created_at >= since).group_by(day_trade)
+        )).all()
+        for r in rows:
+            _slot(r.day)["trades"] = int(r.n or 0)
+    except Exception:  # noqa: BLE001
+        await db.rollback()
+
     trend = sorted(trend_map.values(), key=lambda x: x["day"])
 
     # ── منابع / دستگاه / صفحات ──
@@ -253,12 +273,13 @@ async def funnel(
                        func.count(distinct(AnalyticsEvent.vid)).label("visitors"),
                        func.count(AnalyticsEvent.id).label("views"))
                 .where(human, AnalyticsEvent.ts >= since)
-                .group_by("k").order_by(func.count(AnalyticsEvent.id).desc())
+                .group_by(column).order_by(func.count(AnalyticsEvent.id).desc())
                 .limit(limit)
             )).all()
-            return [{"key": r.k or "direct", "visitors": r.visitors,
-                     "views": r.views} for r in rows]
+            return [{"key": r.k or "direct", "visitors": int(r.visitors or 0),
+                     "views": int(r.views or 0)} for r in rows]
         except Exception:  # noqa: BLE001
+            await db.rollback()
             return []
 
     sources = await _group(AnalyticsEvent.source)
@@ -268,26 +289,38 @@ async def funnel(
     # ── کوهورت ماهانه ──
     cohorts: list[dict[str, Any]] = []
     try:
-        month = func.strftime("%Y-%m", User.created_at)
-        rows = (await db.execute(
-            select(month.label("m"),
-                   func.count(User.id).label("signups"),
-                   func.sum(func.iif(has_trade, 1, 0)).label("activated"),
-                   func.sum(func.iif(User.subscription_tier.in_(PAID_TIERS), 1, 0))
-                   .label("paid"))
+        base = (
+            select(
+                func.to_char(User.created_at, "YYYY-MM").label("m"),
+                User.id.label("uid"),
+                case((has_trade, 1), else_=0).label("act"),
+                case((User.subscription_tier.in_(PAID_TIERS), 1), else_=0).label("pd"),
+            )
             .where(User.created_at >= now - timedelta(days=190))
-            .group_by("m").order_by(func.max(User.created_at).desc()).limit(6)
+            .subquery()
+        )
+        rows = (await db.execute(
+            select(base.c.m,
+                   func.count(base.c.uid).label("signups"),
+                   func.sum(base.c.act).label("activated"),
+                   func.sum(base.c.pd).label("paid"))
+            .group_by(base.c.m).order_by(base.c.m.desc()).limit(6)
         )).all()
         for r in rows:
+            signups_n = int(r.signups or 0)
+            act_n = int(r.activated or 0)
+            paid_n = int(r.paid or 0)
             cohorts.append({
                 "month": r.m,
-                "signups": int(r.signups or 0),
-                "activated": int(r.activated or 0),
-                "paid": int(r.paid or 0),
-                "activationRate": _pct(int(r.activated or 0), int(r.signups or 0)),
-                "paidRate": _pct(int(r.paid or 0), int(r.signups or 0)),
+                "signups": signups_n,
+                "activated": act_n,
+                "paid": paid_n,
+                "activationRate": _pct(act_n, signups_n),
+                "paidRate": _pct(paid_n, signups_n),
             })
+        cohorts.reverse()
     except Exception:  # noqa: BLE001
+        await db.rollback()
         cohorts = []
 
     # ── میانهٔ فاصلهٔ ثبت‌نام تا اولین معامله (ساعت) ──
@@ -296,14 +329,15 @@ async def funnel(
         rows = (await db.execute(
             select(User.created_at, func.min(Trade.created_at))
             .join(Trade, Trade.user_id == User.id)
-            .group_by(User.id)
+            .group_by(User.id, User.created_at)
         )).all()
         gaps = []
         for created, first_trade in rows:
             if not created or not first_trade:
                 continue
             a = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
-            b = first_trade if first_trade.tzinfo else first_trade.replace(tzinfo=timezone.utc)
+            b = (first_trade if first_trade.tzinfo
+                 else first_trade.replace(tzinfo=timezone.utc))
             delta = (b - a).total_seconds() / 3600.0
             if delta >= 0:
                 gaps.append(delta)
@@ -311,11 +345,16 @@ async def funnel(
             gaps.sort()
             median_hours = round(gaps[len(gaps) // 2], 1)
     except Exception:  # noqa: BLE001
+        await db.rollback()
         median_hours = None
 
-    tracking_since = await db.scalar(
-        select(func.min(AnalyticsEvent.ts)).where(AnalyticsEvent.kind == "view")
-    )
+    try:
+        tracking_since = await db.scalar(
+            select(func.min(AnalyticsEvent.ts)).where(AnalyticsEvent.kind == "view")
+        )
+    except Exception:  # noqa: BLE001
+        await db.rollback()
+        tracking_since = None
 
     steps = [
         {"key": "visit", "label": "\u0628\u0627\u0632\u062f\u06cc\u062f \u0644\u0646\u062f\u06cc\u0646\u06af", "value": visitors,
