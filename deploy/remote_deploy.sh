@@ -6,24 +6,29 @@
 #
 #     bash /var/www/trading-journal/deploy/remote_deploy.sh
 #
-# It is incremental: the previously deployed commit is remembered in
-# .deploy-stamps/last-deployed-sha, so a backend-only push never pays for the
-# two Next builds and finishes in seconds.
+# Design goals, in order:
+#   1. The live sites never go down because of a deploy.
+#   2. A deploy costs as little time as possible — nothing is rebuilt unless the
+#      files that feed that build actually changed.
+#   3. A failure is loud and explains itself.
 #
-# It is also crash-safe. Each Next build is written to a scratch distDir and
-# swapped into place only once it produced a BUILD_ID, and the previous build is
-# kept around so a site that fails its health check is rolled back instead of
-# left broken. A build that is OOM-killed halfway can no longer take a live site
-# down.
+# What that means in practice:
+#   * backend-only push          → pip (if requirements changed) + pm2 restart, seconds
+#   * frontend push              → one journal build; the pnl site is NOT rebuilt
+#                                  unless you ask for it (SKIP_PNL=0 / FORCE_ALL=1)
+#   * docs/workflow-only push    → nothing at all
+#   * a build that fails         → the previous build keeps serving, pm2 is
+#                                  restarted, the site stays up, and the job
+#                                  exits non-zero so you still see the red X
 #
 # Useful switches:
+#     SKIP_BUILD=1          only restart PM2 + health check, no rebuild at all
 #     ONLY_PNL=1            deploy just the pnl site (port 3012)
 #     ONLY_JOURNAL=1        deploy just the journal site (port 3001)
-#     FORCE_BUILD=1         rebuild the frontend even if nothing there changed
-#     FORCE_ALL=1           treat every path as changed (full deploy)
+#     SKIP_PNL=0            also rebuild the pnl site (default: 1, i.e. skipped)
+#     FORCE_BUILD=1         rebuild the journal frontend even if nothing changed
+#     FORCE_ALL=1           treat every path as changed (full deploy, both sites)
 #     FORCE_DEPS=1          reinstall backend + frontend dependencies
-#     SKIP_PNL=1            build only the journal site (saves a build's worth of RAM)
-#     SKIP_BUILD=1          only restart PM2 + health check, no rebuild
 #     SKIP_HEALTHCHECK=1    deploy without waiting on the HTTP probes
 #     AUTO_SWAP=0           do not create a swapfile when the box has none
 #     JOURNAL_HEALTH_PATH   path the journal app is served under (default /journal)
@@ -46,8 +51,13 @@ JOURNAL_DIST=".next"
 PNL_DIST=".next-pnl"
 STARTED_AT=$(date +%s)
 
+# Set to 1 by a build that failed. The deploy carries on (so the running site is
+# restarted and probed) and only reports the failure at the very end.
+BUILD_FAILED=0
+
 step() { echo; echo "▶ $*"; }
 fail() { echo "❌ $*" >&2; exit 1; }
+warn() { echo "⚠ $*" >&2; }
 
 # Report the exact line that broke — the old inline script died silently.
 trap 'code=$?; set +x; echo "❌ deploy aborted at line $LINENO with exit code $code" >&2; exit $code' ERR
@@ -62,7 +72,7 @@ export NEXT_TELEMETRY_DISABLED=1
 
 [ "${DEPLOY_TRACE:-1}" = "1" ] && set -x
 
-# ──────────────────── sanity checks ───────────────────────────────
+# ─────────────────── sanity checks ──────────────────────
 step "Environment"
 [ -d "$ROOT" ]     || fail "project directory $ROOT is missing"
 [ -d "$BACKEND" ]  || fail "backend directory $BACKEND is missing"
@@ -75,7 +85,7 @@ git -C "$ROOT" log -1 --oneline
 
 mkdir -p "$STAMPS"
 
-# ──────────────────── what actually changed? ──────────────────────
+# ────────────────── what actually changed? ──────────────────
 # Keyed off commits, so a re-run of the same commit is a no-op instead of a
 # full rebuild. CI hands us the pre-sync HEAD; a manual run falls back to the
 # stamp written by the last successful deploy.
@@ -104,14 +114,21 @@ changed_in() {
 BACKEND_CHANGED=0
 FRONTEND_CHANGED=0
 changed_in '^backend/'  && BACKEND_CHANGED=1
-changed_in '^frontend/' && FRONTEND_CHANGED=1
+# Only files that Next actually compiles justify a rebuild. Touching a README,
+# the workflow file or the deploy script does not.
+changed_in '^frontend/(src/|public/|package|next\.config|tailwind\.config|postcss|tsconfig)' && FRONTEND_CHANGED=1
 [ "${FORCE_BUILD:-0}" = "1" ] && FRONTEND_CHANGED=1
 [ "${FORCE_DEPS:-0}" = "1" ] && { BACKEND_CHANGED=1; FRONTEND_CHANGED=1; }
 
-# Which of the two frontends to touch. Self-heal below can turn these back on.
+# The pnl site is a second full Next build of the same source. It is the single
+# most expensive thing this script can do and it is almost never what a journal
+# push is about, so it is opt-in now: SKIP_PNL=0, ONLY_PNL=1 or FORCE_ALL=1.
+SKIP_PNL="${SKIP_PNL:-1}"
+[ "${FORCE_ALL:-0}" = "1" ] && SKIP_PNL=0
+
 BUILD_JOURNAL=$FRONTEND_CHANGED
 BUILD_PNL=$FRONTEND_CHANGED
-[ "${SKIP_PNL:-0}" = "1" ] && BUILD_PNL=0
+[ "$SKIP_PNL" = "1" ] && BUILD_PNL=0
 
 if [ "${ONLY_PNL:-0}" = "1" ]; then
   BACKEND_CHANGED=0; BUILD_JOURNAL=0; BUILD_PNL=1; FRONTEND_CHANGED=1
@@ -120,31 +137,42 @@ if [ "${ONLY_JOURNAL:-0}" = "1" ]; then
   BACKEND_CHANGED=0; BUILD_PNL=0; BUILD_JOURNAL=1; FRONTEND_CHANGED=1
 fi
 
-# ──────────────────── self-heal ───────────────────────────────────
+# ────────────────── self-heal ───────────────────────────
 # A dist without a BUILD_ID is a half-written build: `next start` will crash on
 # it forever. A pm2 process that is not online is the same story. Either way the
-# site is down right now, so rebuild it even if git says nothing changed.
+# site is down right now — that is the one case where we rebuild uninvited.
 dist_ok()   { [ -f "$FRONTEND/$1/BUILD_ID" ]; }
 pm2_online() { pm2 describe "$1" 2>/dev/null | grep -qE 'status[^a-z]+online'; }
 
+RESTART_JOURNAL=$BUILD_JOURNAL
+RESTART_PNL=$BUILD_PNL
+
 set +x
-if [ "${ONLY_JOURNAL:-0}" != "1" ] && [ "${SKIP_PNL:-0}" != "1" ]; then
+if [ "${ONLY_JOURNAL:-0}" != "1" ]; then
   if ! dist_ok "$PNL_DIST"; then
     echo "⚠ $PNL_DIST has no BUILD_ID (missing or interrupted build) — rebuilding the pnl site"
-    BUILD_PNL=1; FRONTEND_CHANGED=1
+    BUILD_PNL=1; RESTART_PNL=1; FRONTEND_CHANGED=1
   elif ! pm2_online tj-pnl-frontend; then
-    echo "⚠ tj-pnl-frontend is not online — restarting the pnl site"
-    BUILD_PNL=1; FRONTEND_CHANGED=1
+    echo "⚠ tj-pnl-frontend is not online — restarting the pnl site (no rebuild needed)"
+    RESTART_PNL=1
   fi
 fi
 if [ "${ONLY_PNL:-0}" != "1" ]; then
   if ! dist_ok "$JOURNAL_DIST"; then
     echo "⚠ $JOURNAL_DIST has no BUILD_ID (missing or interrupted build) — rebuilding the journal site"
-    BUILD_JOURNAL=1; FRONTEND_CHANGED=1
+    BUILD_JOURNAL=1; RESTART_JOURNAL=1; FRONTEND_CHANGED=1
   elif ! pm2_online tj-frontend; then
-    echo "⚠ tj-frontend is not online — restarting the journal site"
-    BUILD_JOURNAL=1; FRONTEND_CHANGED=1
+    echo "⚠ tj-frontend is not online — restarting the journal site (no rebuild needed)"
+    RESTART_JOURNAL=1
   fi
+fi
+
+# Restart-only mode: keep the builds that are already on disk.
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  echo "⚠ SKIP_BUILD=1 — no rebuild, PM2 restart only"
+  BUILD_JOURNAL=0; BUILD_PNL=0
+  [ "${ONLY_PNL:-0}" = "1" ]     || RESTART_JOURNAL=1
+  [ "${ONLY_JOURNAL:-0}" = "1" ] || RESTART_PNL=1
 fi
 
 echo "  previous: ${PREV_SHA:-<unknown>}"
@@ -156,10 +184,11 @@ elif [ -z "$CHANGED" ]; then
 else
   echo "$CHANGED" | sed 's/^/  changed : /'
 fi
-echo "  plan    : backend=$BACKEND_CHANGED journal=$BUILD_JOURNAL pnl=$BUILD_PNL"
+echo "  plan    : backend=$BACKEND_CHANGED build[journal=$BUILD_JOURNAL pnl=$BUILD_PNL] restart[journal=$RESTART_JOURNAL pnl=$RESTART_PNL]"
 [ "${DEPLOY_TRACE:-1}" = "1" ] && set -x
 
-if [ "$BACKEND_CHANGED" = "0" ] && [ "$BUILD_JOURNAL" = "0" ] && [ "$BUILD_PNL" = "0" ]; then
+if [ "$BACKEND_CHANGED" = "0" ] && [ "$BUILD_JOURNAL" = "0" ] && [ "$BUILD_PNL" = "0" ] \
+   && [ "$RESTART_JOURNAL" = "0" ] && [ "$RESTART_PNL" = "0" ]; then
   set +x
   echo "$NEW_SHA" > "$SHA_STAMP"
   echo
@@ -167,8 +196,12 @@ if [ "$BACKEND_CHANGED" = "0" ] && [ "$BUILD_JOURNAL" = "0" ] && [ "$BUILD_PNL" 
   exit 0
 fi
 
-# ──────────────────── memory / swap ───────────────────────────────
-# Two Next builds on a ~3 GB box with zero swap is exactly how the pnl build got
+ANY_BUILD=0
+[ "$BUILD_JOURNAL" = "1" ] && ANY_BUILD=1
+[ "$BUILD_PNL" = "1" ] && ANY_BUILD=1
+
+# ────────────────── memory / swap ────────────────────────
+# A Next build on a ~3 GB box with zero swap is exactly how the pnl build got
 # OOM-killed. Swap is cheap insurance and costs nothing when it is not needed.
 ensure_swap() {
   swapon --show 2>/dev/null | grep -q . && return 0
@@ -185,7 +218,7 @@ ensure_swap() {
   ) || echo "  ⚠ could not create swap — continuing without it"
 }
 
-if [ "$FRONTEND_CHANGED" = "1" ] && [ "${SKIP_BUILD:-0}" != "1" ]; then
+if [ "$ANY_BUILD" = "1" ]; then
   step "Memory"
   free -m || true
   ensure_swap
@@ -219,7 +252,7 @@ restart_pm2() {
   fi
 }
 
-# ───────────────── backend (FastAPI / uvicorn, port 8001) ───────────────
+# ───────────────── backend (FastAPI / uvicorn, port 8001) ──────────────
 if [ "$BACKEND_CHANGED" = "1" ]; then
   step "Backend: virtualenv"
   cd "$BACKEND"
@@ -242,8 +275,8 @@ else
   echo "  backend unchanged — not touching tj-backend"
 fi
 
-# ──────────────────── frontend (Next.js, 3001 + 3012) ───────────────────
-if [ "$FRONTEND_CHANGED" = "1" ]; then
+# ────────────────── frontend (Next.js, 3001 + 3012) ───────────────────
+if [ "$ANY_BUILD" = "1" ]; then
   step "Frontend: dependencies"
   cd "$FRONTEND"
   if [ ! -d node_modules ] || needs_install package-lock.json frontend-lock; then
@@ -253,99 +286,119 @@ if [ "$FRONTEND_CHANGED" = "1" ]; then
   else
     echo "  dependencies unchanged — skipping npm ci"
   fi
-
-  # The box has ~3 GB RAM and this build has been OOM-killed before. When the
-  # kernel kills node, a *lower* heap ceiling is what lets it finish.
-  build_try() {
-    local label="$1"; shift
-    local heap
-    for heap in 2048 1536 1024; do
-      echo "  building $label (heap=${heap}MB)..."
-      if NODE_OPTIONS="--max-old-space-size=$heap" "$@"; then
-        echo "  ✅ $label build OK"
-        return 0
-      fi
-      echo "  ⚠ $label build failed at heap=${heap}MB"
-      free -m || true
-      dmesg 2>/dev/null | tail -n 8 || true
-    done
-    return 1
-  }
-
-  # Build into <dist>.build, then swap it in. The live dist is never written to,
-  # so an interrupted build cannot break the running site. The webpack cache is
-  # copied across first, which is what keeps rebuilds incremental (~30s).
-  build_site() {
-    local label="$1" dist="$2"; shift 2
-    local scratch="$dist.build"
-    cd "$FRONTEND"
-    rm -rf "$scratch"
-    mkdir -p "$scratch"
-    [ -d "$dist/cache" ] && cp -a "$dist/cache" "$scratch/cache" || true
-    build_try "$label" env NEXT_DIST_DIR="$scratch" "$@" npm run build || return 1
-    [ -f "$scratch/BUILD_ID" ] || fail "$label build left no BUILD_ID in $scratch"
-    rm -rf "$dist.prev"
-    [ -d "$dist" ] && mv "$dist" "$dist.prev"
-    mv "$scratch" "$dist"
-    echo "  ↷ $label: $scratch → $dist (previous kept as $dist.prev)"
-  }
-
-  # A site that fails its health check goes back to the build that was serving
-  # traffic a minute ago, so "bad build" never means "site down".
-  rollback_site() {
-    local label="$1" dist="$2" name="$3"
-    cd "$FRONTEND"
-    [ -d "$dist.prev" ] || { echo "  ✖ no $dist.prev to roll $label back to"; return 1; }
-    echo "  ↩ rolling $label back to the previous build"
-    rm -rf "$dist.broken"
-    [ -d "$dist" ] && mv "$dist" "$dist.broken"
-    mv "$dist.prev" "$dist"
-    pm2 restart "$name" --update-env || true
-    return 0
-  }
-
-  if [ "$BUILD_JOURNAL" = "1" ]; then
-    if [ "${SKIP_BUILD:-0}" = "1" ]; then
-      echo "  SKIP_BUILD=1 — no journal rebuild, restarting only"
-    else
-      step "Frontend: journal build (basePath=$JOURNAL_HEALTH_PATH, distDir=$JOURNAL_DIST, port 3001)"
-      build_site journal "$JOURNAL_DIST" || fail "journal build failed on every heap size"
-    fi
-    step "Frontend: restarting PM2 process tj-frontend"
-    cd "$FRONTEND"
-    restart_pm2 tj-frontend ecosystem.config.js --only tj-frontend
-    PROBE_JOURNAL=1
-  else
-    echo "  journal site unchanged and healthy — not touching tj-frontend"
-  fi
-
-  if [ "$BUILD_PNL" = "1" ]; then
-    if [ "${SKIP_BUILD:-0}" = "1" ]; then
-      echo "  SKIP_BUILD=1 — no pnl rebuild, restarting only"
-    else
-      step "Frontend: pnl build (root path, SITE_MODE=pnl, distDir=$PNL_DIST, port 3012)"
-      build_site pnl "$PNL_DIST" \
-        NEXT_PUBLIC_SITE_MODE=pnl \
-        NEXT_PUBLIC_BASE_PATH= \
-        NEXT_PUBLIC_API_BASE=/api \
-        || fail "pnl build failed on every heap size"
-    fi
-    step "Frontend: restarting PM2 process tj-pnl-frontend"
-    cd "$FRONTEND"
-    restart_pm2 tj-pnl-frontend ecosystem.config.js --only tj-pnl-frontend
-    PROBE_PNL=1
-  else
-    echo "  pnl site unchanged and healthy — not touching tj-pnl-frontend"
-  fi
-else
-  echo "  frontend unchanged — no npm, no builds, no restarts"
 fi
 
-# ───────────────────────── health check ─────────────────────────────
+# One attempt per heap size, but only when the previous attempt looks like an
+# out-of-memory kill (node exits 134/137/139, or is killed by a signal → >128).
+# A real compile error exits 1, and repeating it two more times used to waste
+# minutes and hide the actual message at the top of the log.
+build_try() {
+  local label="$1"; shift
+  local heap code
+  for heap in 2048 1536 1024; do
+    echo "  building $label (heap=${heap}MB)..."
+    set +e
+    NODE_OPTIONS="--max-old-space-size=$heap" "$@"
+    code=$?
+    set -e
+    if [ "$code" = "0" ]; then
+      echo "  ✅ $label build OK"
+      return 0
+    fi
+    if [ "$code" -le 128 ] && [ "$code" != "134" ]; then
+      echo "  ✖ $label build failed with exit code $code — this is a compile error, not memory pressure; not retrying"
+      return 1
+    fi
+    echo "  ⚠ $label build was killed (exit $code) — looks like memory pressure, retrying with a smaller heap"
+    free -m || true
+    dmesg 2>/dev/null | tail -n 8 || true
+  done
+  return 1
+}
+
+# Build into <dist>.build, then swap it in. The live dist is never written to,
+# so an interrupted build cannot break the running site. The webpack cache is
+# copied across first, which is what keeps rebuilds incremental (~30s).
+build_site() {
+  local label="$1" dist="$2"; shift 2
+  local scratch="$dist.build"
+  cd "$FRONTEND"
+  rm -rf "$scratch"
+  mkdir -p "$scratch"
+  [ -d "$dist/cache" ] && cp -a "$dist/cache" "$scratch/cache" || true
+  build_try "$label" env NEXT_DIST_DIR="$scratch" "$@" npm run build || return 1
+  [ -f "$scratch/BUILD_ID" ] || { warn "$label build left no BUILD_ID in $scratch"; return 1; }
+  rm -rf "$dist.prev"
+  [ -d "$dist" ] && mv "$dist" "$dist.prev"
+  mv "$scratch" "$dist"
+  echo "  ↷ $label: $scratch → $dist (previous kept as $dist.prev)"
+}
+
+# A site that fails its health check goes back to the build that was serving
+# traffic a minute ago, so "bad build" never means "site down".
+rollback_site() {
+  local label="$1" dist="$2" name="$3"
+  cd "$FRONTEND"
+  [ -d "$dist.prev" ] || { echo "  ✖ no $dist.prev to roll $label back to"; return 1; }
+  echo "  ↩ rolling $label back to the previous build"
+  rm -rf "$dist.broken"
+  [ -d "$dist" ] && mv "$dist" "$dist.broken"
+  mv "$dist.prev" "$dist"
+  pm2 restart "$name" --update-env || true
+  return 0
+}
+
+if [ "$BUILD_JOURNAL" = "1" ]; then
+  step "Frontend: journal build (basePath=$JOURNAL_HEALTH_PATH, distDir=$JOURNAL_DIST, port 3001)"
+  if build_site journal "$JOURNAL_DIST"; then
+    RESTART_JOURNAL=1
+  else
+    BUILD_FAILED=1
+    warn "journal build failed — keeping the build that is already serving; the site stays up"
+    rm -rf "$FRONTEND/$JOURNAL_DIST.build" || true
+    # Only restart if the running process is unhealthy; a healthy site is left alone.
+    dist_ok "$JOURNAL_DIST" && pm2_online tj-frontend && RESTART_JOURNAL=0
+  fi
+fi
+
+if [ "$RESTART_JOURNAL" = "1" ]; then
+  step "Frontend: restarting PM2 process tj-frontend"
+  cd "$FRONTEND"
+  restart_pm2 tj-frontend ecosystem.config.js --only tj-frontend
+  PROBE_JOURNAL=1
+else
+  echo "  journal site untouched (no new build, process healthy)"
+fi
+
+if [ "$BUILD_PNL" = "1" ]; then
+  step "Frontend: pnl build (root path, SITE_MODE=pnl, distDir=$PNL_DIST, port 3012)"
+  if build_site pnl "$PNL_DIST" \
+      NEXT_PUBLIC_SITE_MODE=pnl \
+      NEXT_PUBLIC_BASE_PATH= \
+      NEXT_PUBLIC_API_BASE=/api; then
+    RESTART_PNL=1
+  else
+    BUILD_FAILED=1
+    warn "pnl build failed — keeping the build that is already serving; the site stays up"
+    rm -rf "$FRONTEND/$PNL_DIST.build" || true
+    dist_ok "$PNL_DIST" && pm2_online tj-pnl-frontend && RESTART_PNL=0
+  fi
+elif [ "$FRONTEND_CHANGED" = "1" ] && [ "$SKIP_PNL" = "1" ]; then
+  echo "  pnl site skipped (SKIP_PNL=1) — run the workflow with 'force_all' to rebuild it"
+fi
+
+if [ "$RESTART_PNL" = "1" ]; then
+  step "Frontend: restarting PM2 process tj-pnl-frontend"
+  cd "$FRONTEND"
+  restart_pm2 tj-pnl-frontend ecosystem.config.js --only tj-pnl-frontend
+  PROBE_PNL=1
+else
+  echo "  pnl site untouched (no new build, process healthy)"
+fi
+
+# ────────────────────── health check ────────────────────────
 # Only the services that were actually restarted are probed, and the poll is
 # fast (1s) so a healthy deploy costs a second or two, not half a minute.
-# The journal app is served under a basePath (/journal), so GET / on its port is
-# a 404 *by design*. Waiting for a 200 on / is what made the old check spin.
 #   2xx / 3xx        → healthy
 #   404              → server is up, just not on this path (warn, do not fail)
 #   000 (refused)    → not listening yet, keep waiting
@@ -408,7 +461,18 @@ rm -rf "$FRONTEND/$JOURNAL_DIST.prev" "$FRONTEND/$PNL_DIST.prev" \
 # Only needed when the process list itself changed.
 [ "$FRESH_PM2" = "1" ] && pm2 save
 
-echo "$NEW_SHA" > "$SHA_STAMP"
 set +x
+ELAPSED=$(( $(date +%s) - STARTED_AT ))
+
+if [ "$BUILD_FAILED" = "1" ]; then
+  echo
+  echo "⚠ The sites are UP and serving the previous build, but a build failed — the"
+  echo "  new commit is not live. Scroll up to the first '✖ ... build failed' line"
+  echo "  for the compiler message. Nothing was rolled back or deleted."
+  echo "❌ Deploy finished with a failed build in ${ELAPSED}s"
+  exit 1
+fi
+
+echo "$NEW_SHA" > "$SHA_STAMP"
 echo
-echo "✅ Deploy complete in $(( $(date +%s) - STARTED_AT ))s — https://trading-journal.cryptosmart.site + https://pnl.cryptosmart.site"
+echo "✅ Deploy complete in ${ELAPSED}s — https://trading-journal.cryptosmart.site + https://pnl.cryptosmart.site"

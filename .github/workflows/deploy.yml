@@ -5,13 +5,20 @@ name: Deploy Trading Journal to VPS
 #
 # The workflow only syncs the repo and hands off to deploy/remote_deploy.sh,
 # which is the single source of truth for what a deploy does. The pre-sync HEAD
-# is passed along so the script can rebuild only what changed (a backend-only
-# push skips both Next builds). Debug a failing deploy by running that same
-# script on the box:
+# is passed along so the script can rebuild only what changed:
+#   * backend-only push → pm2 restart, seconds
+#   * frontend push     → one journal build (the pnl site is opt-in)
+#   * docs-only push    → nothing
+#
+# Debug a failing deploy by running the same script on the box:
 #
 #     bash /var/www/trading-journal/deploy/remote_deploy.sh
 #
-# Force a full rebuild when you need one:
+# Restart the services without rebuilding anything:
+#
+#     SKIP_BUILD=1 bash /var/www/trading-journal/deploy/remote_deploy.sh
+#
+# Force a full rebuild of both sites:
 #
 #     FORCE_ALL=1 bash /var/www/trading-journal/deploy/remote_deploy.sh
 
@@ -19,11 +26,15 @@ on:
   push:
     branches:
       - main
-  # Lets a failed deploy be retried from the Actions tab without an empty commit.
+  # Lets a deploy be re-run from the Actions tab without an empty commit.
   workflow_dispatch:
     inputs:
       force_all:
-        description: "Rebuild everything, ignoring change detection"
+        description: "Rebuild everything (journal + pnl), ignoring change detection"
+        type: boolean
+        default: false
+      skip_build:
+        description: "Restart PM2 only — no Next.js build at all"
         type: boolean
         default: false
 
@@ -44,7 +55,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 40m
           script_stop: true
-          envs: FORCE_ALL
+          envs: FORCE_ALL,SKIP_BUILD
           script: |
             set -e
             cd /var/www/trading-journal
@@ -57,3 +68,4 @@ jobs:
             bash deploy/remote_deploy.sh
         env:
           FORCE_ALL: ${{ inputs.force_all && '1' || '0' }}
+          SKIP_BUILD: ${{ inputs.skip_build && '1' || '0' }}
