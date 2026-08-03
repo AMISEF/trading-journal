@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import (
     admin,
     ai,
+    analytics as analytics_router,
     auth,
     calc,
     dashboard,
@@ -146,3 +147,4 @@ app.include_router(referrals_router.router)
 app.include_router(share_router.router)
 app.include_router(share_router.public_router)
 app.include_router(service.router)
+app.include_router(analytics_router.router)
