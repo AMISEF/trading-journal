@@ -3,15 +3,61 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { TelegramNav } from "@/components/TelegramNav";
 import { PwaInstall } from "@/components/PwaInstall";
+import { Track } from "@/components/Track";
+import { DESCRIPTION, KEYWORDS, SITE_URL, TITLE, jsonLd } from "@/lib/seo";
 
 const isPnlSite = process.env.NEXT_PUBLIC_SITE_MODE === "pnl";
 
-export const metadata: Metadata = {
-  title: isPnlSite ? "برآیند الگو اسمارت | Crypto Smart" : "ژورنال تریدینگ | ALGO HUB",
-  description: isPnlSite
-    ? "لایو معاملات و برآیند سود و زیان ربات الگو اسمارت"
-    : "پنل ژورنال معاملات کریپتو",
-};
+export const metadata: Metadata = isPnlSite
+  ? {
+      title: "برآیند الگو اسمارت | Crypto Smart",
+      description: "لایو معاملات و برآیند سود و زیان ربات الگو اسمارت",
+      robots: { index: false, follow: false },
+    }
+  : {
+      metadataBase: new URL(SITE_URL),
+      title: {
+        default: TITLE,
+        template: "%s | ALGO HUB",
+      },
+      description: DESCRIPTION,
+      keywords: KEYWORDS,
+      applicationName: "ALGO HUB",
+      authors: [{ name: "Crypto Smart" }],
+      creator: "Crypto Smart",
+      publisher: "Crypto Smart",
+      alternates: {
+        canonical: "/",
+        languages: { "fa-IR": "/" },
+      },
+      openGraph: {
+        type: "website",
+        locale: "fa_IR",
+        siteName: "ALGO HUB",
+        title: TITLE,
+        description: DESCRIPTION,
+        url: "/",
+        images: [{ url: "/app-icon?size=512", width: 512, height: 512, alt: "ALGO HUB" }],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: TITLE,
+        description: DESCRIPTION,
+        images: ["/app-icon?size=512"],
+      },
+      robots: {
+        index: true,
+        follow: true,
+        googleBot: {
+          index: true,
+          follow: true,
+          "max-image-preview": "large",
+          "max-snippet": -1,
+          "max-video-preview": -1,
+        },
+      },
+      category: "finance",
+    };
 
 /**
  * Root layout.
@@ -26,6 +72,9 @@ export const metadata: Metadata = {
  *   are served by the hub app, so nothing here has to be built or bundled:
  *     /app-icon?size=N    the blue app icon
  *     /app-splash?size=N  the transparent logo used on the launch screen
+ * - SEO: rich metadata + JSON-LD (Organization / WebSite / SoftwareApplication /
+ *   FAQPage) so Google can build a rich result for Persian trading-journal
+ *   queries. robots.txt and sitemap.xml live in app/robots.ts and app/sitemap.ts.
  */
 export default function RootLayout({
   children,
@@ -61,6 +110,13 @@ export default function RootLayout({
         <link rel="apple-touch-icon" sizes="180x180" href="/app-icon?size=180" />
         {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
+        {/* داده‌های ساختاریافته برای گوگل (فقط سایت اصلی ژورنال). */}
+        {!isPnlSite && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd()) }}
+          />
+        )}
         {/* Apply the saved theme before first paint (no flash of wrong colours).
             Default is the classic palette; "blue" is a legacy value that the
             classic theme replaced. */}
@@ -75,6 +131,7 @@ export default function RootLayout({
           <TelegramNav />
           {children}
           <PwaInstall />
+          <Track />
         </ThemeProvider>
       </body>
     </html>
