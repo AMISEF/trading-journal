@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { BASE_PATH } from "@/lib/api";
 import { TelegramNav } from "@/components/TelegramNav";
 import { PwaInstall } from "@/components/PwaInstall";
 
@@ -22,9 +21,11 @@ export const metadata: Metadata = {
  *   applies the user's saved theme before first paint, so there is never a
  *   flash of the wrong colours.
  *   Themes: light | soft | barbie | cinderella | dark | ocean | classic.
- * - PWA: the journal is part of the installable ALGO HUB app, whose manifest
- *   and service worker live at the domain root (scope "/"). The official logo
- *   is rendered at the requested size by the /app-icon route handler.
+ * - PWA: the journal is part of the installable ALGO HUB app. The manifest,
+ *   the service worker and the icon endpoints all live at the domain root and
+ *   are served by the hub app, so nothing here has to be built or bundled:
+ *     /app-icon?size=N    the blue app icon
+ *     /app-splash?size=N  the transparent logo used on the launch screen
  */
 export default function RootLayout({
   children,
@@ -48,11 +49,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap"
           rel="stylesheet"
         />
-        <link
-          href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"
-          rel="stylesheet"
-        />
-        <link rel="icon" type="image/png" sizes="192x192" href={`${BASE_PATH}/app-icon?size=192`} />
+        <link rel="icon" type="image/png" sizes="192x192" href="/app-icon?size=192" />
         {/* اپلیکیشن نصب‌شدنی ALGO HUB (مدیریت سرمایه + ژورنال تریدینگ) */}
         <link rel="manifest" href="/manifest.webmanifest" />
         <meta name="application-name" content="ALGO HUB" />
@@ -61,7 +58,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#0A1622" />
-        <link rel="apple-touch-icon" sizes="180x180" href={`${BASE_PATH}/app-icon?size=180`} />
+        <link rel="apple-touch-icon" sizes="180x180" href="/app-icon?size=180" />
         {/* SDK مینی‌اپ تلگرام -- برای دکمهٔ بازگشتِ بومی و ادغام با هابِ algohub. */}
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
         {/* Apply the saved theme before first paint (no flash of wrong colours).

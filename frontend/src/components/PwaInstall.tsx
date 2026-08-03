@@ -1,16 +1,23 @@
 "use client";
 
 /**
- * نصب اپ ALGO HUB روی صفحهٔ اصلی گوشی — نسخهٔ داخل ژورنال.
+ * اپ ALGO HUB — نسخهٔ داخل ژورنال.
  *
- * اپ ALGO HUB شامل مدیریت سرمایه و ژورنال تریدینگ است؛ سرویس‌وورکر روی ریشهٔ
- * دامنه («/») ثبت می‌شود، پس هر دو بخش زیر یک اپ قرار می‌گیرند.
+ * ۱) اسپلشِ شروع: وقتی اپ نصب‌شده باز می‌شود، لوگوی ALGO HUB نمایش داده می‌شود.
+ * ۲) نوار توصیهٔ نصب روی صفحهٔ اصلی گوشی (با راهنمای جداگانه برای آیفون).
+ *
+ * تصاویر را سرویسِ هاب روی ریشهٔ دامنه سرو می‌کند:
+ *   /app-icon?size=N    آیکن اپ (پس‌زمینهٔ آبی)
+ *   /app-splash?size=N  لوگوی شفافِ صفحهٔ شروع
  */
 import { useEffect, useState } from "react";
-import { BASE_PATH } from "@/lib/api";
 
 const DISMISS_KEY = "ah-pwa-dismissed-at";
+const SPLASH_KEY = "ah-splash-shown";
 const DISMISS_DAYS = 7;
+
+const APP_ICON = "/app-icon?size=192";
+const APP_SPLASH = "/app-splash?size=512";
 
 type Mode = "prompt" | "ios";
 
@@ -43,11 +50,31 @@ function dismissedRecently(): boolean {
 export function PwaInstall() {
   const [mode, setMode] = useState<Mode | null>(null);
   const [deferred, setDeferred] = useState<any>(null);
+  const [splash, setSplash] = useState(false);
+  const [splashOut, setSplashOut] = useState(false);
 
+  // ثبت سرویس‌وورکر (روی ریشهٔ دامنه سرو می‌شود).
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
     }
+  }, []);
+
+  // اسپلشِ شروع — فقط در حالت اپ و یک‌بار در هر اجرا.
+  useEffect(() => {
+    if (!isStandalone() || inTelegram()) return;
+    try {
+      if (sessionStorage.getItem(SPLASH_KEY)) return;
+      sessionStorage.setItem(SPLASH_KEY, "1");
+    } catch {}
+
+    setSplash(true);
+    const fade = setTimeout(() => setSplashOut(true), 1300);
+    const gone = setTimeout(() => setSplash(false), 1800);
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(gone);
+    };
   }, []);
 
   useEffect(() => {
@@ -90,54 +117,66 @@ export function PwaInstall() {
     close();
   }
 
-  if (!mode) return null;
-
   return (
-    <div
-      dir="rtl"
-      className="fixed bottom-[calc(78px+env(safe-area-inset-bottom))] left-3 right-3 z-[95] flex items-center gap-3 rounded-2xl p-4 md:bottom-5 md:left-5 md:right-auto md:max-w-sm"
-      style={{
-        background: "var(--surface)",
-        color: "var(--text)",
-        border: "1px solid var(--border)",
-        boxShadow: "var(--glass-shadow)",
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={`${BASE_PATH}/app-icon`}
-        alt="ALGO HUB"
-        className="h-12 w-12 shrink-0 rounded-2xl object-contain p-1"
-        style={{ background: "var(--surface-2)" }}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-extrabold">اپ ALGO HUB را روی صفحهٔ اصلی گوشی‌تان نصب کنید</div>
-        <div className="mt-0.5 text-xs leading-7" style={{ color: "var(--muted)" }}>
-          {mode === "ios"
-            ? "در سافاری، دکمهٔ «اشتراک‌گذاری» را بزنید و «افزودن به صفحهٔ اصلی» را انتخاب کنید."
-            : "ژورنال تریدینگ و مدیریت سرمایه در یک اپ — سریع‌تر و همیشه دم‌دست."}
-        </div>
-      </div>
-      {mode === "prompt" && (
-        <button
-          type="button"
-          onClick={install}
-          className="shrink-0 rounded-xl px-4 py-2 text-xs font-extrabold"
-          style={{ background: "linear-gradient(135deg,#4ED9CC,#19C3B3 45%,#128F84)", color: "#04201d" }}
+    <>
+      {splash && (
+        <div
+          className="fixed inset-0 z-[100000] flex flex-col items-center justify-center gap-4 transition-opacity duration-500"
+          style={{ background: "#0A1622", opacity: splashOut ? 0 : 1 }}
         >
-          نصب اپ
-        </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={APP_SPLASH} alt="ALGO HUB" className="w-[min(46vw,190px)]" />
+          <div className="text-xs tracking-[0.22em] text-[#cfe3f5] opacity-70">ALGO HUB</div>
+        </div>
       )}
-      <button
-        type="button"
-        onClick={close}
-        aria-label="بستن"
-        className="shrink-0 rounded-lg px-2 py-1 text-base opacity-60"
-        style={{ color: "var(--muted)" }}
-      >
-        ✕
-      </button>
-    </div>
+
+      {mode && (
+        <div
+          dir="rtl"
+          className="fixed bottom-[calc(78px+env(safe-area-inset-bottom))] left-3 right-3 z-[95] flex items-center gap-3 rounded-2xl p-4 md:bottom-5 md:left-5 md:right-auto md:max-w-sm"
+          style={{
+            background: "var(--surface)",
+            color: "var(--text)",
+            border: "1px solid var(--border)",
+            boxShadow: "var(--glass-shadow)",
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={APP_ICON}
+            alt="ALGO HUB"
+            className="h-12 w-12 shrink-0 rounded-2xl object-cover"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-extrabold">اپ ALGO HUB را روی صفحهٔ اصلی گوشی‌تان نصب کنید</div>
+            <div className="mt-0.5 text-xs leading-7" style={{ color: "var(--muted)" }}>
+              {mode === "ios"
+                ? "در سافاری، دکمهٔ «اشتراک‌گذاری» را بزنید و «افزودن به صفحهٔ اصلی» را انتخاب کنید."
+                : "ژورنال تریدینگ و مدیریت سرمایه در یک اپ — سریع‌تر و همیشه دم‌دست."}
+            </div>
+          </div>
+          {mode === "prompt" && (
+            <button
+              type="button"
+              onClick={install}
+              className="shrink-0 rounded-xl px-4 py-2 text-xs font-extrabold"
+              style={{ background: "linear-gradient(135deg,#4ED9CC,#19C3B3 45%,#128F84)", color: "#04201d" }}
+            >
+              نصب اپ
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            aria-label="بستن"
+            className="shrink-0 rounded-lg px-2 py-1 text-base opacity-60"
+            style={{ color: "var(--muted)" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
