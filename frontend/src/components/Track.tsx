@@ -6,6 +6,9 @@
  * فقط یک شناسهٔ تصادفی در localStorage نگه داشته می‌شود (بدون هیچ
  * دادهٔ شخصی) تا «بازدیدکنندهٔ یکتا» قابل شمارش باشد. صفحات
  * خصوصی (پنل مدیریت) رهگیری نمی‌شوند.
+ *
+ * توجه: پایهٔ نشانی API خودش به /api ختم می‌شود، پس مسیر اینجا بدون
+ * پیشوند /api نوشته می‌شود.
  */
 
 import { useEffect } from "react";
@@ -35,7 +38,7 @@ export function Track() {
     if (!pathname || SKIP.some((p) => pathname.startsWith(p))) return;
     const params = new URLSearchParams(window.location.search);
     http
-      .post("/api/analytics/track", {
+      .post("/analytics/track", {
         kind: "view",
         vid: visitorId(),
         path: pathname,

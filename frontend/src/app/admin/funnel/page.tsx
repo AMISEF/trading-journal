@@ -49,16 +49,16 @@ type Funnel = {
   trackingSince: string | null;
 };
 
-const FA = ["\u06f0", "\u06f1", "\u06f2", "\u06f3", "\u06f4", "\u06f5", "\u06f6", "\u06f7", "\u06f8", "\u06f9"];
+const FA = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
 
 function fa(value: number | string | null | undefined) {
-  if (value === null || value === undefined || value === "") return "\u2014";
+  if (value === null || value === undefined || value === "") return "—";
   return String(value).replace(/[0-9]/g, (d) => FA[+d]);
 }
 
 function pct(value: number | null | undefined) {
-  if (value === null || value === undefined) return "\u2014";
-  return `${fa(value.toFixed(1))}\u066a`;
+  if (value === null || value === undefined) return "—";
+  return `${fa(value.toFixed(1))}٪`;
 }
 
 const STEP_COLORS = ["#38bdf8", "#22c55e", "#f59e0b", "#eab308", "#a855f7"];
@@ -75,9 +75,9 @@ function verdict(key: string, value: number | null | undefined) {
   if (!s) return null;
   const good = key === "monthlyChurn" ? value <= s[1] : value >= s[1];
   const ok = key === "monthlyChurn" ? value <= s[0] : value >= s[0];
-  if (good) return { t: "\u0639\u0627\u0644\u06cc", c: "#22c55e" };
-  if (ok) return { t: "\u0642\u0627\u0628\u0644 \u0642\u0628\u0648\u0644", c: "#f59e0b" };
-  return { t: "\u0646\u06cc\u0627\u0632 \u0628\u0647 \u0628\u0647\u0628\u0648\u062f", c: "#f87171" };
+  if (good) return { t: "عالی", c: "#22c55e" };
+  if (ok) return { t: "قابل قبول", c: "#f59e0b" };
+  return { t: "نیاز به بهبود", c: "#f87171" };
 }
 
 function Headline({
@@ -171,7 +171,7 @@ function Table({
                 className="py-4 text-center text-xs"
                 style={{ color: "var(--muted)" }}
               >
-                {"\u062f\u0627\u062f\u0647\u200c\u0627\u06cc \u062b\u0628\u062a \u0646\u0634\u062f\u0647"}
+                داده‌ای ثبت نشده
               </td>
             </tr>
           ) : (
@@ -207,10 +207,11 @@ export default function AdminFunnelPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await http.get("/api/analytics/funnel", { params: { days } });
+      // پایهٔ نشانی API خودش /api دارد؛ پس اینجا بدون پیشوند.
+      const res = await http.get("/analytics/funnel", { params: { days } });
       setData(res.data);
     } catch {
-      setError("\u062f\u0631\u06cc\u0627\u0641\u062a \u06af\u0632\u0627\u0631\u0634 \u0642\u06cc\u0641 \u0645\u0645\u06a9\u0646 \u0646\u0634\u062f.");
+      setError("دریافت گزارش قیف ممکن نشد.");
     } finally {
       setLoading(false);
     }
@@ -228,10 +229,10 @@ export default function AdminFunnelPage() {
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-lg font-extrabold" style={{ color: "var(--text)" }}>
-          {"\u0627\u0646\u062f\u0627\u0632\u0647\u200c\u06af\u06cc\u0631\u06cc \u0642\u06cc\u0641 \u0645\u062d\u0635\u0648\u0644"}
+          اندازه‌گیری قیف محصول
         </h1>
         <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
-          {"\u0627\u0632 \u0628\u0627\u0632\u062f\u06cc\u062f \u0644\u0646\u062f\u06cc\u0646\u06af \u062a\u0627 \u062e\u0631\u06cc\u062f \u0627\u0634\u062a\u0631\u0627\u06a9 \u2014 \u062f\u0642\u06cc\u0642\u0627\u064b \u0628\u0628\u06cc\u0646\u06cc\u062f \u06a9\u062c\u0627 \u06a9\u0627\u0631\u0628\u0631 \u0631\u0627 \u0627\u0632 \u062f\u0633\u062a \u0645\u06cc\u200c\u062f\u0647\u06cc\u062f."}
+          از بازدید لندینگ تا خرید اشتراک — دقیقاً ببینید کجا کاربر را از دست می‌دهید.
         </p>
       </div>
       <div
@@ -250,7 +251,7 @@ export default function AdminFunnelPage() {
                 : { color: "var(--muted)" }
             }
           >
-            {d === 365 ? "\u06f1 \u0633\u0627\u0644" : `${fa(d)} \u0631\u0648\u0632`}
+            {d === 365 ? "۱ سال" : `${fa(d)} روز`}
           </button>
         ))}
       </div>
@@ -262,7 +263,7 @@ export default function AdminFunnelPage() {
       <main className="mx-auto max-w-6xl p-4">
         {topBar}
         <p className="py-10 text-center text-sm" style={{ color: "var(--muted)" }}>
-          {"\u062f\u0631 \u062d\u0627\u0644 \u0645\u062d\u0627\u0633\u0628\u0647\u2026"}
+          در حال محاسبه…
         </p>
       </main>
     );
@@ -273,7 +274,7 @@ export default function AdminFunnelPage() {
       <main className="mx-auto max-w-6xl p-4">
         {topBar}
         <p className="py-10 text-center text-sm" style={{ color: "var(--loss)" }}>
-          {error || "\u062e\u0637\u0627"}
+          {error || "خطا"}
         </p>
       </main>
     );
@@ -292,35 +293,35 @@ export default function AdminFunnelPage() {
       {/* سه عدد طلایی + ریزش */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Headline
-          title={"\u0628\u0627\u0632\u062f\u06cc\u062f \u2190 \u062b\u0628\u062a\u200c\u0646\u0627\u0645"}
+          title="بازدید ← ثبت‌نام"
           value={data.headline.visitToSignup}
           metric="visitToSignup"
-          note={"\u0647\u062f\u0641 \u0633\u0627\u0644\u0645: \u0628\u0627\u0644\u0627\u06cc \u06f3\u066a"}
+          note="هدف سالم: بالای ۳٪"
         />
         <Headline
-          title={"\u062b\u0628\u062a\u200c\u0646\u0627\u0645 \u2190 \u0627\u0648\u0644\u06cc\u0646 \u0645\u0639\u0627\u0645\u0644\u0647"}
+          title="ثبت‌نام ← اولین معامله"
           value={data.headline.signupToActivation}
           metric="signupToActivation"
-          note={"\u0645\u0647\u0645\u200c\u062a\u0631\u06cc\u0646 \u0639\u062f\u062f \u0645\u062d\u0635\u0648\u0644 \u2014 \u0647\u062f\u0641: \u0628\u0627\u0644\u0627\u06cc \u06f5\u06f0\u066a"}
+          note="مهم‌ترین عدد محصول — هدف: بالای ۵۰٪"
         />
         <Headline
-          title={"\u0627\u0648\u0644\u06cc\u0646 \u0645\u0639\u0627\u0645\u0644\u0647 \u2190 \u062e\u0631\u06cc\u062f"}
+          title="اولین معامله ← خرید"
           value={data.headline.activationToPaid}
           metric="activationToPaid"
-          note={"\u0647\u062f\u0641 \u0633\u0627\u0644\u0645: \u0628\u0627\u0644\u0627\u06cc \u06f1\u06f0\u066a"}
+          note="هدف سالم: بالای ۱۰٪"
         />
         <Headline
-          title={"\u0631\u06cc\u0632\u0634 \u0645\u0627\u0647\u0627\u0646\u0647"}
+          title="ریزش ماهانه"
           value={data.headline.monthlyChurn}
           metric="monthlyChurn"
-          note={"\u06a9\u0645\u062a\u0631 \u0627\u0632 \u06f5\u066a \u0639\u0627\u0644\u06cc \u0627\u0633\u062a"}
+          note="کمتر از ۵٪ عالی است"
         />
       </div>
 
       {/* نمودار قیف */}
       <div className="tj-card mb-4 p-4">
         <p className="mb-4 text-sm font-bold" style={{ color: "var(--text)" }}>
-          {"\u0642\u06cc\u0641 \u06a9\u0627\u0645\u0644 \u062a\u0628\u062f\u06cc\u0644"}
+          قیف کامل تبدیل
         </p>
         {data.steps.map((s, i) => (
           <div key={s.key} className="mb-3">
@@ -338,8 +339,7 @@ export default function AdminFunnelPage() {
                 >
                   {pct(s.rate)}{" "}
                   <span className="font-normal" style={{ color: "var(--muted)" }}>
-                    {"\u0627\u0632 "}
-                    {s.of}
+                    از {s.of}
                   </span>
                 </span>
               )}
@@ -367,7 +367,7 @@ export default function AdminFunnelPage() {
           </div>
         ))}
         <p className="text-xs" style={{ color: "var(--muted)" }}>
-          {"\u0628\u0627\u0632\u062f\u06cc\u062f \u062a\u0627 \u062e\u0631\u06cc\u062f: "}
+          بازدید تا خرید:{" "}
           <b style={{ color: "var(--text)" }}>{pct(data.headline.visitToPaid)}</b>
         </p>
       </div>
@@ -375,51 +375,48 @@ export default function AdminFunnelPage() {
       {/* KPI ها */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
-          label={"\u0628\u0627\u0632\u062f\u06cc\u062f\u06a9\u0646\u0646\u062f\u0647\u0654 \u06cc\u06a9\u062a\u0627"}
+          label="بازدیدکنندهٔ یکتا"
           value={fa(data.counts.visitors)}
           sub={
             data.growth.visitors === null || data.growth.visitors === undefined
               ? undefined
-              : `\u0646\u0633\u0628\u062a \u0628\u0647 \u062f\u0648\u0631\u0647\u0654 \u0642\u0628\u0644: ${pct(data.growth.visitors)}`
+              : `نسبت به دورهٔ قبل: ${pct(data.growth.visitors)}`
           }
         />
         <Kpi
-          label={"\u0628\u0627\u0632\u062f\u06cc\u062f \u0635\u0641\u062d\u0647"}
+          label="بازدید صفحه"
           value={fa(data.counts.pageviews)}
-          sub={`\u0645\u06cc\u0627\u0646\u06af\u06cc\u0646 \u0647\u0631 \u0646\u0641\u0631: ${fa(data.counts.pagesPerVisitor)}`}
+          sub={`میانگین هر نفر: ${fa(data.counts.pagesPerVisitor)}`}
         />
+        <Kpi label="ثبت‌نام جدید" value={fa(data.counts.signups)} />
         <Kpi
-          label={"\u062b\u0628\u062a\u200c\u0646\u0627\u0645 \u062c\u062f\u06cc\u062f"}
-          value={fa(data.counts.signups)}
-        />
-        <Kpi
-          label={"\u06a9\u0627\u0631\u0628\u0631 \u0641\u0639\u0627\u0644\u200c\u0634\u062f\u0647"}
+          label="کاربر فعال‌شده"
           value={fa(data.counts.activated)}
-          sub={`\u06f5 \u0645\u0639\u0627\u0645\u0644\u0647 \u06cc\u0627 \u0628\u06cc\u0634\u062a\u0631: ${fa(data.counts.engaged)}`}
+          sub={`۵ معامله یا بیشتر: ${fa(data.counts.engaged)}`}
         />
         <Kpi
-          label={"\u0645\u0639\u0627\u0645\u0644\u0647\u0654 \u062c\u062f\u06cc\u062f"}
+          label="معاملهٔ جدید"
           value={fa(data.counts.newTrades)}
-          sub={`\u06a9\u0644 \u0645\u0639\u0627\u0645\u0644\u0627\u062a: ${fa(data.lifetime.trades)}`}
+          sub={`کل معاملات: ${fa(data.lifetime.trades)}`}
         />
         <Kpi
-          label={"\u0645\u062f\u062a \u062a\u0627 \u0627\u0648\u0644\u06cc\u0646 \u0645\u0639\u0627\u0645\u0644\u0647"}
+          label="مدت تا اولین معامله"
           value={
             data.medianHoursToActivate === null
-              ? "\u2014"
-              : `${fa(data.medianHoursToActivate)} \u0633\u0627\u0639\u062a`
+              ? "—"
+              : `${fa(data.medianHoursToActivate)} ساعت`
           }
-          sub={"\u0645\u06cc\u0627\u0646\u0647\u0654 \u0641\u0627\u0635\u0644\u0647\u0654 \u062b\u0628\u062a\u200c\u0646\u0627\u0645 \u062a\u0627 \u0627\u0648\u0644\u06cc\u0646 \u0645\u0639\u0627\u0645\u0644\u0647"}
+          sub="میانهٔ فاصلهٔ ثبت‌نام تا اولین معامله"
         />
         <Kpi
-          label={"\u0645\u0634\u062a\u0631\u06a9 \u0641\u0639\u0627\u0644"}
+          label="مشترک فعال"
           value={fa(data.retention.activePaid)}
-          sub={`\u06f7 \u0631\u0648\u0632 \u062a\u0627 \u0627\u0646\u0642\u0636\u0627: ${fa(data.retention.expiring7d)}`}
+          sub={`۷ روز تا انقضا: ${fa(data.retention.expiring7d)}`}
         />
         <Kpi
-          label={"\u0627\u0634\u062a\u0631\u0627\u06a9 \u0645\u0646\u0642\u0636\u06cc\u200c\u0634\u062f\u0647"}
+          label="اشتراک منقضی‌شده"
           value={fa(data.retention.expired30d)}
-          sub={"\u062f\u0631 \u06f3\u06f0 \u0631\u0648\u0632 \u06af\u0630\u0634\u062a\u0647"}
+          sub="در ۳۰ روز گذشته"
         />
       </div>
 
@@ -427,20 +424,21 @@ export default function AdminFunnelPage() {
       <div className="tj-card mb-4 p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-bold" style={{ color: "var(--text)" }}>
-            {"\u0631\u0648\u0646\u062f \u0631\u0648\u0632\u0627\u0646\u0647"}
+            روند روزانه
           </p>
           <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-            <span style={{ color: "#38bdf8" }}>\u25a0</span>{" "}
-            {"\u0628\u0627\u0632\u062f\u06cc\u062f"}{"  "}
-            <span style={{ color: "#22c55e" }}>\u25a0</span>{" "}
-            {"\u062b\u0628\u062a\u200c\u0646\u0627\u0645"}{"  "}
-            <span style={{ color: "#f59e0b" }}>\u25a0</span>{" "}
-            {"\u0645\u0639\u0627\u0645\u0644\u0647"}
+            <span style={{ color: "#38bdf8" }}>■</span> بازدید{"  "}
+            <span style={{ color: "#22c55e" }}>■</span> ثبت‌نام{"  "}
+            <span style={{ color: "#f59e0b" }}>■</span> معامله
           </span>
         </div>
         <div className="flex h-24 items-end gap-1">
           {data.trend.slice(-30).map((d) => (
-            <div key={d.day} className="flex h-full flex-1 flex-col justify-end gap-[2px]" title={d.day}>
+            <div
+              key={d.day}
+              className="flex h-full flex-1 flex-col justify-end gap-[2px]"
+              title={d.day}
+            >
               <div
                 style={{
                   height: `${(d.visitors / trendTop) * 100}%`,
@@ -472,23 +470,23 @@ export default function AdminFunnelPage() {
       {/* جدول‌ها */}
       <div className="mb-4 grid gap-3 lg:grid-cols-2">
         <Table
-          title={"\u0645\u0646\u0627\u0628\u0639 \u0648\u0631\u0648\u062f\u06cc"}
-          head={["\u0645\u0646\u0628\u0639", "\u06a9\u0627\u0631\u0628\u0631", "\u0628\u0627\u0632\u062f\u06cc\u062f"]}
+          title="منابع ورودی"
+          head={["منبع", "کاربر", "بازدید"]}
           rows={data.sources.map((s) => [s.key, fa(s.visitors), fa(s.views)])}
         />
         <Table
-          title={"\u062f\u0633\u062a\u06af\u0627\u0647"}
-          head={["\u0646\u0648\u0639", "\u06a9\u0627\u0631\u0628\u0631"]}
+          title="دستگاه"
+          head={["نوع", "کاربر"]}
           rows={data.devices.map((s) => [s.key, fa(s.visitors)])}
         />
         <Table
-          title={"\u067e\u0631\u0628\u0627\u0632\u062f\u06cc\u062f\u062a\u0631\u06cc\u0646 \u0635\u0641\u062d\u0627\u062a"}
-          head={["\u0645\u0633\u06cc\u0631", "\u0628\u0627\u0632\u062f\u06cc\u062f", "\u06a9\u0627\u0631\u0628\u0631"]}
+          title="پربازدیدترین صفحات"
+          head={["مسیر", "بازدید", "کاربر"]}
           rows={data.pages.map((s) => [s.key, fa(s.views), fa(s.visitors)])}
         />
         <Table
-          title={"\u06a9\u0648\u0647\u0648\u0631\u062a \u0645\u0627\u0647\u0627\u0646\u0647"}
-          head={["\u0645\u0627\u0647", "\u062b\u0628\u062a\u200c\u0646\u0627\u0645", "\u0641\u0639\u0627\u0644", "\u062e\u0631\u06cc\u062f"]}
+          title="کوهورت ماهانه"
+          head={["ماه", "ثبت‌نام", "فعال", "خرید"]}
           rows={data.cohorts.map((c) => [
             c.month,
             fa(c.signups),
@@ -499,19 +497,10 @@ export default function AdminFunnelPage() {
       </div>
 
       <p className="text-xs" style={{ color: "var(--muted)" }}>
-        {"\u0627\u0632 \u0627\u0628\u062a\u062f\u0627 \u062a\u0627 \u0627\u0645\u0631\u0648\u0632: "}
-        {fa(data.lifetime.users)}
-        {" \u06a9\u0627\u0631\u0628\u0631 \u00b7 "}
-        {fa(data.lifetime.activated)}
-        {" \u0641\u0639\u0627\u0644 ("}
-        {pct(data.lifetime.activationRate)}
-        {") \u00b7 "}
-        {fa(data.lifetime.paid)}
-        {" \u062e\u0631\u06cc\u062f ("}
-        {pct(data.lifetime.paidRate)}
-        {") \u00b7 "}
-        {fa(data.lifetime.tradesPerActive)}
-        {" \u0645\u0639\u0627\u0645\u0644\u0647 \u0628\u0647 \u0627\u0632\u0627\u06cc \u0647\u0631 \u06a9\u0627\u0631\u0628\u0631 \u0641\u0639\u0627\u0644"}
+        از ابتدا تا امروز: {fa(data.lifetime.users)} کاربر · {fa(data.lifetime.activated)} فعال (
+        {pct(data.lifetime.activationRate)}) · {fa(data.lifetime.paid)} خرید (
+        {pct(data.lifetime.paidRate)}) · {fa(data.lifetime.tradesPerActive)} معامله به ازای هر
+        کاربر فعال
       </p>
     </main>
   );
