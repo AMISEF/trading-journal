@@ -15,6 +15,10 @@ and handed to the gate. Coach runs are metered on ``users.ai_overall_runs``,
 incremented when the user starts their own job. The ``/admin/*`` variants
 deliberately skip both the checks and the meter — an admin generating a report
 for a customer is not spending the customer's quota.
+
+The analyses themselves are built by ``app.services.ai_coach``: it assembles the
+dashboard metrics, the user's trading plan, their checklists and the last
+10/20/30/50 trades depending on the requested thinking level.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.trade import Trade
 from app.models.user import User
 from app.schemas.base import CamelModel
-from app.services import ai_analysis, plans
+from app.services import ai_analysis, ai_coach, ai_prompts, plans
 
 logger = logging.getLogger("app.api.ai")
 
@@ -58,6 +62,29 @@ class AIAnalysisOut(CamelModel):
 
 class ChatIn(CamelModel):
     message: str
+
+
+class GenerateIn(CamelModel):
+    """Optional body for the coach: which thinking level to run."""
+
+    level: str | None = None
+
+
+class LevelOut(CamelModel):
+    key: str
+    label: str
+    trades: int
+    images: int
+    note: str
+
+
+class PlanIn(CamelModel):
+    topics: list = []
+
+
+class PlanOut(CamelModel):
+    topics: list = []
+    updated_at: datetime | None = None
 
 
 # Keep the stored chat thread bounded.
@@ -99,6 +126,46 @@ def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
     _BACKGROUND_TASKS.add(task)
     task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+# ---------------------------------------------------------------------------
+# Thinking levels + trading plan
+# ---------------------------------------------------------------------------
+@router.get("/levels", response_model=list[LevelOut])
+async def list_levels(_user: User = Depends(get_current_user)) -> list[LevelOut]:
+    """The coach depth presets, so the UI never drifts from the backend."""
+    out: list[LevelOut] = []
+    for key in ai_prompts.LEVEL_ORDER:
+        cfg = ai_prompts.LEVELS[key]
+        out.append(
+            LevelOut(
+                key=key,
+                label=cfg["label"],
+                trades=cfg["trades"],
+                images=cfg["images"],
+                note=cfg["note"],
+            )
+        )
+    return out
+
+
+@router.get("/plan", response_model=PlanOut)
+async def get_trading_plan(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlanOut:
+    return PlanOut(topics=await ai_coach.load_plan(db, user.id))
+
+
+@router.put("/plan", response_model=PlanOut)
+async def put_trading_plan(
+    body: PlanIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlanOut:
+    """Mirror the plan written on /trading-plan so the coach can read it."""
+    topics = await ai_coach.save_plan(db, user.id, body.topics)
+    return PlanOut(topics=topics, updated_at=_utcnow())
 
 
 # ---------------------------------------------------------------------------
@@ -157,11 +224,14 @@ async def get_overall_analysis(
 
 @router.post("/overall", response_model=AIAnalysisOut)
 async def generate_overall_analysis(
+    body: GenerateIn | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AIAnalysisOut:
     plans.assert_can_generate_coach(user)
-    return await _start_overall_job(db, user, count_usage=True)
+    return await _start_overall_job(
+        db, user, count_usage=True, level=(body.level if body else None)
+    )
 
 
 @router.post("/overall/chat", response_model=AIAnalysisOut)
@@ -259,6 +329,7 @@ async def admin_get_overall_analysis(
 @router.post("/admin/users/{user_id}/overall", response_model=AIAnalysisOut)
 async def admin_generate_overall_analysis(
     user_id: int,
+    body: GenerateIn | None = None,
     _admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AIAnalysisOut:
@@ -266,7 +337,9 @@ async def admin_generate_overall_analysis(
     if target is None:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
     # Admin runs are on the house: they must not spend the customer's quota.
-    return await _start_overall_job(db, target, count_usage=False)
+    return await _start_overall_job(
+        db, target, count_usage=False, level=(body.level if body else None)
+    )
 
 
 @router.post("/admin/users/{user_id}/overall/chat", response_model=AIAnalysisOut)
@@ -381,9 +454,9 @@ async def _do_trade_chat(
 ) -> AIAnalysisOut:
     all_trades = await crud.load_user_trades(db, owner.id)
     transactions = await crud.load_user_transactions(db, owner.id)
-    context = ai_analysis.build_trade_summary(owner, all_trades, trade, transactions)
-    if trade.ai_analysis:
-        context += "\n\n[تحلیل قبلیٔ این معامله]\n" + trade.ai_analysis
+    context = await ai_coach.chat_context_trade(
+        db, owner, all_trades, trade, transactions, analysis=trade.ai_analysis
+    )
     history = list(trade.ai_chat or [])
     reply = await _run_chat(context, history, message, str(owner.id))
     trade.ai_chat = _chat_append(history, message, reply)
@@ -392,11 +465,11 @@ async def _do_trade_chat(
 
 
 async def _do_overall_chat(db: AsyncSession, owner: User, message: str) -> AIAnalysisOut:
-    context = owner.ai_overall
-    if not context:
-        all_trades = await crud.load_user_trades(db, owner.id)
-        transactions = await crud.load_user_transactions(db, owner.id)
-        context = ai_analysis.build_overall_summary(owner, all_trades, transactions)
+    all_trades = await crud.load_user_trades(db, owner.id)
+    transactions = await crud.load_user_transactions(db, owner.id)
+    context = await ai_coach.chat_context_overall(
+        db, owner, all_trades, transactions, analysis=owner.ai_overall
+    )
     history = list(owner.ai_overall_chat or [])
     reply = await _run_chat(context, history, message, str(owner.id))
     owner.ai_overall_chat = _chat_append(history, message, reply)
@@ -405,11 +478,11 @@ async def _do_overall_chat(db: AsyncSession, owner: User, message: str) -> AIAna
 
 
 async def _do_report_chat(db: AsyncSession, owner: User, message: str) -> AIAnalysisOut:
-    context = owner.ai_report
-    if not context:
-        all_trades = await crud.load_user_trades(db, owner.id)
-        transactions = await crud.load_user_transactions(db, owner.id)
-        context = ai_analysis.build_institutional_summary(owner, all_trades, transactions)
+    all_trades = await crud.load_user_trades(db, owner.id)
+    transactions = await crud.load_user_transactions(db, owner.id)
+    context = await ai_coach.chat_context_report(
+        db, owner, all_trades, transactions, analysis=owner.ai_report
+    )
     history = list(owner.ai_report_chat or [])
     reply = await _run_chat(context, history, message, str(owner.id))
     owner.ai_report_chat = _chat_append(history, message, reply)
@@ -434,7 +507,11 @@ async def _start_trade_job(db: AsyncSession, trade: Trade) -> AIAnalysisOut:
 
 
 async def _start_overall_job(
-    db: AsyncSession, owner: User, *, count_usage: bool = False
+    db: AsyncSession,
+    owner: User,
+    *,
+    count_usage: bool = False,
+    level: str | None = None,
 ) -> AIAnalysisOut:
     if not ai_analysis.is_enabled():
         raise HTTPException(
@@ -447,7 +524,7 @@ async def _start_overall_job(
         # The meter behind the free quota + the «دعوت دوستان» bonus runs.
         owner.ai_overall_runs = int(getattr(owner, "ai_overall_runs", 0) or 0) + 1
     await db.commit()
-    _spawn(_run_overall_job(owner.id))
+    _spawn(_run_overall_job(owner.id, ai_prompts.normalize_level(level)))
     return _overall_out(owner)
 
 
@@ -476,7 +553,7 @@ async def _run_trade_job(trade_id: int, owner_id: int) -> None:
                 return
             all_trades = await crud.load_user_trades(db, owner_id)
             transactions = await crud.load_user_transactions(db, owner_id)
-            text = await ai_analysis.analyze_trade(owner, all_trades, trade, transactions)
+            text = await ai_coach.run_trade(db, owner, all_trades, trade, transactions)
             trade.ai_analysis = text
             trade.ai_analysis_at = _utcnow()
             trade.ai_analysis_status = "DONE"
@@ -487,7 +564,7 @@ async def _run_trade_job(trade_id: int, owner_id: int) -> None:
             await _record_trade_error(trade_id, str(exc))
 
 
-async def _run_overall_job(owner_id: int) -> None:
+async def _run_overall_job(owner_id: int, level: str | None = None) -> None:
     async with AsyncSessionLocal() as db:
         try:
             owner = await db.get(User, owner_id)
@@ -495,7 +572,7 @@ async def _run_overall_job(owner_id: int) -> None:
                 return
             all_trades = await crud.load_user_trades(db, owner_id)
             transactions = await crud.load_user_transactions(db, owner_id)
-            text = await ai_analysis.analyze_overall(owner, all_trades, transactions)
+            text = await ai_coach.run_overall(db, owner, all_trades, transactions, level)
             owner.ai_overall = text
             owner.ai_overall_at = _utcnow()
             owner.ai_overall_status = "DONE"
@@ -514,7 +591,7 @@ async def _run_report_job(owner_id: int) -> None:
                 return
             all_trades = await crud.load_user_trades(db, owner_id)
             transactions = await crud.load_user_transactions(db, owner_id)
-            text = await ai_analysis.analyze_institutional(owner, all_trades, transactions)
+            text = await ai_coach.run_institutional(db, owner, all_trades, transactions)
             owner.ai_report = text
             owner.ai_report_at = _utcnow()
             owner.ai_report_status = "DONE"
