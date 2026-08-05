@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { AICoachPanel } from "@/components/AICoachPanel";
 import { aiApi } from "@/lib/api";
+import {
+  COACH_LEVELS,
+  DEFAULT_COACH_LEVEL,
+  coachApi,
+  type CoachLevel,
+  type CoachLevelInfo,
+} from "@/lib/coach";
 import { useAuth } from "@/store/auth";
 import {
   cadenceLabel,
@@ -18,6 +26,11 @@ const TINTS = {
   violet: "167,139,250",
   sky: "125,211,252",
 } as const;
+
+/** Remembers the chosen depth between visits. */
+const LEVEL_KEY = "tj_coach_level";
+
+const fa = (n: number) => n.toLocaleString("fa-IR");
 
 export default function AnalysisPage() {
   return (
@@ -85,12 +98,104 @@ function LockedPanel({
   );
 }
 
+/**
+ * Depth of reasoning for the coach. Higher levels hand the model more of the
+ * user's history (and, on «اولترا», the exit screenshots), which costs more
+ * time but produces a far more grounded review.
+ */
+function CoachLevelPicker({
+  levels,
+  value,
+  onChange,
+}: {
+  levels: CoachLevelInfo[];
+  value: CoachLevel;
+  onChange: (next: CoachLevel) => void;
+}) {
+  const active = levels.find((l) => l.key === value);
+  return (
+    <div className="tj-card space-y-3 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="flex items-center gap-1.5 text-sm font-bold">
+            <span>🧠</span> عمق تحلیل مربی
+          </h3>
+          <p className="mt-0.5 text-xs text-muted">
+            در هر سطح، داشبورد کامل + تریدینگ پلن + چک‌لیست فرستاده می‌شود؛ فقط تعداد معاملاتی که
+            مربی می‌خواند فرق می‌کند. سطح بالاتر = تحلیل دقیق‌تر و کمی کندتر.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {levels.map((l) => {
+          const on = l.key === value;
+          return (
+            <button
+              key={l.key}
+              type="button"
+              onClick={() => onChange(l.key)}
+              aria-pressed={on}
+              className={`flex min-w-[104px] flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-xs transition ${
+                on
+                  ? "border-transparent bg-gradient-to-l from-violet-600 to-sky-600 text-white shadow-lg shadow-violet-600/20"
+                  : "border-border bg-surface-2 text-foreground/80 hover:-translate-y-0.5"
+              }`}
+            >
+              <span className="text-sm font-bold">{l.label}</span>
+              <span className={on ? "text-[11px] opacity-90" : "text-[11px] text-muted"}>
+                {fa(l.trades)} معاملهٔ اخیر{l.images > 0 ? " + تصاویر" : ""}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {active && (
+        <p className="rounded-lg bg-surface-2 px-3 py-2 text-[11px] leading-relaxed text-muted">
+          {active.note}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AnalysisInner() {
   const authUser = useAuth((s) => s.user);
   const limits = limitsOf(authUser);
   const currentTier = TIER_LABEL[effectiveTier(authUser)];
   const coachPlan = cheapestTierWith((l) => l.coachEnabled);
   const reportPlan = cheapestTierWith((l) => l.reportEnabled);
+
+  const [level, setLevel] = useState<CoachLevel>(DEFAULT_COACH_LEVEL);
+  const [levels, setLevels] = useState<CoachLevelInfo[]>(COACH_LEVELS);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(LEVEL_KEY);
+      if (saved && COACH_LEVELS.some((l) => l.key === saved)) {
+        setLevel(saved as CoachLevel);
+      }
+    } catch {
+      /* private mode — keep the default */
+    }
+    // Keep the labels in sync with the backend if it ever changes them.
+    coachApi
+      .levels()
+      .then((rows) => {
+        if (Array.isArray(rows) && rows.length) setLevels(rows);
+      })
+      .catch(() => {});
+  }, []);
+
+  const pickLevel = (next: CoachLevel) => {
+    setLevel(next);
+    try {
+      window.localStorage.setItem(LEVEL_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <div className="relative space-y-7">
@@ -119,20 +224,27 @@ function AnalysisInner() {
 
       {/* ── AI coach: whole-journal coaching report ── */}
       {limits.coachEnabled ? (
-        <AICoachPanel
-          title="مربی هوش مصنوعی — تحلیل کلی معاملات"
-          subtitle={`بررسی وین‌ریت، الگوهای تکرارشونده، مدیریت ریسک و روانشناسی، همراه با برنامهٔ بهبود · ${cadenceLabel(
-            true,
-            limits.coachPeriodDays
-          )}`}
-          fetcher={() => aiApi.getOverall()}
-          generator={() => aiApi.analyzeOverall()}
-          chat={{ send: (m) => aiApi.chatOverall(m) }}
-        />
+        <div className="space-y-3">
+          <CoachLevelPicker levels={levels} value={level} onChange={pickLevel} />
+          <AICoachPanel
+            title="مربی هوش مصنوعی — تحلیل کلی معاملات"
+            subtitle={`نقاط قوت و ضعف معاملاتت را با اسم هر معامله بیرون می‌کشد، تریدینگ پلن و چک‌لیستت را بررسی می‌کند و برنامهٔ معاملاتی جلوی پایت می‌گذارد · ${cadenceLabel(
+              true,
+              limits.coachPeriodDays
+            )}`}
+            fetcher={() => aiApi.getOverall()}
+            generator={() => coachApi.analyzeOverall(level)}
+            pdf={{
+              title: "گزارش مربی هوش مصنوعی",
+              subject: authUser ? `${authUser.firstName} ${authUser.lastName} (@${authUser.username})` : undefined,
+            }}
+            chat={{ send: (m) => aiApi.chatOverall(m) }}
+          />
+        </div>
       ) : (
         <LockedPanel
           title="مربی هوش مصنوعی — تحلیل کلی معاملات"
-          subtitle="کل ژورنالت را می‌خواند و می‌گوید پولت از کجا نشت می‌کند"
+          subtitle="کل ژورنالت را می‌خواند و می‌گوید ضررهایت از کدام رفتار تکرارشونده می‌آید"
           currentTier={currentTier}
           requiredPlanName={coachPlan.name}
           requiredTint={coachPlan.tint}
