@@ -31,6 +31,7 @@
 #     FORCE_DEPS=1          reinstall backend + frontend dependencies
 #     SKIP_HEALTHCHECK=1    deploy without waiting on the HTTP probes
 #     AUTO_SWAP=0           do not create a swapfile when the box has none
+#     KEEP_TSCONFIG=1       leave the tsconfig.json edits Next makes in place
 #     JOURNAL_HEALTH_PATH   path the journal app is served under (default /journal)
 #     DEPLOY_PREV_SHA       commit to diff against (CI passes the pre-sync HEAD)
 #     DEPLOY_TRACE=0        turn the per-command trace off
@@ -72,7 +73,7 @@ export NEXT_TELEMETRY_DISABLED=1
 
 [ "${DEPLOY_TRACE:-1}" = "1" ] && set -x
 
-# ─────────────────── sanity checks ──────────────────────
+# ─────────────────── sanity checks ──────────────────
 step "Environment"
 [ -d "$ROOT" ]     || fail "project directory $ROOT is missing"
 [ -d "$BACKEND" ]  || fail "backend directory $BACKEND is missing"
@@ -137,7 +138,7 @@ if [ "${ONLY_JOURNAL:-0}" = "1" ]; then
   BACKEND_CHANGED=0; BUILD_PNL=0; BUILD_JOURNAL=1; FRONTEND_CHANGED=1
 fi
 
-# ────────────────── self-heal ───────────────────────────
+# ────────────────── self-heal ────────────────────────
 # A dist without a BUILD_ID is a half-written build: `next start` will crash on
 # it forever. A pm2 process that is not online is the same story. Either way the
 # site is down right now — that is the one case where we rebuild uninvited.
@@ -200,7 +201,7 @@ ANY_BUILD=0
 [ "$BUILD_JOURNAL" = "1" ] && ANY_BUILD=1
 [ "$BUILD_PNL" = "1" ] && ANY_BUILD=1
 
-# ────────────────── memory / swap ────────────────────────
+# ────────────────── memory / swap ────────────────────
 # A Next build on a ~3 GB box with zero swap is exactly how the pnl build got
 # OOM-killed. Swap is cheap insurance and costs nothing when it is not needed.
 ensure_swap() {
@@ -252,7 +253,7 @@ restart_pm2() {
   fi
 }
 
-# ───────────────── backend (FastAPI / uvicorn, port 8001) ──────────────
+# ───────────────── backend (FastAPI / uvicorn, port 8001) ─────────────
 if [ "$BACKEND_CHANGED" = "1" ]; then
   step "Backend: virtualenv"
   cd "$BACKEND"
@@ -276,7 +277,47 @@ else
 fi
 
 # ────────────────── frontend (Next.js, 3001 + 3012) ───────────────────
+# `next build` writes a per-route type stub into <distDir>/types and appends
+# that folder to tsconfig's "include". Two things used to go wrong there, and
+# together they were by far the biggest source of red deploys:
+#
+#   1. tsconfig included **/*.ts with only node_modules excluded, so TypeScript
+#      checked EVERY dist folder on disk (.next, .next-pnl, .next.prev,
+#      .next.broken, …). Each stub imports its source route back, so a route
+#      that was later deleted or renamed left an orphan behind and every build
+#      from then on died with
+#         Cannot find module '../../../../src/app/<gone>/route.js'
+#      — a file nobody wrote, in a folder nobody edits, unrelated to the commit
+#      being deployed. .next-pnl made it permanent, because the pnl site is
+#      skipped by default so its stubs were never regenerated.
+#   2. Next rewrites tsconfig.json mid-build, leaving the checkout dirty and the
+#      "include" list growing on every deploy.
+#
+# tsconfig.json now scopes "include" to src/ and excludes every dist folder.
+# The two helpers below make a server that still carries old artefacts heal
+# itself instead of needing a manual rm -rf.
+purge_generated_types() {
+  cd "$FRONTEND"
+  echo "  sweeping generated route types + stale dists (orphaned stubs break later builds)"
+  rm -rf "$JOURNAL_DIST/types" "$PNL_DIST/types" \
+         "$JOURNAL_DIST.prev" "$PNL_DIST.prev" \
+         "$JOURNAL_DIST.broken" "$PNL_DIST.broken" \
+         "$JOURNAL_DIST.build" "$PNL_DIST.build" 2>/dev/null || true
+}
+
+# Next edits tsconfig.json in place; the committed version stays authoritative.
+restore_tsconfig() {
+  if [ "${KEEP_TSCONFIG:-0}" = "1" ]; then
+    return 0
+  fi
+  git -C "$ROOT" checkout -- frontend/tsconfig.json 2>/dev/null || true
+}
+
 if [ "$ANY_BUILD" = "1" ]; then
+  step "Frontend: pre-build cleanup"
+  restore_tsconfig
+  purge_generated_types
+
   step "Frontend: dependencies"
   cd "$FRONTEND"
   if [ ! -d node_modules ] || needs_install package-lock.json frontend-lock; then
@@ -396,7 +437,12 @@ else
   echo "  pnl site untouched (no new build, process healthy)"
 fi
 
-# ────────────────────── health check ────────────────────────
+# Leave the checkout clean so the next `git reset --hard` has nothing to undo.
+if [ "$ANY_BUILD" = "1" ]; then
+  restore_tsconfig
+fi
+
+# ───────────────────── health check ───────────────────────
 # Only the services that were actually restarted are probed, and the poll is
 # fast (1s) so a healthy deploy costs a second or two, not half a minute.
 #   2xx / 3xx        → healthy

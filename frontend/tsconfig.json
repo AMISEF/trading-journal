@@ -28,14 +28,25 @@
       ]
     }
   },
+  "//": "include is scoped to the sources we actually write. It used to be **/*.ts, which made TypeScript check the route type stubs that `next build` generates inside .next/ and .next-pnl/ too. Those stubs import their source route back, so a deleted or renamed route left an orphan behind that broke every future build. Next re-appends <distDir>/types to include on each build; the exclude list below neutralises it.",
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next-pnl/types/**/*.ts"
+    "*.ts",
+    "*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next",
+    ".next.build",
+    ".next.prev",
+    ".next.broken",
+    ".next-pnl",
+    ".next-pnl.build",
+    ".next-pnl.prev",
+    ".next-pnl.broken",
+    "out",
+    "dist"
   ]
 }
