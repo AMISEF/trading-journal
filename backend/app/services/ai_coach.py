@@ -14,6 +14,10 @@ Transport notes: with ``AI_API_STYLE=dify`` the system prompts live inside the
 Dify workflow, so we prepend ours to the context - the new behaviour then works
 without re-importing the workflow. The local Dify runner also lifts the two
 image cap that ``ai_analysis._dify_run`` applies, which the ultra level needs.
+
+Every optional lookup rolls the session back on failure: PostgreSQL aborts the
+whole transaction after a failed statement, so without it the job's final
+commit would fail as well.
 """
 
 from __future__ import annotations
@@ -41,6 +45,13 @@ logger = logging.getLogger("app.services.ai_coach")
 _DIFY_IMAGE_CAP = 10
 
 
+async def _safe_rollback(db: AsyncSession) -> None:
+    try:
+        await db.rollback()
+    except Exception:  # pragma: no cover
+        logger.warning("rollback failed", exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # storage helpers
 # ---------------------------------------------------------------------------
@@ -52,6 +63,7 @@ async def load_checklists(db: AsyncSession, user_id: int) -> list[ChecklistTempl
         return list(result.scalars().all())
     except Exception:  # pragma: no cover - never break a report over this
         logger.warning("could not load checklists for user %s", user_id, exc_info=True)
+        await _safe_rollback(db)
         return []
 
 
@@ -63,6 +75,7 @@ async def load_plan(db: AsyncSession, user_id: int) -> list:
         row = result.scalar_one_or_none()
     except Exception:  # table may not exist yet on an old deployment
         logger.warning("could not load trading plan for user %s", user_id, exc_info=True)
+        await _safe_rollback(db)
         return []
     if not row or not row.topics:
         return []
@@ -91,6 +104,7 @@ async def load_dashboard(db: AsyncSession, user: User) -> Any:
         return await build_user_dashboard(db, user)
     except Exception:  # pragma: no cover - the report still works without it
         logger.warning("dashboard unavailable for user %s", getattr(user, "id", "?"), exc_info=True)
+        await _safe_rollback(db)
         return None
 
 
