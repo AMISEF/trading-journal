@@ -7,12 +7,15 @@
  * ready-made demo plans for several trading styles (SMC / ICT / Al Brooks / …)
  * that the user can preview, copy into their own plan, then dismiss.
  *
- * Stored per-user in localStorage (personal notes; no backend schema needed).
+ * Stored per-user in localStorage (instant, offline-friendly) *and* mirrored to
+ * the backend, because the AI coach reviews the plan: it can only audit rules it
+ * can read. A fresh browser hydrates from the server copy.
  */
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/store/auth";
 import { faNum } from "@/lib/format";
+import { coachApi } from "@/lib/coach";
 import { DEMO_PLANS, type PlanTopic, type PlanItem } from "./demos";
 
 const TINTS = [
@@ -47,6 +50,17 @@ function savePlan(uid: string, topics: PlanTopic[]) {
   localStorage.setItem(storageKey(uid), JSON.stringify(topics));
 }
 
+/** Strip anything the API does not need, so the payload shape is stable. */
+function toDto(topics: PlanTopic[]) {
+  return topics.map((t) => ({
+    id: t.id,
+    title: t.title,
+    items: (t.items || []).map((i) => ({ id: i.id, text: i.text })),
+  }));
+}
+
+type SyncState = "idle" | "saving" | "saved" | "error";
+
 export default function TradingPlanPage() {
   return (
     <AppShell>
@@ -62,16 +76,54 @@ function TradingPlanInner() {
   const [creating, setCreating] = useState(false);
   const [demoId, setDemoId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [sync, setSync] = useState<SyncState>("idle");
+
+  /** Push the plan to the backend so the AI coach can audit it. */
+  const pushPlan = async (next: PlanTopic[]) => {
+    setSync("saving");
+    try {
+      await coachApi.savePlan(toDto(next));
+      setSync("saved");
+    } catch {
+      setSync("error");
+    }
+  };
 
   useEffect(() => {
     if (!user?.id) return;
-    setTopics(loadPlan(user.id));
+    const local = loadPlan(user.id);
+    setTopics(local);
     setLoaded(true);
+
+    let alive = true;
+    coachApi
+      .getPlan()
+      .then((res) => {
+        if (!alive || !user?.id) return;
+        const remote = Array.isArray(res?.topics) ? (res.topics as PlanTopic[]) : [];
+        if (local.length === 0 && remote.length > 0) {
+          // Fresh browser / new device: take the server copy.
+          setTopics(remote);
+          savePlan(user.id, remote);
+          setSync("saved");
+        } else if (local.length > 0) {
+          // Plans written before this sync existed: upload them once.
+          void pushPlan(local);
+        }
+      })
+      .catch(() => {
+        if (alive && local.length > 0) void pushPlan(local);
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const persist = (next: PlanTopic[]) => {
     setTopics(next);
     if (user?.id) savePlan(user.id, next);
+    void pushPlan(next);
   };
 
   const demo = useMemo(() => DEMO_PLANS.find((d) => d.id === demoId) || null, [demoId]);
@@ -114,6 +166,19 @@ function TradingPlanInner() {
           <span className="h-2.5 w-2.5 rounded-full animate-pulse-dot" style={{ background: "rgb(167,139,250)" }} />
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
+          {sync !== "idle" && (
+            <span
+              className="rounded-lg px-2.5 py-1 text-[11px] font-bold"
+              style={
+                sync === "error"
+                  ? { background: "rgba(244,63,94,0.12)", color: "rgb(244,63,94)" }
+                  : { background: "rgba(94,234,212,0.14)", color: "rgb(45,180,160)" }
+              }
+              title="مربی هوش مصنوعی همین نسخه از پلن را می‌خواند"
+            >
+              {sync === "saving" ? "در حال هماهنگ‌سازی…" : sync === "saved" ? "✓ برای مربی هوش مصنوعی ذخیره شد" : "هماهنگ‌سازی ناموفق"}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setEditMode((v) => !v)}
@@ -137,6 +202,7 @@ function TradingPlanInner() {
 
       <p className="-mt-2 max-w-3xl text-sm text-muted">
         پلن معاملاتی‌ات را این‌جا بساز: هر موضوع (مثلاً «قوانین ورود»، «مدیریت ریسک») را با چند زیرموضوع بنویس.
+        مربی هوش مصنوعی همین پلن را می‌خواند، معاملاتت را با آن می‌سنجد و اگر جایی از پلن ایراد داشته باشد تذکر می‌دهد — پس هرچه دقیق‌تر بنویسی، تحلیل دقیق‌تری می‌گیری.
         برای الهام‌گرفتن می‌توانی یکی از دموهای آماده را ببینی و در صورت تمایل به پلن خودت اضافه کنی.
       </p>
 
@@ -236,7 +302,7 @@ function TradingPlanInner() {
   );
 }
 
-/* ─── read-only topic card ────────────────────────────────────────────────── */
+/* ─── read-only topic card ─────────────────────────────────────── */
 function ReadTopicCard({ topic, tint, badge }: { topic: { title: string; items: { text: string }[] }; tint: string; badge?: string }) {
   return (
     <div className="flex flex-col" style={tintStyle(tint)}>
@@ -265,7 +331,7 @@ function ReadTopicCard({ topic, tint, badge }: { topic: { title: string; items: 
   );
 }
 
-/* ─── editable topic card ─────────────────────────────────────────────────── */
+/* ─── editable topic card ──────────────────────────────────────── */
 function EditableTopicCard({
   topic: initial, tint, onSave, onDelete,
 }: {
@@ -331,7 +397,7 @@ function EditableTopicCard({
   );
 }
 
-/* ─── new topic card ──────────────────────────────────────────────────────── */
+/* ─── new topic card ─────────────────────────────────────────── */
 function NewTopicCard({ tint, onDone, onCancel }: { tint: string; onDone: (t: PlanTopic) => void; onCancel: () => void }) {
   const [title, setTitle] = useState("");
   const [items, setItems] = useState<PlanItem[]>([]);
