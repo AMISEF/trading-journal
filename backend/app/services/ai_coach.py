@@ -11,9 +11,20 @@ What changed versus the old ``ai_analysis`` entry points:
   setup, and only then judge the user's trade.
 
 Transport notes: with ``AI_API_STYLE=dify`` the system prompts live inside the
-Dify workflow, so we prepend ours to the context - the new behaviour then works
-without re-importing the workflow. The local Dify runner also lifts the two
-image cap that ``ai_analysis._dify_run`` applies, which the ultra level needs.
+Dify workflow. Two modes are supported:
+
+* ``DIFY_PROMPTS_IN_WORKFLOW`` unset - our prompt is prepended to the context,
+  so the new behaviour works against an unmodified workflow.
+* ``DIFY_PROMPTS_IN_WORKFLOW=1`` - the workflow nodes already carry the v5
+  prompts from ``deploy/dify/v5/``, so only the per-request part is sent. The
+  coach prompt is around nine thousand characters, and it was being shipped with
+  every analysis and every chat turn; this is where the input tokens go.
+
+The requested thinking level is the one instruction that cannot be baked into
+the workflow, so it travels separately as ``directive`` and is always sent.
+
+The local Dify runner also lifts the two image cap that
+``ai_analysis._dify_run`` applies, which the ultra level needs.
 
 Every optional lookup rolls the session back on failure: PostgreSQL aborts the
 whole transaction after a failed statement, so without it the job's final
@@ -24,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, Sequence
 
 import httpx
@@ -43,6 +55,13 @@ logger = logging.getLogger("app.services.ai_coach")
 
 # The ultra level may ship this many chart screenshots.
 _DIFY_IMAGE_CAP = 10
+
+_TRUE = {"1", "true", "yes", "on"}
+
+
+def _prompts_in_workflow() -> bool:
+    """True when the Dify nodes already carry the v5 system prompts."""
+    return (os.getenv("DIFY_PROMPTS_IN_WORKFLOW", "") or "").strip().lower() in _TRUE
 
 
 async def _safe_rollback(db: AsyncSession) -> None:
@@ -225,15 +244,35 @@ async def _run(
     max_tokens: int,
     analysis_type: str,
     dify_user: str,
+    directive: str = "",
 ) -> str:
+    """Send one analysis request.
+
+    ``system`` is the static prompt for this analysis type; ``directive`` is the
+    per-request instruction (currently the thinking level). When the Dify
+    workflow already carries ``system``, only ``directive`` and ``context`` are
+    sent - that is the whole point of ``DIFY_PROMPTS_IN_WORKFLOW``.
+    """
     images = images or []
+    directive = (directive or "").strip()
     style = (settings.AI_API_STYLE or "openai").strip().lower()
+
     if style == "dify":
-        # The workflow carries the old prompts, so ship the new one inline.
-        merged = system.strip() + "\n\n---\n\n" + context
+        if _prompts_in_workflow():
+            head = directive
+        else:
+            # The workflow carries the old prompts, so ship the new one inline.
+            head = system.strip()
+            if directive:
+                head += "\n\n" + directive
+        merged = head + "\n\n---\n\n" + context if head else context
         return await _dify_run_many(analysis_type, merged, images, dify_user)
+
+    system_text = system.strip()
+    if directive:
+        system_text += "\n\n" + directive
     return await ai_analysis._complete(
-        system,
+        system_text,
         context,
         images,
         max_tokens=max_tokens,
@@ -267,7 +306,6 @@ async def run_overall(
         plan_topics=plan_topics,
         level_note=f"سطح تفکر انتخاب‌شده: {cfg['label']} ({level})",
     )
-    system = ai_prompts.COACH_SYSTEM_PROMPT + "\n\n" + ai_prompts.level_block(level)
     images = _exit_images(selection, cfg["images"])
     if images:
         context += (
@@ -276,12 +314,13 @@ async def run_overall(
             "در تحلیل حتماً به آن‌ها استناد کن."
         )
     return await _run(
-        system,
+        ai_prompts.COACH_SYSTEM_PROMPT,
         context,
         images,
         max_tokens=max(cfg["tokens"], settings.AI_REPORT_MAX_TOKENS or 0),
         analysis_type="overall",
         dify_user=str(user.id),
+        directive=ai_prompts.level_block(level),
     )
 
 
@@ -365,6 +404,11 @@ async def run_institutional(
 # ---------------------------------------------------------------------------
 # chat grounding
 # ---------------------------------------------------------------------------
+def _chat_rules() -> str:
+    """Chat rules ride along only when the workflow does not carry them."""
+    return "" if _prompts_in_workflow() else ai_prompts.CHAT_RULES
+
+
 async def chat_context_overall(
     db: AsyncSession,
     user: User,
@@ -383,7 +427,7 @@ async def chat_context_overall(
         checklists=checklists,
         plan_topics=plan_topics,
     )
-    parts = [ai_prompts.CHAT_RULES, context]
+    parts = [p for p in (_chat_rules(), context) if p]
     if analysis:
         parts.append("## گزارش مربی که قبلاً برای همین کاربر تولید شده\n" + analysis)
     return "\n\n".join(parts)
@@ -408,7 +452,7 @@ async def chat_context_trade(
         checklists=checklists,
         plan_topics=plan_topics,
     )
-    parts = [ai_prompts.CHAT_RULES, context]
+    parts = [p for p in (_chat_rules(), context) if p]
     if analysis:
         parts.append("## تحلیلی که قبلاً برای همین معامله تولید شده\n" + analysis)
     return "\n\n".join(parts)
@@ -433,7 +477,7 @@ async def chat_context_report(
         checklists=checklists,
         plan_topics=plan_topics,
     )
-    parts = [ai_prompts.CHAT_RULES, context]
+    parts = [p for p in (_chat_rules(), context) if p]
     if analysis:
         parts.append("## گزارش نهادی تولیدشده\n" + analysis)
     return "\n\n".join(parts)
