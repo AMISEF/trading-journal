@@ -13,6 +13,7 @@ import { formatJalaliDate } from "@/lib/jalali";
 import { PLANS, TIER_LABEL, TIER_TINT, effectiveTier } from "@/lib/plans";
 import { useAuth } from "@/store/auth";
 import type { User } from "@/lib/types";
+import http from "@/lib/api";
 
 // ── Billing periods ─────────────────────────────────
 // `months` = calendar months of access. `paidMonths` = months actually billed
@@ -38,6 +39,8 @@ const fullPrice = (monthly: number, p: Period) => monthly * p.months;
 const payPrice = (monthly: number, p: Period) => monthly * p.paidMonths;
 
 const round1000 = (n: number) => Math.round(n / 1000) * 1000;
+/** Always round the payable USDT amount upward to the next half USDT. */
+export const roundUsdtUp = (n: number) => Math.ceil(n * 2) / 2;
 
 // ── Payment / activation details ───────────────────────────────
 const SUPPORT_URL = "https://t.me/cryptosmart_sup";
@@ -72,12 +75,13 @@ function supportMessage(
   planName: string,
   periodLabel: string,
   priceLabel: string,
+  usdtLabel: string,
   user: User | null = null
 ) {
   return (
     "سلام؛ وقت بخیر.\n" +
     `مایل به تهیهٔ اشتراک «${planName}» پنل ژورنال تریدینگ کریپتو اسمارت ` +
-    `(دورهٔ ${periodLabel} — ${priceLabel}) هستم.\n` +
+    `(دورهٔ ${periodLabel} — ${priceLabel} / ${usdtLabel}) هستم.\n` +
     "لطفاً راهنمایی بفرمایید. سپاسگزارم." +
     identityBlock(user)
   );
@@ -285,19 +289,45 @@ function PaymentModal({
   planName,
   periodLabel,
   priceLabel,
+  rialPrice,
   tint,
   onClose,
 }: {
   planName: string;
   periodLabel: string;
   priceLabel: string;
+  rialPrice: number;
   tint: string;
   onClose: () => void;
 }) {
   // The signed-in account travels with the request, so support does not have to
   // ask who is paying before activating the plan.
   const user = useAuth((s) => s.user);
-  const message = supportMessage(planName, periodLabel, priceLabel, user);
+  const [usdtRate, setUsdtRate] = useState<number | null>(null);
+  const [rateLoading, setRateLoading] = useState(true);
+  const usdtPrice = usdtRate ? roundUsdtUp(rialPrice / usdtRate) : null;
+  const usdtLabel = usdtPrice === null
+    ? "نرخ تتر موقتاً در دسترس نیست"
+    : `${faNum(usdtPrice.toLocaleString("en-US", { maximumFractionDigits: 1 }))} USDT`;
+  const message = supportMessage(planName, periodLabel, priceLabel, usdtLabel, user);
+
+  useEffect(() => {
+    let alive = true;
+    setRateLoading(true);
+    http.get<{ rate: number | null }>("/market/usdt-irt")
+      .then(({ data }) => {
+        if (alive) setUsdtRate(data.rate && data.rate > 0 ? data.rate : null);
+      })
+      .catch(() => {
+        if (alive) setUsdtRate(null);
+      })
+      .finally(() => {
+        if (alive) setRateLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -345,6 +375,24 @@ function PaymentModal({
           </b>{" "}
           — {periodLabel} {priceLabel}
         </p>
+
+        <section className="mb-3 grid grid-cols-1 gap-3 rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.06] p-4 sm:grid-cols-2">
+          <div>
+            <div className="text-[11px] font-bold text-gray-400">قیمت ریالی</div>
+            <div className="mt-1 text-base font-black text-white">{priceLabel}</div>
+          </div>
+          <div>
+            <div className="text-[11px] font-bold text-gray-400">قیمت تتری</div>
+            <div className="mt-1 text-base font-black text-cyan-300">
+              {rateLoading ? "در حال دریافت نرخ…" : usdtLabel}
+            </div>
+            {usdtRate && (
+              <div className="mt-1 text-[10px] text-gray-500">
+                نرخ لحظه‌ای تتر صرافی تبدیل: {faNum(Math.round(usdtRate).toLocaleString("en-US"))} تومان
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* USDT */}
         <section className="mb-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -427,7 +475,7 @@ function SubscriptionInner() {
 
   // Which paid plan's payment guide is open (null = closed).
   const [payPlan, setPayPlan] = useState<
-    { name: string; periodLabel: string; priceLabel: string; tint: string } | null
+    { name: string; periodLabel: string; priceLabel: string; rialPrice: number; tint: string } | null
   >(null);
 
   return (
@@ -629,6 +677,7 @@ function SubscriptionInner() {
                             name: plan.name,
                             periodLabel: period.label,
                             priceLabel: `${faNum(pay.toLocaleString("en-US"))} تومان`,
+                            rialPrice: pay,
                             tint: plan.tint,
                           })
                     }
@@ -669,6 +718,7 @@ function SubscriptionInner() {
           planName={payPlan.name}
           periodLabel={payPlan.periodLabel}
           priceLabel={payPlan.priceLabel}
+          rialPrice={payPlan.rialPrice}
           tint={payPlan.tint}
           onClose={() => setPayPlan(null)}
         />
