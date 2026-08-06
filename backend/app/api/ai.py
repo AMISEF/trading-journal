@@ -154,6 +154,7 @@ async def get_trading_plan(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PlanOut:
+    plans.assert_can_use_trading_plan(user)
     return PlanOut(topics=await ai_coach.load_plan(db, user.id))
 
 
@@ -164,6 +165,7 @@ async def put_trading_plan(
     db: AsyncSession = Depends(get_db),
 ) -> PlanOut:
     """Mirror the plan written on /trading-plan so the coach can read it."""
+    plans.assert_can_use_trading_plan(user)
     topics = await ai_coach.save_plan(db, user.id, body.topics)
     return PlanOut(topics=topics, updated_at=_utcnow())
 

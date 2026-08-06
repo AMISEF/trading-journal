@@ -79,19 +79,19 @@ export function jsonLd() {
           {
             "@type": "Offer",
             name: "\u067e\u0644\u0646 \u0646\u0642\u0631\u0647\u200c\u0627\u06cc",
-            price: "349000",
-            priceCurrency: "IRT",
-          },
-          {
-            "@type": "Offer",
-            name: "\u067e\u0644\u0646 \u0637\u0644\u0627\u06cc\u06cc",
             price: "999000",
             priceCurrency: "IRT",
           },
           {
             "@type": "Offer",
-            name: "\u067e\u0644\u0646 \u0627\u0644\u0645\u0627\u0633\u06cc",
+            name: "\u067e\u0644\u0646 \u0637\u0644\u0627\u06cc\u06cc",
             price: "1999000",
+            priceCurrency: "IRT",
+          },
+          {
+            "@type": "Offer",
+            name: "\u067e\u0644\u0646 \u0627\u0644\u0645\u0627\u0633\u06cc",
+            price: "3950000",
             priceCurrency: "IRT",
           },
         ],
