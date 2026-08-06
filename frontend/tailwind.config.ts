@@ -30,7 +30,8 @@ const config: Config = {
         neutral: "var(--neutral)",
       },
       fontFamily: {
-        sans: ["Vazirmatn", "system-ui", "sans-serif"],
+        sans: ["var(--font-persian)"],
+        mono: ["var(--font-persian)"],
       },
       keyframes: {
         "pulse-dot": {
