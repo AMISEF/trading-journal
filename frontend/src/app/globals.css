@@ -3,6 +3,54 @@
 @tailwind utilities;
 
 /*
+ * One locally hosted Persian typeface for the whole ALGO HUB experience.
+ * These files are served by the main portfolio app at /static/fonts, so the
+ * journal and the hub use the exact same glyphs and weights without a CDN.
+ */
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/static/fonts/Vazirmatn-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/static/fonts/Vazirmatn-Medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/static/fonts/Vazirmatn-SemiBold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/static/fonts/Vazirmatn-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/static/fonts/Vazirmatn-ExtraBold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/static/fonts/Vazirmatn-Black.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+
+/*
  * Theme tokens as CSS variables — Crypto Smart palette.
  *
  * Seven selectable themes, applied through `data-theme` on <html>
@@ -22,6 +70,8 @@
  * dark text on the light themes, light text on the dark ones.
  */
 :root {
+  --font-persian: "Vazirmatn", Tahoma, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
   --bg: #f3f6f9;
   --surface: #ffffff;
   --surface-2: #e9eef4;
@@ -273,12 +323,26 @@ body {
   margin: 0;
 }
 
+/*
+ * Form controls, chart labels, dialogs and Tailwind's font-mono utility may
+ * otherwise fall back to a sharp platform font. Keep every visible glyph on
+ * Vazirmatn while preserving each component's size and weight.
+ */
+html,
+body,
+body *,
+body *::before,
+body *::after {
+  font-family: var(--font-persian) !important;
+  font-synthesis: none;
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);
-  /* Latin glyphs resolve to Montserrat; Persian glyphs fall through to Dana. */
-  font-family: "Montserrat", "Dana", Vazirmatn, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* Barbie / Cinderella get a soft tinted gradient instead of a flat colour. */

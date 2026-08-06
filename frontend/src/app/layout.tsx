@@ -62,7 +62,8 @@ export const metadata: Metadata = isPnlSite
 /**
  * Root layout.
  * - dir="rtl" + lang="fa" for a right-to-left Persian UI.
- * - Dana (Persian) + Montserrat (Latin) loaded from a CDN.
+ * - Vazirmatn is served locally by the main ALGO HUB app and used for every
+ *   visible text element, including Latin text and numeric UI.
  * - <html> ships with the default theme (classic dark); an inline script
  *   applies the user's saved theme before first paint, so there is never a
  *   flash of the wrong colours.
@@ -84,20 +85,6 @@ export default function RootLayout({
   return (
     <html lang="fa" dir="rtl" className="dark" data-theme="classic" suppressHydrationWarning>
       <head>
-        <link
-          rel="preconnect"
-          href="https://cdn.jsdelivr.net"
-          crossOrigin="anonymous"
-        />
-        <link rel="preconnect" href="https://cdn.fontcdn.ir" crossOrigin="anonymous" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Persian UI font: Dana. English/Latin font: Montserrat. Vazirmatn kept as fallback. */}
-        <link href="https://cdn.fontcdn.ir/Font/Persian/Dana/Dana.css" rel="stylesheet" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap"
-          rel="stylesheet"
-        />
         <link rel="icon" type="image/png" sizes="192x192" href="/app-icon?size=192" />
         {/* اپلیکیشن نصب‌شدنی ALGO HUB (مدیریت سرمایه + ژورنال تریدینگ) */}
         <link rel="manifest" href="/manifest.webmanifest" />
