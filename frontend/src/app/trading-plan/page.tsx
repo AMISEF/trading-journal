@@ -16,6 +16,8 @@ import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/store/auth";
 import { faNum } from "@/lib/format";
 import { coachApi } from "@/lib/coach";
+import { effectiveTier } from "@/lib/plans";
+import { UpgradeNotice } from "@/components/UpgradeNotice";
 import { DEMO_PLANS, type PlanTopic, type PlanItem } from "./demos";
 
 const TINTS = [
@@ -77,6 +79,7 @@ function TradingPlanInner() {
   const [demoId, setDemoId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [sync, setSync] = useState<SyncState>("idle");
+  const hasAccess = effectiveTier(user) !== "bronze";
 
   /** Push the plan to the backend so the AI coach can audit it. */
   const pushPlan = async (next: PlanTopic[]) => {
@@ -90,7 +93,7 @@ function TradingPlanInner() {
   };
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !hasAccess) return;
     const local = loadPlan(user.id);
     setTopics(local);
     setLoaded(true);
@@ -118,7 +121,7 @@ function TradingPlanInner() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, hasAccess]);
 
   const persist = (next: PlanTopic[]) => {
     setTopics(next);
@@ -142,6 +145,12 @@ function TradingPlanInner() {
     persist([...topics, ...copied]);
     setDemoId(null);
   };
+
+  if (!hasAccess) {
+    return (
+      <UpgradeNotice message="تریدینگ پلن فقط برای کاربران نقره‌ای، طلایی و الماسی فعال است. [UPGRADE]" />
+    );
+  }
 
   return (
     <div className="relative space-y-6">
