@@ -15,12 +15,14 @@ import { WalletModal } from "./WalletModal";
 import { HubNav } from "./HubNav";
 import { formatUsd } from "@/lib/format";
 import { BASE_PATH } from "@/lib/api";
+import { effectiveTier } from "@/lib/plans";
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
   adminOnly?: boolean;
+  paidOnly?: boolean;
   /** تک‌موردیِ تبلیغاتی: بجای حالت عادی، گرادیانتِ متحرک می‌گیرد. */
   glow?: boolean;
 }
@@ -70,6 +72,7 @@ const NAV: NavItem[] = [
   {
     href: "/trading-plan",
     label: "تریدینگ پلن",
+    paidOnly: true,
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 2h6a1 1 0 0 1 1 1v1h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1z" />
@@ -138,7 +141,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false); // mobile drawer
 
-  const items = NAV.filter((n) => !n.adminOnly || user?.role === "ADMIN");
+  const paidTier = effectiveTier(user) !== "bronze";
+  const items = NAV.filter(
+    (n) => (!n.adminOnly || user?.role === "ADMIN") && (!n.paidOnly || paidTier)
+  );
 
   const SidebarContent = (
     <div className="flex h-full flex-col">
