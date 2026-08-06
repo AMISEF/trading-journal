@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 
 # Public Tabdeal market endpoint for the USDT/IRT pair.
-TABDEAL_URL = "https://api.tabdeal.org/r/api/v1/depth/USDTIRT/"
+TABDEAL_URL = "https://api.tabdeal.org/r/api/v1/depth/"
 
 CACHE_TTL = 5.0
 _cache: dict[str, tuple[float, Any]] = {}
@@ -32,8 +32,8 @@ def _cache_set(key: str, value: Any) -> None:
 async def get_usdt_irt() -> dict:
     """Return ``{"rate": <float or None>}`` for 1 USDT in Toman (IRT).
 
-    Note: Tabdeal/Iranian markets usually quote in Rials; we divide by 10 to get
-    Toman. On any error we return ``{"rate": None}`` (never 500).
+    Tabdeal's IRT market is already quoted in Toman. On any error we return
+    ``{"rate": None}`` (never 500).
     """
     cached = _cache_get("usdt_irt")
     if cached is not None:
@@ -42,10 +42,12 @@ async def get_usdt_irt() -> dict:
     rate: float | None = None
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(TABDEAL_URL)
+            resp = await client.get(TABDEAL_URL, params={"symbol": "USDTIRT", "limit": 5})
             resp.raise_for_status()
             data = resp.json()
         rate = _extract_rate(data)
+        if rate is not None:
+            rate = float(round(rate))
     except Exception:
         rate = None
 
@@ -60,23 +62,28 @@ def _extract_rate(data: Any) -> float | None:
     if not isinstance(data, dict):
         return None
 
-    # Try the best ask/bid from an order book ("asks"/"bids" = [[price, amount]]).
+    # Use the midpoint of the best ask and bid when both sides are present.
+    best: dict[str, float] = {}
     for side in ("asks", "bids"):
         levels = data.get(side)
         if isinstance(levels, list) and levels:
             try:
                 price = float(levels[0][0])
-                # Iranian exchanges quote in Rials; convert to Toman.
-                return price / 10.0 if price > 100_000 else price
+                if price > 0:
+                    best[side] = price
             except (TypeError, ValueError, IndexError):
                 continue
+    if "asks" in best and "bids" in best:
+        return (best["asks"] + best["bids"]) / 2.0
+    if best:
+        return next(iter(best.values()))
 
     # Fall back to a plain price/last field if present.
     for key in ("price", "last", "lastPrice"):
         if key in data and data[key] is not None:
             try:
                 price = float(data[key])
-                return price / 10.0 if price > 100_000 else price
+                return price if price > 0 else None
             except (TypeError, ValueError):
                 continue
 
