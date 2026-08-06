@@ -61,6 +61,7 @@ from fastapi import HTTPException
 from app.models.user import User
 
 PLAN_ORDER = ["bronze", "silver", "gold", "diamond"]
+TRADING_PLAN_TIERS = {"silver", "gold", "diamond"}
 
 PLAN_LABELS = {
     "bronze": "برنزی (رایگان)",
@@ -196,6 +197,15 @@ def plan_duration(months: float) -> timedelta:
 def _upgrade_error(message: str) -> HTTPException:
     """403 with the upgrade marker appended (see the module docstring)."""
     return HTTPException(status_code=403, detail=f"{message} {UPGRADE_MARKER}")
+
+
+def assert_can_use_trading_plan(user: User) -> None:
+    """Trading Plan is available only while a paid tier is active."""
+    if effective_plan(user) not in TRADING_PLAN_TIERS:
+        raise _upgrade_error(
+            "تریدینگ پلن فقط برای کاربران نقره‌ای، طلایی و الماسی فعال است. "
+            "برای دسترسی، اشتراک تهیه کن."
+        )
 
 
 def _invite_hint(user: User) -> str:
